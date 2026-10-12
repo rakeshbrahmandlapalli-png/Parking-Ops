@@ -26,12 +26,13 @@
 // Called three ways (POST JSON):
 //   { action: "timer" }  by the database timer every 10 min, with the x-timer
 //                        header. Decides for itself whether a check is due.
-//   { action: "check" }  by the office's "Check flights" button, with their
-//                        sign-in. FR24 only. Needs the "flights" permission;
-//                        at most every 3 min.
+//   { action: "check" }  by the "Check flights" button, with their sign-in.
+//                        FR24 only.
 //   { action: "timetable", day }  by "Fill times · AeroData": the AeroDataBox
 //                        half only, for the sheet on screen (no FR24 credits).
-//                        Same permission; a sheet at most every 10 min.
+//   Both buttons: owners, managers and the office (the "flights" or
+//   "settings" permission) any time; drivers and terminal staff 2 presses an
+//   hour between both buttons (Rakesh, 12 Oct 2026). View-only: none.
 //
 // Secrets (Edge Functions → Secrets): FR24_TOKEN, AERODATABOX_KEY. Either can
 // be missing; that half is skipped and the Flights screen says so.
@@ -53,11 +54,11 @@ type Timing = { enabled: boolean; live_every_min: number; schedule_every_hours: 
 const DEFAULT_TIMING: Timing = { enabled: true, live_every_min: 30, schedule_every_hours: 2, active_from: 6, active_to: 24, before_min: 90, after_hours: 5 };
 const timingOf = (c: Company): Timing => ({ ...DEFAULT_TIMING, ...(c.flight_settings ?? {}) });
 const SLACK_MIN = 2;   // the timer wakes every 10 min, a little late at times
-const BUTTON_GAP_MIN = 3;
+const PRESSES_PER_HOUR = 2;   // drivers and terminal staff, both buttons together
 const DELAY_WITHIN = 60, DELAY_AFTER = 20;
 const MIN_DELAY = 15, MAX_DELAY = 360, MAX_EARLY = 60, MIN_FLIGHT = 20;
 const FR24_BATCH = 15, FR24_GAP_MS = 6500, FR24_MAX_CALLS = 6;
-const AERO_GAP_MS = 1200, TIMETABLE_GAP_MIN = 10, TIMETABLE_EVERY_MIN = 90;
+const AERO_GAP_MS = 1200, TIMETABLE_EVERY_MIN = 90;
 // The answer once the month's units are spent. Asking again only draws the
 // same answer, so a press within 6 h of it doesn't call at all.
 const QUOTA_GONE = /quota/i, QUOTA_WAIT_H = 6;
@@ -204,8 +205,9 @@ async function fr24Live(token: string, c: Company, keys: string[], param: "fligh
 }
 
 // ── one company ───────────────────────────────────────────────────────
-async function logRun(admin: SupabaseClient, c: Company, source: string, trigger: string, result: Record<string, unknown>) {
-  await admin.from("flight_runs").insert({ company_id: c.id, source, trigger, result });
+// by: the staff member who pressed a button (counts their presses this hour).
+async function logRun(admin: SupabaseClient, c: Company, source: string, trigger: string, result: Record<string, unknown>, by = "") {
+  await admin.from("flight_runs").insert({ company_id: c.id, source, trigger, result: by ? { ...result, by } : result });
 }
 // The key is shared by every client: one client's spent month is everyone's.
 // Only the latest timetable run counts (a later one that worked means the
@@ -230,7 +232,7 @@ function patchOf(changes: Map<string, Record<string, unknown>>, b: Booking) {
   return p;
 }
 
-async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], trigger: string) {
+async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], trigger: string, by = "") {
   const key = Deno.env.get("AERODATABOX_KEY");
   if (!key) return { skipped: "No AeroDataBox key yet" };
   const now = new Date(), tz = c.time_zone;
@@ -357,23 +359,26 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
     for (const b of missing) {
       tally.notfound++;
       if (b.flight_note === USUAL) { Object.assign(patchOf(changes, b), { sched_at: null, sched_time: "", flight_status: "", flight_note: NOT_FOUND }); continue; }
+      // FR24 found no aircraft for it and said DELAY, but it isn't landing
+      // here today at all (often the outbound flight number): check it.
+      if (b.flight_status === "delayed" && !b.sched_at) { Object.assign(patchOf(changes, b), { est_at: null, est_time: "", flight_status: "", flight_note: NOT_FOUND }); continue; }
       if (!b.flight_status && !b.sched_at && b.flight_note !== NOT_FOUND) patchOf(changes, b).flight_note = NOT_FOUND;
     }
     await saveChanges(admin, changes);
     if (activity.length) await admin.from("activity").insert(activity);
   }
-  await logRun(admin, c, "schedule", trigger, { ...tally, day: days.join(",") });
+  await logRun(admin, c, "schedule", trigger, { ...tally, day: days.join(",") }, by);
   return tally;
 }
 
-async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger: string) {
+async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger: string, by = "") {
   const token = Deno.env.get("FR24_TOKEN");
   if (!token) return { skipped: "No FlightRadar24 token yet" };
   const now = new Date(), tz = c.time_zone, stamp = hhmm(now, tz), T = timingOf(c);
   const tally = { looked: 0, calls: 0, written: 0, delayed: 0, landed: 0, error: "" };
 
   const { data: sheet } = await admin.from("sheets").select("id").eq("company_id", c.id).eq("kind", "drops").eq("day", day).maybeSingle();
-  if (!sheet) { await logRun(admin, c, "live", trigger, { ...tally, note: "No DROPS sheet for " + day }); return tally; }
+  if (!sheet) { await logRun(admin, c, "live", trigger, { ...tally, note: "No DROPS sheet for " + day }, by); return tally; }
   const { data: rows, error } = await admin.from("bookings").select("*").eq("sheet_id", sheet.id).neq("flight", "").is("cleared_at", null);
   if (error) throw new Error(error.message);
 
@@ -444,6 +449,8 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
       if (eta && minsBetween(base, eta) >= -MAX_EARLY && minsBetween(base, eta) <= MAX_DELAY) {
         Object.assign(p, { est_at: eta.toISOString(), est_time: hhmm(eta, tz), flight_status: "airborne", flight_note: warn || `ETA · FR24, checked ${stamp}` });
         tally.written++;
+      } else if (!eta && !b.sched_at && b.flight_note === NOT_FOUND) {
+        // Not in today's arrivals: no aircraft is no news, not a delay.
       } else if (!eta && ["", "scheduled", "delayed"].includes(b.flight_status)) {
         // Only a delay if it ought to be in the air by now. Well past the time,
         // "no aircraft" more likely means it has already landed.
@@ -458,14 +465,14 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
     }
   }
   await saveChanges(admin, changes);
-  await logRun(admin, c, "live", trigger, tally);
+  await logRun(admin, c, "live", trigger, tally, by);
   return tally;
 }
 
 // Live (FR24) on its own timer. The timetable (AeroDataBox) every 90 min in
 // working hours, tonight's sheet only (Rakesh, 10 Oct 2026, after the
 // monthly quota ran out), plus the Fill times button.
-async function runCompany(admin: SupabaseClient, c: Company, trigger: "timer" | "button") {
+async function runCompany(admin: SupabaseClient, c: Company, trigger: "timer" | "button", by = "") {
   const now = new Date(), today = shiftDay(c, now), T = timingOf(c);
   if (trigger === "timer" && !T.enabled) return { company: c.name, skipped: "Flight checks are switched off in Settings" };
   const out: Record<string, unknown> = { company: c.name, day: today };
@@ -476,7 +483,7 @@ async function runCompany(admin: SupabaseClient, c: Company, trigger: "timer" | 
   // 22 to 6 is allowed too: a window that runs over midnight.
   const inHours = T.active_from < T.active_to ? hour >= T.active_from && hour < T.active_to : hour >= T.active_from || hour < T.active_to;
   if (trigger === "button" || (inHours && (!lastLive || minsBetween(lastLive, now) >= T.live_every_min - SLACK_MIN))) {
-    out.live = await checkLive(admin, c, today, trigger);
+    out.live = await checkLive(admin, c, today, trigger, by);
   }
   if (trigger === "timer" && inHours && Deno.env.get("AERODATABOX_KEY")) {
     const lastSched = await lastRun(admin, c, "schedule");
@@ -513,27 +520,30 @@ Deno.serve(async (req) => {
       const asCaller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
         auth: { persistSession: false }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
       });
-      const [{ data: companyId }, { data: allowed }] = await Promise.all([asCaller.rpc("my_company"), asCaller.rpc("can", { p_action: "flights" })]);
-      if (!companyId) return reply(401, { error: "Sign in again." });
-      if (allowed !== true) return reply(403, { error: "Only the office can check flights." });
+      const [{ data: companyId }, { data: full }, { data: settings }, { data: me }] = await Promise.all([asCaller.rpc("my_company"),
+        asCaller.rpc("can", { p_action: "flights" }), asCaller.rpc("can", { p_action: "settings" }), asCaller.rpc("me")]);
+      if (!companyId || !me?.id) return reply(401, { error: "Sign in again." });
+      if (me.role === "view") return reply(403, { error: "View-only sign-ins can't check flights." });
       const { data: c } = await admin.from("companies").select("*").eq("id", companyId).single();
+      // Drivers and terminal staff: 2 presses an hour, both buttons together.
+      let left: number | null = null;
+      if (full !== true && settings !== true) {
+        const { data: mine } = await admin.from("flight_runs").select("at").eq("company_id", (c as Company).id).eq("result->>by", me.id)
+          .gte("at", new Date(Date.now() - 60 * MIN).toISOString()).order("at", { ascending: true });
+        const used = (mine ?? []).length;
+        if (used >= PRESSES_PER_HOUR) {
+          const wait = Math.max(1, Math.ceil(60 - minsBetween(new Date(mine![0].at), new Date())));
+          return reply(429, { error: `You've used your ${PRESSES_PER_HOUR} flight checks this hour. Next one in ${wait} min.`, left: 0 });
+        }
+        left = PRESSES_PER_HOUR - used - 1;
+      }
       if (body.action === "timetable") {
         const day = String(body.day ?? "");
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return reply(400, { error: "Choose a DROPS sheet first." });
         if (!Deno.env.get("AERODATABOX_KEY")) return reply(200, { schedule: { skipped: "No AeroDataBox key yet" } });
-        // One press per sheet per 10 min (a double tap was two days' worth of calls).
-        const { data: prev } = await admin.from("flight_runs").select("at").eq("company_id", (c as Company).id).eq("source", "schedule")
-          .eq("result->>day", day).order("at", { ascending: false }).limit(1).maybeSingle();
-        if (prev && new Date(prev.at).getTime() > Date.now() - TIMETABLE_GAP_MIN * MIN) {
-          return reply(429, { error: `Timetable for this sheet checked under ${TIMETABLE_GAP_MIN} min ago. Each check uses AeroData calls.` });
-        }
-        return reply(200, { schedule: await checkSchedule(admin, c as Company, [day], "button") });
+        return reply(200, { schedule: await checkSchedule(admin, c as Company, [day], "button", me.id), left });
       }
-      const last = await lastRun(admin, c as Company, "live");
-      if (last && last.getTime() > Date.now() - BUTTON_GAP_MIN * MIN) {
-        return reply(429, { error: `Checked ${Math.max(0, Math.round((Date.now() - last.getTime()) / MIN))} min ago. Try again in a few minutes (each check uses paid credits).` });
-      }
-      return reply(200, await runCompany(admin, c as Company, "button"));
+      return reply(200, { ...(await runCompany(admin, c as Company, "button", me.id)), left });
     }
 
     return reply(400, { error: "Unknown action." });

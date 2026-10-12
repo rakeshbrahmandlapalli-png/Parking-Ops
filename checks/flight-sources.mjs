@@ -70,7 +70,11 @@ function q(table) {
   };
   return b;
 }
-globalThis.__createClient = () => ({ from: q, rpc: async (name) => ({ data: name === "my_company" ? "c1" : true, error: null }) });
+// who's pressing: role decides the limit (owner, manager, office: none).
+let caller = { id: "st1", role: "office" };
+const PERMS = { owner: ["flights", "settings"], manager: ["settings"], office: ["flights"], bongo: [], terminal: [], view: [] };
+globalThis.__createClient = () => ({ from: q, rpc: async (name, args) => ({ data: name === "my_company" ? "c1" : name === "me" ? caller
+  : name === "can" ? PERMS[caller.role].includes(args.p_action) : true, error: null }) });
 
 // ── pretend APIs ──
 let calls, aeroAnswer, aeroHeaders;
@@ -127,7 +131,7 @@ fresh(); db.bookings[0].sched_at = null;   // not matched yet: every chunk
 r = await post({ action: "timetable", day });
 check("Fill times: AeroData only (3 calls for the day), no FR24", r.status === 200 && r.aero === 3 && r.fr24 === 0, r);
 r = await post({ action: "timetable", day });
-check("Fill times again within 10 min for the same sheet: refused, no calls", r.status === 429 && r.aero === 0 && /AeroData/.test(r.json.error), r);
+check("office: Fill times again straight away is allowed (no limit)", r.status === 200 && r.aero === 3 && r.json.left === null, r);
 addSheet2();
 r = await post({ action: "timetable", day: "2026-01-02" });
 check("Fill times for another sheet: allowed", r.status === 200 && r.aero === 3, r);
@@ -154,6 +158,44 @@ check("6 h later Fill times tries AeroData again", r.aero === 3, r);
 fresh(); db.bookings[0].flight_status = "landed";
 r = await post({ action: "timetable", day });
 check("Fill times on a sheet where every flight has landed: no AeroData calls", r.status === 200 && r.aero === 0 && r.json.schedule.done === 1, r);
+
+// Who can press: owners, managers and the office any time; drivers and
+// terminal staff 2 presses an hour between both buttons; view-only none.
+for (const role of ["owner", "manager", "office"]) {
+  fresh(); caller = { id: "st-" + role, role }; db.bookings[0].sched_at = null;
+  let ok = true;
+  for (let i = 0; i < 4; i++) { r = await post({ action: i % 2 ? "check" : "timetable", day }); ok = ok && r.status === 200 && r.json.left === null; }
+  check(role + ": 4 checks in a row, no limit", ok, r);
+}
+fresh(); caller = { id: "st-bongo", role: "bongo" }; db.bookings[0].sched_at = null;
+r = await post({ action: "timetable", day });
+check("driver: first check of the hour works, 1 left", r.status === 200 && r.aero === 3 && r.json.left === 1, r);
+r = await post({ action: "check" });
+check("driver: second check (the other button) works, 0 left", r.status === 200 && r.fr24 === 1 && r.json.left === 0, r);
+r = await post({ action: "timetable", day });
+check("driver: a third in the hour is refused with when the next one is, no calls", r.status === 429 && r.aero === 0 && r.fr24 === 0 && /2 flight checks this hour\. Next one in \d+ min/.test(r.json.error), r);
+caller = { id: "st-term", role: "terminal" };
+r = await post({ action: "check" });
+check("terminal staff: their own 2 an hour (a driver's presses don't count)", r.status === 200 && r.json.left === 1, r);
+caller = { id: "st-bongo", role: "bongo" };
+db.flight_runs.filter((x) => x.result.by === "st-bongo").forEach((x) => { x.at = iso(Date.now() - 61 * 60e3); });
+r = await post({ action: "check" });
+check("driver: an hour later they can check again", r.status === 200 && r.json.left === 1, r);
+caller = { id: "st-view", role: "view" };
+r = await post({ action: "check" });
+check("view-only: refused", r.status === 403 && r.fr24 === 0, r);
+caller = { id: "st1", role: "office" };
+
+// KR66 FVF, 12 Oct: W4 3752 is the outbound flight, so FR24 found no plane
+// and said DELAY. The timetable doesn't have it landing: CHECK MANUALLY.
+fresh(); Object.assign(db.bookings[0], { flight: "W43752", sched_at: null, est_time: "DELAY", flight_status: "delayed", flight_note: "Not airborne at 07:00, so it will be late" });
+r = await post({ action: "timetable", day });
+check("a DELAY on a flight not in today's arrivals becomes Not in the timetable (CHECK MANUALLY)", db.bookings[0].flight_status === "" && db.bookings[0].est_time === "" && /^Not in the timetable/.test(db.bookings[0].flight_note), db.bookings[0]);
+r = await post({ action: "check" });
+check("FR24 with no aircraft for it then leaves it as CHECK MANUALLY, not DELAY", r.fr24 === 1 && db.bookings[0].flight_status === "" && /^Not in the timetable/.test(db.bookings[0].flight_note), db.bookings[0]);
+fresh(); Object.assign(db.bookings[0], { sched_at: null });
+r = await post({ action: "check" });
+check("a flight not checked against the timetable yet, due within the hour with no aircraft: still DELAY", db.bookings[0].flight_status === "delayed", db.bookings[0]);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`${passed} passed, ${failed} failed`);

@@ -202,6 +202,11 @@ async function backend(ctx, db) {
     }
     if (p.startsWith("/functions/v1/flights")) {
       const a = JSON.parse(req.postData() || "{}"); (db.flightCalls = db.flightCalls || []).push(a);
+      // A driver or terminal sign-in: 2 presses an hour (the real function counts them).
+      if (db.checksUsed !== undefined) {
+        if (db.checksUsed >= 2) return reply(429, { error: "You've used your 2 flight checks this hour. Next one in 40 min.", left: 0 });
+        db.checksUsed++; (db.flightRuns = db.flightRuns || []).unshift({ at: new Date().toISOString(), source: a.action === "timetable" ? "schedule" : "live", trigger: "button", result: { by: db.me.id } });
+      }
       return reply(200, a.action === "timetable" ? { schedule: { filled: 2, moved: 0, notfound: 0 } } : { company: "TAKEOFF", live: { written: 1, landed: 1 } });
     }
     if (p.startsWith("/functions/v1/takeoff-bookings")) {
@@ -228,6 +233,7 @@ async function backend(ctx, db) {
     }
     // Summary → Activity: all activity, newest first.
     if (p === "/rest/v1/activity") return reply(200, (db.activity || []).slice().sort((x, y) => (x.at < y.at ? 1 : -1)));
+    if (p === "/rest/v1/flight_runs") return reply(200, db.flightRuns || []);
     if (p === "/rest/v1/staff") return reply(200, db.staff);
     if (p === "/rest/v1/sheets") return reply(200, db.sheets);
     if (p === "/rest/v1/bookings") {
@@ -2460,6 +2466,37 @@ async function stressTests() {
   });
 }
 
+// Fill times and Check flights (12 Oct 2026): owners, managers and the office
+// any time; drivers and terminal staff 2 an hour between both buttons, with
+// what's left shown by the buttons; view-only gets neither.
+for (const [look, role] of [["Standard", "bongo"], ["Operations", "terminal"], ["Operations", "office"], ["Standard", "view"]]) await scenario(async () => {
+  const db = look === "Operations" ? apbDb("ops") : makeDb(); db.me = { ...db.me, role };
+  if (role === "bongo") db.perms = { sent: true, rtc: true, note: true, intake: true };
+  if (role === "terminal") db.perms = { clear: true, picksinfo: true, note: true, intake: true };
+  if (role === "view") db.perms = {};
+  if (role === "bongo" || role === "terminal") db.checksUsed = 0;
+  const page = await phone(browser, db, { width: 390 });
+  await open(page); await sleep(300);
+  await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+  await page.click('#menuBody [data-view="flights"]'); await sleep(500);
+  const left = () => page.evaluate(() => (document.querySelector("#main .checks-left") || {}).textContent || "");
+  const btns = await page.locator("#main [data-filltimes], #main [data-checkflights]").count();
+  if (role === "view") return check("Flight checks (" + look + ", view-only): no Fill times or Check flights", btns === 0);
+  if (role === "office" && process.env.PREVIEW) await page.screenshot({ path: process.env.PREVIEW + "/checks-office-" + look + ".png" });
+  if (role === "office") return check("Flight checks (" + look + ", office): both buttons, no limit shown", btns === 2 && await left() === "");
+  if (process.env.PREVIEW) await page.screenshot({ path: process.env.PREVIEW + "/checks-2-left-" + look + "-" + role + ".png" });
+  check("Flight checks (" + look + ", " + role + "): both buttons, 2 of 2 left this hour", btns === 2 && await left() === "2 of 2 checks left this hour", { btns, left: await left() });
+  await page.click("#main [data-filltimes]"); await sleep(700);
+  check("Flight checks (" + look + ", " + role + "): after Fill times, 1 of 2 left", await left() === "1 of 2 checks left this hour", await left());
+  await page.click("#main [data-checkflights]"); await sleep(700);
+  check("Flight checks (" + look + ", " + role + "): after Check flights, 0 of 2 left", await left() === "0 of 2 checks left this hour", await left());
+  if (process.env.PREVIEW) await page.screenshot({ path: process.env.PREVIEW + "/checks-0-left-" + look + "-" + role + ".png" });
+  await page.click("#main [data-checkflights]"); await sleep(700);
+  const t = await toast(page);
+  check("Flight checks (" + look + ", " + role + "): a third is refused with when the next one is", /2 flight checks this hour\. Next one in 40 min/.test(t) && db.checksUsed === 2, t);
+  check("Flight checks (" + look + ", " + role + "): no errors", page.__errors.length === 0, page.__errors);
+});
+
 // Flights: Check flights asks for live positions only; the timetable (AeroData,
 // a paid monthly allowance) is its own clearly named button; Settings no longer
 // offers a timetable timer.
@@ -2477,6 +2514,9 @@ for (const [look, mk] of [["Standard", () => makeDb()], ["Operations", () => apb
   check(look + " Flights: Fill times asks for that sheet's timetable", db.flightCalls.length === 2 && db.flightCalls[1].action === "timetable" && /^\d{4}-\d{2}-\d{2}$/.test(db.flightCalls[1].day), db.flightCalls);
   await go("settings");
   check(look + " Settings: no timetable timer (AeroData runs only from Fill times)", await page.evaluate(() => !document.querySelector('[data-setting="schedule_every_hours"]') && !/AeroDataBox/.test(document.querySelector(".fchecks").textContent)));
+  await page.selectOption('[data-setting="active_from"]', "0"); await page.selectOption('[data-setting="before_min"]', "240"); await page.selectOption('[data-setting="live_every_min"]', "10"); await sleep(200);
+  if (process.env.PREVIEW) await page.evaluate(() => document.querySelector(".fchecks").scrollIntoView()), await page.screenshot({ path: process.env.PREVIEW + "/settings-24h-" + look + ".png" });
+  check(look + " Settings: 24 hours of flight checks shows no FlightRadar24 credits warning", await page.evaluate(() => !/credits/i.test(document.querySelector(".fchecks").textContent) && !document.querySelector(".fchecks .alert")));
   check(look + " Flights and Settings: no errors", page.__errors.length === 0, page.__errors);
 });
 
