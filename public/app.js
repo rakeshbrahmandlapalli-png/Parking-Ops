@@ -3328,7 +3328,7 @@
       '<div class="stats"><div class="stat"><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat"><span>Landed</span><strong class="num">' + n("landed") +
       '</strong></div><div class="stat"><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat"><span>Cancelled</span><strong class="num">' + n("cancelled") +
       '</strong></div></div><p class="note">Timetable last checked: ' + last("schedule") + "<br>Live positions last checked: " + last("live") + "</p>" +
-      (can("flights") ? '<div class="row-actions"><button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
+      (canCheckFlights() ? '<div class="row-actions">' + checksLeftHtml() + '<button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
       "</div>" + missingHtml() + manualHtml(manual) + (missingFlights().length || manual.length ? '<div class="sec">WITH FLIGHT NUMBERS</div>' : "");
     return h + (rows.length ? rows.map(function (r) {
       return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
@@ -3341,7 +3341,7 @@
     function run(src) { return (S.runs || []).filter(function (x) { return !src || x.source === src; })[0]; }
     var lastRun = run(), tt = run("schedule");
     var h = opsSub(sh) + '<div class="ops-acts ops-check"><span class="ops-dot' + (lastRun ? "" : " never") + '">' + (lastRun ? "Checked at " + esc(hhmm(lastRun.at)) : "Not checked yet") + "</span>" +
-      (can("flights") ? '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button>' : "") + "</div>" +
+      (canCheckFlights() ? checksLeftHtml() + '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button>' : "") + "</div>" +
       opsStrip([["Flights", all.length], ["Landed", n("landed")], ["Delayed", n("delayed") + n("expected")], ["Cancelled", n("cancelled")]]) +
       missingHtml() + manualHtml(manual);
     function mins(t) { return /^\d{2}:\d{2}$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : null; }
@@ -3357,6 +3357,18 @@
         '<em class="ops-badge ' + tone + '">' + esc(word) + (r.flight_note && st !== "landed" ? " · " + esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
     return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
+  }
+  // Fill times and Check flights: owners, managers and the office any time;
+  // drivers and terminal staff 2 an hour between both (the server counts).
+  var FLIGHT_CHECKS_PER_HOUR = 2;
+  function canCheckFlights() { return !!S.me && S.me.role !== "view"; }
+  function flightChecksLimited() { return canCheckFlights() && !can("flights") && !can("settings"); }
+  function checksLeftHtml() {
+    if (!flightChecksLimited()) return "";
+    var hourAgo = Date.now() - 3600e3, used = (S.runs || []).filter(function (x) { return x.result && x.result.by === S.me.id && new Date(x.at).getTime() > hourAgo; }).length;
+    var left = Math.max(0, FLIGHT_CHECKS_PER_HOUR - used);
+    // Styled inline: every look shows it the same, and no look's stylesheet changes.
+    return '<span class="checks-left" style="align-self:center;font-size:13px;font-weight:600;opacity:.85' + (left ? "" : ";color:#b42318;opacity:1") + '">' + left + " of " + FLIGHT_CHECKS_PER_HOUR + " checks left this hour</span>";
   }
   // Flight numbers the timetable can't find (or TBC): the office checks these by hand.
   function manualHtml(list) {
@@ -4456,12 +4468,6 @@
   var TIMING_DEFAULT = { enabled: true, live_every_min: 30, schedule_every_hours: 2, active_from: 6, active_to: 24, before_min: 90, after_hours: 5 };
   function timing() { return Object.assign({}, TIMING_DEFAULT, (S.company && S.company.flight_settings) || {}); }
   function hourName(h) { return h === 24 ? "Midnight (end of day)" : pad(h) + ":00"; }
-  function creditGuess(T) {
-    // Measured on the Sheet in Aug 2026: live checks every 30 min, 06:00 to
-    // midnight, 90 min ahead, cost about 1,900 FR24 credits a day.
-    var hours = T.active_from < T.active_to ? T.active_to - T.active_from : 24 - T.active_from + T.active_to;
-    return Math.round(1900 * (30 / T.live_every_min) * (hours / 18) * ((T.before_min + 60) / 150) / 50) * 50;
-  }
   function renderSettings() {
     if (!can("settings")) return '<div class="msg">Only an owner or manager can change settings.</div>';
     var T = S.settingsDraft || (S.settingsDraft = timing());
@@ -4473,7 +4479,6 @@
     // Operations: shorter words, so two boxes fit side by side; a note when there are unsaved changes.
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
-    var perDay = creditGuess(T);
     return (dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "") +
       capacityHtml() + '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
@@ -4484,9 +4489,7 @@
         '<div class="pair">' + sel("active_from", hrs.slice(0, 24), "From") + sel("active_to", hrs.slice(1), "Until") + "</div>" +
         sel("before_min", o ? [[30, "30 min before"], [60, "1 hour before"], [90, "90 min before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]]
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
-        sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen") +
-        // Only speaks up when the settings would run past the monthly plan.
-        (perDay > 1900 ? '<div class="alert">About ' + (perDay * 30).toLocaleString("en-GB") + " FlightRadar24 credits a month: more than the 60,000 plan.</div>" : "")) +
+        sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
       discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + backupHtml();
   }
