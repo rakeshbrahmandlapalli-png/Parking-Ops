@@ -12,7 +12,9 @@
 //     the real landing time once it's down. Up to 3 calls per sheet, fewer
 //     once the day's early flights are down. Its monthly quota ran out on
 //     10 Oct 2026 (the timer ran it every hour for two days of sheets, and
-//     Check flights ran it too).
+//     Check flights ran it too). Since 12 Oct 2026 it's AeroDataBox's own
+//     Starter plan (api.aerodatabox.com, 40,000 units a month, 5 calls a
+//     second), not RapidAPI.
 //
 //   LIVE (FlightRadar24)    every 30 min, 06:00 to midnight.
 //     Where the aircraft actually is, and its ETA. Credits are charged per
@@ -56,9 +58,9 @@ const DELAY_WITHIN = 60, DELAY_AFTER = 20;
 const MIN_DELAY = 15, MAX_DELAY = 360, MAX_EARLY = 60, MIN_FLIGHT = 20;
 const FR24_BATCH = 15, FR24_GAP_MS = 6500, FR24_MAX_CALLS = 6;
 const AERO_GAP_MS = 1200, TIMETABLE_GAP_MIN = 10, TIMETABLE_EVERY_MIN = 90;
-// RapidAPI's answer once the month's units are spent. Asking again only
-// draws the same answer, so a press within 6 h of it doesn't call at all.
-const QUOTA_GONE = /MONTHLY quota/i, QUOTA_WAIT_H = 6;
+// The answer once the month's units are spent. Asking again only draws the
+// same answer, so a press within 6 h of it doesn't call at all.
+const QUOTA_GONE = /quota/i, QUOTA_WAIT_H = 6;
 // On a car whose flight number isn't among the day's arrivals: usually the
 // customer gave the outbound flight, or a typo. The app shows it on the row.
 const NOT_FOUND = "Not in the timetable · check the flight number";
@@ -123,8 +125,8 @@ function shiftDay(c: Company, now: Date) {
 type Arrival = { keys: string[]; number: string; origin: string; codeshare: boolean; sched: Date | null; cancelled: boolean; late: Date | null; why: string; landed: Date | null };
 
 async function aeroFetch(key: string, airport: string, from: string, to: string) {
-  const url = `https://aerodatabox.p.rapidapi.com/flights/airports/iata/${airport}/${from}/${to}?direction=Arrival&withLeg=true&withCancelled=true&withCodeshared=true&withLocation=false`;
-  const opts = { headers: { "x-rapidapi-key": key, "x-rapidapi-host": "aerodatabox.p.rapidapi.com" } };
+  const url = `https://api.aerodatabox.com/flights/airports/iata/${airport}/${from}/${to}?direction=Arrival&withLeg=true&withCancelled=true&withCodeshared=true&withLocation=false`;
+  const opts = { headers: { "X-Api-Key": key } };
   // Per-second limit: a button press can land on top of the timer's own run,
   // so wait a little longer each time (2.4 s, 4.8 s, 7.2 s) before giving up.
   let res = await fetch(url, opts), text = "";

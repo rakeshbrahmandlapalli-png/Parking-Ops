@@ -73,10 +73,11 @@ function q(table) {
 globalThis.__createClient = () => ({ from: q, rpc: async (name) => ({ data: name === "my_company" ? "c1" : true, error: null }) });
 
 // ── pretend APIs ──
-let calls, aeroAnswer;
-globalThis.fetch = async (url) => {
+let calls, aeroAnswer, aeroHeaders;
+globalThis.fetch = async (url, opts) => {
   const host = new URL(url).host;
   calls[host] = (calls[host] || 0) + 1;
+  if (/aerodatabox/.test(host)) aeroHeaders = opts?.headers;
   if (/aerodatabox/.test(host)) return aeroAnswer === "quota"
     ? new Response(JSON.stringify({ message: "You have exceeded the MONTHLY quota for API Units on your current plan, PRO." }), { status: 429 })
     : new Response(JSON.stringify({ arrivals: [] }), { status: 200 });
@@ -88,13 +89,14 @@ await import(pathToFileURL(path.join(tmp, "index.ts")).href);
 
 const addSheet2 = () => { db.sheets.push({ id: "s2", company_id: "c1", kind: "drops", day: "2026-01-02", imported_at: iso(now) }); db.bookings.push({ ...db.bookings[0], id: "b2", sheet_id: "s2" }); };
 const addSheet3 = () => { db.sheets.push({ id: "s3", company_id: "c1", kind: "drops", day: "2026-01-03", imported_at: iso(now) }); db.bookings.push({ ...db.bookings[0], id: "b3", sheet_id: "s3" }); };
-const post = async (body) => { calls = {}; const r = await handler(new Request("http://x", { method: "POST", body: JSON.stringify(body), headers: { "x-timer": "s" } })); return { status: r.status, json: await r.json(), aero: calls["aerodatabox.p.rapidapi.com"] || 0, fr24: calls["fr24api.flightradar24.com"] || 0 }; };
+const post = async (body) => { calls = {}; const r = await handler(new Request("http://x", { method: "POST", body: JSON.stringify(body), headers: { "x-timer": "s" } })); return { status: r.status, json: await r.json(), aero: calls["api.aerodatabox.com"] || 0, fr24: calls["fr24api.flightradar24.com"] || 0 }; };
 let failed = 0, passed = 0;
 const check = (name, ok, info) => { if (ok) passed++; else failed++; console.log((ok ? "ok   " : "FAIL ") + name + (ok ? "" : " " + JSON.stringify(info))); };
 
 fresh(); aeroAnswer = "ok";
 let r = await post({ action: "timer" });
 check("timer: FR24, and AeroData for tonight's sheet, only the chunk(s) around the one car still waiting", r.fr24 === 1 && r.aero >= 1 && r.aero <= 2 && r.json.results[0].schedule, r);
+check("AeroData goes to AeroDataBox's own gateway with the X-Api-Key header (Starter plan, not RapidAPI)", aeroHeaders?.["X-Api-Key"] === "a" && !Object.keys(aeroHeaders).some((k) => /rapidapi/i.test(k)), aeroHeaders);
 r = await post({ action: "timer" });
 check("timer again 10 min later: no AeroData (every 90 min), and only tonight's sheet", r.aero === 0 && !db.flight_runs.some((x) => x.source === "schedule" && x.result.day !== day), r);
 db.flight_runs.forEach((x) => { x.at = iso(now - 89 * 60e3); });
