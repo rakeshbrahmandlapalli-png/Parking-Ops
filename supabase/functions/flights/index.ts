@@ -357,6 +357,9 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
     for (const b of missing) {
       tally.notfound++;
       if (b.flight_note === USUAL) { Object.assign(patchOf(changes, b), { sched_at: null, sched_time: "", flight_status: "", flight_note: NOT_FOUND }); continue; }
+      // FR24 found no aircraft for it and said DELAY, but it isn't landing
+      // here today at all (often the outbound flight number): check it.
+      if (b.flight_status === "delayed" && !b.sched_at) { Object.assign(patchOf(changes, b), { est_at: null, est_time: "", flight_status: "", flight_note: NOT_FOUND }); continue; }
       if (!b.flight_status && !b.sched_at && b.flight_note !== NOT_FOUND) patchOf(changes, b).flight_note = NOT_FOUND;
     }
     await saveChanges(admin, changes);
@@ -444,6 +447,8 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
       if (eta && minsBetween(base, eta) >= -MAX_EARLY && minsBetween(base, eta) <= MAX_DELAY) {
         Object.assign(p, { est_at: eta.toISOString(), est_time: hhmm(eta, tz), flight_status: "airborne", flight_note: warn || `ETA · FR24, checked ${stamp}` });
         tally.written++;
+      } else if (!eta && !b.sched_at && b.flight_note === NOT_FOUND) {
+        // Not in today's arrivals: no aircraft is no news, not a delay.
       } else if (!eta && ["", "scheduled", "delayed"].includes(b.flight_status)) {
         // Only a delay if it ought to be in the air by now. Well past the time,
         // "no aircraft" more likely means it has already landed.

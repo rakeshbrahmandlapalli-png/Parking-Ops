@@ -155,6 +155,17 @@ fresh(); db.bookings[0].flight_status = "landed";
 r = await post({ action: "timetable", day });
 check("Fill times on a sheet where every flight has landed: no AeroData calls", r.status === 200 && r.aero === 0 && r.json.schedule.done === 1, r);
 
+// KR66 FVF, 12 Oct: W4 3752 is the outbound flight, so FR24 found no plane
+// and said DELAY. The timetable doesn't have it landing: CHECK MANUALLY.
+fresh(); Object.assign(db.bookings[0], { flight: "W43752", sched_at: null, est_time: "DELAY", flight_status: "delayed", flight_note: "Not airborne at 07:00, so it will be late" });
+r = await post({ action: "timetable", day });
+check("a DELAY on a flight not in today's arrivals becomes Not in the timetable (CHECK MANUALLY)", db.bookings[0].flight_status === "" && db.bookings[0].est_time === "" && /^Not in the timetable/.test(db.bookings[0].flight_note), db.bookings[0]);
+r = await post({ action: "check" });
+check("FR24 with no aircraft for it then leaves it as CHECK MANUALLY, not DELAY", r.fr24 === 1 && db.bookings[0].flight_status === "" && /^Not in the timetable/.test(db.bookings[0].flight_note), db.bookings[0]);
+fresh(); Object.assign(db.bookings[0], { sched_at: null });
+r = await post({ action: "check" });
+check("a flight not checked against the timetable yet, due within the hour with no aircraft: still DELAY", db.bookings[0].flight_status === "delayed", db.bookings[0]);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
