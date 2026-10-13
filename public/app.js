@@ -816,7 +816,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("#bnav [data-bn]"), function (b) { b.classList.toggle("on", isOps() && (m ? b.dataset.bn === "menuBtn" : BN_VIEW[b.dataset.bn] === S.view)); });
     if (m) $("bnBoard").classList.remove("on");
   }
-  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") S.dash = null; if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -3741,59 +3741,135 @@
     if (complaints.length) h += list("Complaints", complaints, function (a) {
       return '<div class="rowline"><span class="num note">' + when(a.at) + '</span><div class="grow"><strong>' + esc(a.reg) + "</strong>" + (a.customer ? " · " + esc(a.customer) : "") + '<div class="note">' + esc(a.staff_name || "—") + "</div></div></div>";
     });
-    if (isStdPlus()) return renderOpsDashboard({ D: D, PK: PK, records: records, yards: yards, added: added, cash: cash, card: card, here: here, left: left, waived: waived, removed: removed, complaints: complaints, sum: sum, dayName: dayName, today: todayKey });
+    if (isStdPlus()) return renderOpsDashboard({ D: D, PK: PK, records: records, yards: yards, added: added, taken: taken, cash: cash, card: card, here: here, left: left, waived: waived, removed: removed, complaints: complaints, sum: sum, dayName: dayName, today: todayKey });
     return h + '<div class="row-actions"><button type="button" class="btn ghost small" data-dashreload>Refresh</button></div></div>';
   }
 
-  // Standard with features: compact overview, with the same underlying records.
+  // Standard with features and Operations: the dashboard laid out as the office
+  // works it. What needs attention first, then cars parked against capacity, the
+  // work coming up, payments, tonight's queues and the checks; the full records
+  // last. Every figure comes from owner_dashboard() or tonight's sheets.
+  // Exit fees (database part 84) show once the database sends them.
+  function dashSheetFor(kind, day) { return (S.sheets || []).filter(function (s) { return s.kind === kind && s.day === day; })[0] || null; }
+  var dashLiveRequest = 0;
+  // Tonight's DROPS and today's PICKS, read fresh for the Live queues and Checks panels.
+  async function loadDashLive() {
+    var request = ++dashLiveRequest, d = dashSheetFor("drops", currentShiftKey()), p = dashSheetFor("picks", londonParts(new Date()).key);
+    var get = function (sh) { return sh ? fetchSheetRows(sh.id, sh).then(function (r) { return r.error ? null : (r.data || []).filter(function (x) { return !x.removed_at; }); }, function () { return null; }) : Promise.resolve(null); };
+    var got = await Promise.all([get(d), get(p)]);
+    if (request !== dashLiveRequest) return;
+    S.dashLive = { drops: d, dropsRows: got[0], picks: p, picksRows: got[1] };
+    if (S.view === "dashboard") render();
+  }
   function renderOpsDashboard(x) {
-    var cap = +S.company.capacity || 0, PK = x.PK, period = DASH_PERIODS.filter(function (p) { return p[0] === (S.dashDays || "7"); })[0][1];
-    var link = function (target, label) { return '<button type="button" class="ops-link" data-dashjump="' + target + '">' + label + ' <span aria-hidden="true">→</span></button>'; };
-    var metric = function (key, label, value, note, target, warn) {
-      var tag = target ? "button" : "div";
-      return '<' + tag + (target ? ' type="button" data-dashjump="' + target + '"' : '') + ' class="stat ops-metric k-' + key + (warn ? ' warn' : '') + '"><span>' + label + '</span><strong class="num">' + value + '</strong><small>' + note + '</small>' + (target ? '<i class="ops-arrow" aria-hidden="true">↗</i>' : '') + '</' + tag + '>';
-    };
-    var panelHead = function (title, note) { return '<div class="ops-panelhead"><strong>' + title + '</strong>' + (note ? '<small>' + note + '</small>' : '') + '</div>'; };
-    var detail = function (id, title) {
-      var r = x.records[title] || { count: 0, body: '<div class="empty">None.</div>' };
-      return '<details id="dash-' + id + '" class="ops-record"><summary>' + title + ' <small>(' + r.count + ')</small></summary><div class="dlist">' + r.body + '</div></details>';
-    };
+    var cap = +S.company.capacity || 0, PK = x.PK, D = x.D, total = +PK.total || 0, late = +PK.late || 0;
+    var period = DASH_PERIODS.filter(function (p) { return p[0] === (S.dashDays || "7"); })[0][1];
+    var cars = function (n) { return n + (n === 1 ? " car" : " cars"); };
+    var goTag = function (target, label) { return '<span class="od-go">' + label + ' <span aria-hidden="true">→</span></span>'; };
     var countOn = function (day) { return (PK.days || []).reduce(function (n, d) { return n + (d.day === day ? +d.n : 0); }, 0); };
-    var h = '<div class="ops-dashboard ops-v2"><div class="dash-toolbar"><div class="dash-heading"><span class="dash-eyebrow">OFFICE / OVERVIEW</span><h1>Operations dashboard</h1></div><div class="ops-tools"><span class="ops-updated">Updated at ' + esc(hhmm(S.dashUpdated)) + '</span><div class="dchips" role="group" aria-label="Period">' + DASH_PERIODS.map(function (p) {
-      var active = p[0] === (S.dashDays || "7");
-      return '<button type="button" data-dashp="' + p[0] + '" class="' + (active ? 'on' : '') + '" aria-pressed="' + active + '">' + p[1] + '</button>';
-    }).join('') + '</div><button type="button" class="ops-refresh" data-dashreload>Refresh</button></div></div>';
-    if (+PK.late || x.left.length) {
-      h += '<section class="ops-attention" aria-label="Needs attention"><strong class="ops-alerttitle">Needs attention</strong>';
-      if (+PK.late) h += '<div class="ops-alertitem"><div><strong>' + PK.late + ' overdue ' + (+PK.late === 1 ? 'car' : 'cars') + '</strong><small>Return time has passed</small></div>' + link('returns', 'View breakdown') + '</div>';
-      if (x.left.length) h += '<div class="ops-alertitem"><div><strong>' + money(x.sum(x.left, 'due')) + ' left unpaid</strong><small>' + x.left.length + (x.left.length === 1 ? ' car' : ' cars') + ' · no payment recorded</small></div>' + link('unpaid', 'Review') + '</div>';
-      h += '</section>';
+    var tomorrow = addDaysKey(x.today, 1);
+    if (S.dashLive === undefined) { S.dashLive = null; loadDashLive(); }
+    var L = S.dashLive || {};
+
+    // Exit fees (part 84): shown when a fee is set or fees were taken in the period.
+    var E = D.exit || null, fee = exitFee() || +(E && E.fee) || 0;
+    var showExit = !!E && (fee > 0 || +E.paid > 0), exitReview = showExit ? (+E.unpaid || 0) + (+E.no_photo || 0) : 0;
+    var unpaidSum = x.sum(x.left, "due"), taken = x.taken;
+
+    var h = '<div class="ops-dashboard ops-v2 od"><div class="od-head"><h1>Dashboard</h1><div class="od-tools"><span class="od-updated ops-updated">Updated ' + esc(hhmm(S.dashUpdated)) + '</span><button type="button" class="od-refresh" data-dashreload>Refresh</button><div class="dchips" role="group" aria-label="Period">' + DASH_PERIODS.map(function (p) {
+      var on = p[0] === (S.dashDays || "7");
+      return '<button type="button" data-dashp="' + p[0] + '" class="' + (on ? "on" : "") + '" aria-pressed="' + on + '">' + p[1] + "</button>";
+    }).join("") + "</div></div></div>";
+
+    // Needs attention: only what someone has to act on.
+    var items = [];
+    if (late) items.push('<button type="button" class="od-attn-item" data-dashjump="late"><b class="od-n bad">' + late + '</b><span>' + (late === 1 ? "car" : "cars") + " past their return</span>" + goTag("late", "Open cars") + "</button>");
+    if (x.left.length) items.push('<button type="button" class="od-attn-item" data-dashjump="unpaid"><b class="od-n bad">' + money(unpaidSum) + '</b><span>left unpaid · ' + cars(x.left.length) + "</span>" + goTag("unpaid", "Review") + "</button>");
+    if (exitReview) items.push('<button type="button" class="od-attn-item" data-dashjump="exit"><b class="od-n warn">' + exitReview + '</b><span>exit ' + (exitReview === 1 ? "fee" : "fees") + " to check</span>" + goTag("exit", "Review") + "</button>");
+    h += '<section class="od-card od-attn ops-attention" aria-label="Needs attention"><h2>Needs attention</h2>' + (items.length ? '<div class="od-attn-list">' + items.join("") + "</div>" : '<p class="od-none">Nothing needs attention.</p>') + "</section>";
+
+    // Parked now against capacity, and Upcoming workload.
+    var pct = cap ? Math.round(total / cap * 100) : 0;
+    h += '<div class="od-row od-row-top"><section class="od-parked k-parked" aria-label="Parked now"><div class="od-ptop"><span>Parked now</span>' + (cap ? '<span class="od-free">' + (total > cap ? (total - cap) + " over" : (cap - total) + " free") + "</span>" : "") + '</div><div class="od-pbig"><strong class="num">' + total + "</strong>" + (cap ? "<small>of " + cap + "</small>" : "") + "</div>" +
+      (cap ? '<div class="od-bar ops-capbar' + (total > cap ? " over" : "") + '" role="img" aria-label="' + pct + '% full"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : "") +
+      '<div class="od-pfoot"><span class="od-pnote">' + [cap ? pct + "% occupied" : "", late ? late + " past their return" : ""].filter(Boolean).join(" · ") + '</span><span class="od-pday"><small>Returning today</small><b class="num">' + countOn(x.today) + '</b></span><span class="od-pday"><small>Tomorrow</small><b class="num">' + countOn(tomorrow) + "</b></span></div></section>";
+    var onsite = D.onsite || [], dayLabel = function (k) { return k === x.today ? "Today" : k === tomorrow ? "Tomorrow" : longDay(k); };
+    var work = onsite.length ? onsite.map(function (r) { return { day: r.day, n: (+r.in || 0) + (+r.out || 0), note: (+r.out || 0) + " returning · " + (+r.in || 0) + " arriving" }; })
+      : (PK.days || []).map(function (d) { return { day: d.day, n: +d.n || 0, note: cars(+d.n || 0) + " returning" }; });
+    var shownWork = S.dashAllDates ? work : work.slice(0, 2);
+    h += '<section class="od-card od-work" id="dash-work" tabindex="-1"><h2>Upcoming workload</h2><div class="od-list">' + (shownWork.length ? shownWork.map(function (w) {
+      return '<div class="od-line' + (w.day === x.today ? " today" : "") + '"><span class="od-label">' + esc(dayLabel(w.day)) + '<small>' + w.note + '</small></span><b class="num">' + w.n + "</b></div>";
+    }).join("") : '<p class="od-none">No bookings ahead yet.</p>') + "</div>" +
+      (work.length > 2 ? '<button type="button" class="od-more" data-dashdates aria-expanded="' + !!S.dashAllDates + '">' + (S.dashAllDates ? "Show today and tomorrow" : "Open schedule, next " + work.length + " days") + ' <span aria-hidden="true">→</span></button>' : "") + "</section></div>";
+
+    // Payments: what came in over the period, and what still needs collecting.
+    var cell = function (label, v, cls) { return '<span class="od-c' + (cls ? " " + cls : "") + '"><small>' + label + "</small>" + v + "</span>"; };
+    var dash = '<span class="od-dash">—</span>';
+    var rows = "";
+    if (showExit) rows += '<div class="od-tr"><span class="od-c od-name"><b>Exit fees</b><small>' + (fee ? money(fee) + " a car" : "Off now") + "</small></span>" +
+      cell("Collected", "<b>" + money((+E.cash || 0) + (+E.card || 0)) + "</b> · " + cars(+E.paid || 0), "od-coll") + cell("Cash", money(E.cash)) + cell("Card", money(E.card)) +
+      cell("To check", exitReview ? '<b class="warn">' + cars(exitReview) + "</b>" : dash, "od-rev") + "</div>";
+    rows += '<div class="od-tr"><span class="od-c od-name"><b>Overstay and charges</b><small>Money taken at the desk</small></span>' +
+      cell("Collected", "<b>" + money(x.cash + x.card) + "</b> · " + cars(taken.length), "od-coll") + cell("Cash", money(x.cash)) + cell("Card", money(x.card)) +
+      cell("Left unpaid", x.left.length ? '<b class="bad">' + money(unpaidSum) + "</b> · " + cars(x.left.length) : dash, "od-rev") + "</div>";
+    var foot = [];
+    if (showExit) foot.push((+E.paid || 0) + " exit fees paid", (+E.exempt || 0) + " exempt");
+    foot.push("Owed now " + money(x.sum(x.here, "due")) + " (" + cars(x.here.length) + " here)", "Waived " + money(x.sum(x.waived, "charge_amount")));
+    h += '<section class="od-card od-pay" aria-label="Payments"><div class="od-cardhead"><h2>Payments</h2><small>Last ' + period + '</small></div><div class="od-table"><div class="od-tr od-th"><span>Payment</span><span>Collected</span><span>Cash</span><span>Card</span><span>To check</span></div>' + rows + '</div><div class="od-foot"><span>' + foot.join(" · ") + '</span><button type="button" class="od-more" data-dashjump="records">Payment records <span aria-hidden="true">→</span></button></div></section>';
+
+    // Live queues (tonight's DROPS) and Checks.
+    var dr = L.dropsRows, soon = new Date(Date.now() + 2 * 3600000).toISOString();
+    var qline = function (label, n, sheetId, act) {
+      return '<button type="button" class="od-line od-tap"' + (sheetId ? ' data-dashsheet="' + esc(sheetId) + '"' : " disabled") + '><span class="od-label">' + label + '</span><b class="num">' + n + "</b>" + (sheetId ? goTag("", act) : "") + "</button>";
+    };
+    h += '<div class="od-row"><section class="od-card od-queues" aria-label="Live queues"><div class="od-cardhead"><h2>Live queues</h2><small>' + (L.drops ? esc(sheetLabel(L.drops)) : "Tonight's DROPS") + "</small></div><div class=\"od-list\">";
+    if (S.dashLive === null) h += '<p class="od-none">Loading…</p>';
+    else if (!L.drops) h += '<p class="od-none">No DROPS sheet for tonight yet.</p>';
+    else if (!dr) h += '<p class="od-none">Couldn\'t load tonight\'s DROPS.</p>';
+    else {
+      var drops = dr.filter(function (r) { return r.kind === "drops"; });
+      h += qline("Called, not sent", drops.filter(function (r) { return r.called_at && !r.sent_at && !r.cleared_at; }).length, L.drops.id, "Open queue") +
+        qline("Sent, not handed back", drops.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, L.drops.id, "Open queue") +
+        qline("Due in the next 2 hours, not sent", drops.filter(function (r) { return waiting(r) && orderAt(r) <= soon; }).length, L.drops.id, "Open sheet");
     }
-    h += '<div class="ops-topgrid dstats"><section class="ops-occupancy stat k-parked"><span>Parked now</span><strong class="num">' + (+PK.total || 0) + '</strong><small>' + (cap ? capLine(+PK.total || 0, cap) + (+PK.late ? ' · ' + PK.late + ' past their return' : '') : +PK.late ? PK.late + ' past their return' : 'Current parking status') + '</small>' + (cap ? '<div class="ops-capbar' + (+PK.total > cap ? ' over' : '') + '" role="img" aria-label="' + Math.round((+PK.total || 0) / cap * 100) + '% full"><i style="width:' + Math.min(100, Math.round((+PK.total || 0) / cap * 100)) + '%"></i></div>' : '') + '<div class="ops-occfoot"><span>' + countOn(x.today) + ' returning today</span><span>' + countOn(addDaysKey(x.today, 1)) + ' tomorrow</span></div></section><section class="ops-panel">' + panelHead('Payments', 'Last ' + period) + '<div class="ops-paymentgrid">' +
-      metric('money', 'Money taken', money(x.cash + x.card), 'cash ' + money(x.cash) + ' · card ' + money(x.card), 'money') +
-      metric('owed', 'Owed now', money(x.sum(x.here, 'due')), x.here.length + (x.here.length === 1 ? ' car' : ' cars') + ' here', 'owed') +
-      metric('unpaid', 'Left unpaid', money(x.sum(x.left, 'due')), x.left.length + (x.left.length === 1 ? ' car' : ' cars'), 'unpaid', x.left.length > 0) +
-      metric('waived', 'Waived', money(x.sum(x.waived, 'charge_amount')), x.waived.length + (x.waived.length === 1 ? ' car' : ' cars'), 'waived') + '</div><div class="ops-moneyfoot">Money taken and waived cover the selected period. Owed now is the current balance.</div></section></div>';
-    var days = (PK.days || []).slice().sort(function (a, b) { return a.day.localeCompare(b.day); });
-    var cutoff = addDaysKey(x.today, 7), soon = days.filter(function (d) { return d.day < cutoff; }), later = days.filter(function (d) { return d.day >= cutoff; });
-    var shown = S.dashAllDates ? days : soon, max = Math.max.apply(null, [1].concat(days.map(function (d) { return +d.n || 0; })));
-    h += '<div class="ops-lowergrid">' + foldOpen('returns', 'Upcoming returns', S.dashAllDates ? 'All dates' : 'Next 7 days', (+PK.late ? PK.late + ' past · ' : '') + 'Today ' + countOn(x.today) + ' · Tomorrow ' + countOn(addDaysKey(x.today, 1)), 'id="dash-returns" tabindex="-1"') + '<div class="ops-tablehead"><span>RETURN DAY</span><span>VOLUME</span><span>CARS</span></div>';
-    if (+PK.late) h += '<details class="ops-latebox"><summary class="ops-returnrow ops-late"><span>Past their return</span><span class="ops-returnnote">Not handed back</span><strong class="num">' + PK.late + '</strong></summary><div class="dlist">' + lateBody(PK) + '</div></details>';
-    h += shown.map(function (d) { return '<div class="ops-returnrow' + (d.day === x.today ? ' ops-today' : '') + '"><span>' + esc(x.dayName(d.day)) + '</span><span class="ops-volume" aria-hidden="true"><i style="width:' + Math.round(+d.n / max * 100) + '%"></i></span><strong class="num">' + d.n + '</strong></div>'; }).join('') || '<div class="empty">No upcoming returns' + (days.length ? ' in the next 7 days.' : '.') + '</div>';
-    if (later.length) h += '<div class="ops-tablefoot"><span>' + x.sum(later, 'n') + ' cars returning later</span><button type="button" class="ops-link" data-dashdates aria-expanded="' + !!S.dashAllDates + '">' + (S.dashAllDates ? 'Show next 7 days' : 'View all dates') + '</button></div>';
-    h += FOLD_END + '<div>' + foldOpen('desk', 'Desk activity', 'Last ' + period, x.added.length + ' added · ' + x.removed.length + ' removed · ' + x.complaints.length + (x.complaints.length === 1 ? ' complaint' : ' complaints'), '', 'dstats') + '<div class="ops-activitygrid">' +
-      metric('added', 'Added at the desk', x.added.length, x.added.filter(function (a) { return a.action === 'ADDED'; }).length + ' added · ' + x.added.filter(function (a) { return a.action !== 'ADDED'; }).length + ' NEW BOOKING', 'added') +
-      metric('removed', 'Removed', x.removed.length, ['No show', 'Cancelled', 'Duplicate'].map(function (k) { var n = x.removed.filter(function (r) { return r.removed_reason === k; }).length; return n ? n + ' ' + k.toLowerCase() : ''; }).filter(Boolean).join(' · '), 'removed') +
-      metric('comp', 'Complaints', x.complaints.length, 'Recorded in this period', 'complaints') +
-      metric('early', 'Early returns', +x.D.early || 0, (+x.D.changed || 0) + ' return changes', null) + '</div>' + FOLD_END + '<section class="ops-panel ops-details">' + panelHead('Detailed records') +
-      detail('unpaid', 'Left with no payment recorded') + detail('added', 'Added at the desk') + detail('money', 'Money taken') + detail('owed', 'Owed now') + detail('waived', 'Waived') + detail('removed', 'Removed') + detail('complaints', 'Complaints') + '</section></div></div>';
-    h += foldOpen('onsite', 'Cars on site', 'Next 14 days', onsiteSummary(x.D), '', 'ops-booked') + '<div class="booked">' + bookedBody(x.D, PK) + '</div>' + FOLD_END;
-    if (x.yards.length) h += '<section class="ops-panel ops-yards">' + panelHead('Parked now, by yard') + '<div class="dlist">' + x.yards.map(function (y) {
+    h += "</div></section>";
+    var noYard = (x.yards || []).filter(function (y) { return !y.yard; }).reduce(function (n, y) { return n + (+y.n || 0); }, 0);
+    var pr = L.picksRows, checks = "";
+    checks += '<button type="button" class="od-line od-tap" data-dashjump="yards"' + ((x.yards || []).length ? "" : " disabled") + '><span class="od-label">Parked with no yard</span><b class="num' + (noYard ? " warn" : "") + '">' + noYard + "</b>" + goTag("", "Yards") + "</button>";
+    if (L.picks && pr) checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">PT photos not taken<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num">' + pr.filter(function (r) { return r.intake === "Collected" && !r.pt_at; }).length + "</b>" + goTag("", "Open PICKS") + "</button>";
+    checks += '<button type="button" class="od-line od-tap" data-view="summary"><span class="od-label">Shift summary and activity log</span>' + goTag("", "Open") + "</button>";
+    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks and handover</h2></div><div class="od-list">' + checks + "</div></section></div>";
+
+    // Desk activity and cars on site (each folds away), parked by yard, then the records.
+    h += '<div class="od-row">' + foldOpen("desk", "Desk activity", "Last " + period, x.added.length + " added · " + x.removed.length + " removed · " + x.complaints.length + (x.complaints.length === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
+      [["added", "Added at the desk", x.added.length, x.added.filter(function (a) { return a.action === "ADDED"; }).length + " added · " + x.added.filter(function (a) { return a.action !== "ADDED"; }).length + " NEW BOOKING"],
+        ["removed", "Removed", x.removed.length, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = x.removed.filter(function (r) { return r.removed_reason === k; }).length; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")],
+        ["complaints", "Complaints", x.complaints.length, ""],
+        ["", "Early returns", +D.early || 0, (+D.changed || 0) + " return changes"]].map(function (a) {
+        return "<" + (a[0] ? 'button type="button" class="od-line od-tap" data-dashjump="' + a[0] + '"' : 'div class="od-line"') + '><span class="od-label">' + a[1] + (a[3] ? "<small>" + a[3] + "</small>" : "") + '</span><b class="num">' + a[2] + "</b>" + (a[0] ? "</button>" : "</div>");
+      }).join("") + "</div>" + FOLD_END +
+      foldOpen("onsite", "Cars on site", "Next 14 days", onsiteSummary(D), "", "od-fold ops-booked") + '<div class="booked">' + bookedBody(D, PK) + "</div>" + FOLD_END + "</div>";
+    if (x.yards.length) h += '<section class="od-card od-yards ops-yards" id="dash-yards" tabindex="-1"><div class="od-cardhead"><h2>Parked now, by yard</h2></div><div class="dlist">' + x.yards.map(function (y) {
       var ds = y.days || [], shown = ds.slice(0, 4), rest = ds.slice(4).reduce(function (n, d) { return n + d.n; }, 0);
-      var line = shown.map(function (d) { return (d.day ? esc(x.dayName(d.day)) : '<b class="late">past return</b>') + ' ' + d.n; }).join(' · ') + (rest ? ' · later ' + rest : '');
-      return '<div class="rowline"><div class="grow"><strong>' + (y.yard ? esc(YARD_LABEL[y.yard] || y.yard) : 'No yard yet') + '</strong><div class="note">' + line + '</div></div>' + yardNum(y) + '</div>';
-    }).join('') + '</div></section>';
-    return h + '</div>';
+      var line = shown.map(function (d) { return (d.day ? esc(x.dayName(d.day)) : '<b class="late">past return</b>') + " " + d.n; }).join(" · ") + (rest ? " · later " + rest : "");
+      return '<div class="rowline"><div class="grow"><strong>' + (y.yard ? esc(YARD_LABEL[y.yard] || y.yard) : "No yard yet") + '</strong><div class="note">' + line + "</div></div>" + yardNum(y) + "</div>";
+    }).join("") + "</div></section>";
+
+    var rec = x.records;
+    rec["Past their return"] = { count: late, body: '<div class="dlist">' + lateBody(PK) + "</div>" };
+    if (showExit) {
+      var ec = E.cars || [];
+      rec["Exit fees to check"] = { count: exitReview, body: ec.length ? ec.map(function (c) {
+        return '<div class="rowline"><span class="num note">' + esc(dayShort(c.exit_at || c.cleared_at)) + " " + esc(hhmm(c.exit_at || c.cleared_at)) + '</span><div class="grow"><strong>' + esc(c.reg || "NO REG") + "</strong>" + (c.name ? " · " + esc(c.name) : "") + '<div class="note">' + (c.exit_method ? esc(c.exit_method.toUpperCase()) + ", no photo · " + esc(c.by_name || "—") : "Handed back, no exit fee recorded" + (c.ref ? " · " + esc(c.ref) : "")) + "</div></div></div>";
+      }).join("") + (exitReview > ec.length ? '<div class="note">Showing the first ' + ec.length + " of " + exitReview + ".</div>" : "") : '<div class="empty">None.</div>' };
+    }
+    var detail = function (id, title) {
+      var r = rec[title] || { count: 0, body: '<div class="empty">None.</div>' };
+      return '<details id="dash-' + id + '" class="ops-record"><summary>' + title + " <small>(" + r.count + ")</small></summary>" + (r.body.indexOf('<div class="dlist">') === 0 ? r.body : '<div class="dlist">' + r.body + "</div>") + "</details>";
+    };
+    h += '<section class="od-card od-records ops-details" id="dash-records" tabindex="-1"><div class="od-cardhead"><h2>Records</h2><small>Last ' + period + "</small></div>" +
+      detail("late", "Past their return") + detail("unpaid", "Left with no payment recorded") + (showExit ? detail("exit", "Exit fees to check") : "") + detail("money", "Money taken") + detail("owed", "Owed now") + detail("waived", "Waived") + detail("added", "Added at the desk") + detail("removed", "Removed") + detail("complaints", "Complaints") + "</section>";
+    return h + "</div>";
   }
 
   // ── import ────────────────────────────────
@@ -5032,7 +5108,8 @@
       return;
     }
     if (t.dataset.dashp) { S.dashDays = t.dataset.dashp; S.dash = null; render(); return; }
-    if (t.dataset.dashreload !== undefined) { S.dash = null; render(); return; }
+    if (t.dataset.dashreload !== undefined) { S.dash = null; S.dashLive = undefined; render(); return; }
+    if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", force: true });
     if (t.dataset.reset) {
       var p = S.staff[t.dataset.reset];
       if (!confirm("Give " + p.name + " a new link and PIN? Their old link stops working.")) return;
