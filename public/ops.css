@@ -279,3 +279,7 @@ html.ops #panel.ops-car .ops-foot2{position:sticky;bottom:0;z-index:2;display:gr
 html.ops #panel.ops-car .ops-foot2 small{grid-column:1 / -1;font-size:11.5px;color:var(--op-mut);}
 html.ops #panel.ops-car .ops-foot2 button:only-of-type{grid-column:1 / -1;}
 html.ops #boardHead .tabs .keybtn.on{background:#137A45;border-color:#137A45;color:#fff;}
+
+/* Dashboard: the page header above already names it, so its own title goes. */
+html.ops .od-head h1{display:none;}
+html.ops .od-head{justify-content:flex-end;}
