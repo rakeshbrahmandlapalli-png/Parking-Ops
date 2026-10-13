@@ -263,8 +263,8 @@ async function backend(ctx, db) {
 }
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const JWT = b64({ alg: "HS256" }) + "." + b64({ sub: "u1", role: "authenticated", exp: 4102444800 }) + ".sig";
-async function phone(browser, db, { signedIn = true, ua, width = 390, noBitmap = false, still = "", pdfLabels = false, stuckBlob = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, userAgent: ua, permissions: ["camera"] });
+async function phone(browser, db, { signedIn = true, ua, width = 390, noBitmap = false, still = "", pdfLabels = false, stuckBlob = false, touch = false } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height: 844 }, userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
   await backend(ctx, db);
   await ctx.addInitScript(([jwt, signedIn, noBitmap, still, pdfLabels, stuckBlob]) => {
     // Every label the PDF button shows, however quickly it changes.
@@ -345,6 +345,19 @@ await scenario(async () => {
   const page = await phone(browser, makeDb(), { signedIn: false });
   await page.goto(BASE + "/"); await sleep(800);
   check("no personal link: shows the 'ask for your link' screen", await page.isVisible("#noLink"));
+});
+
+// 1a. iPhone: the page can't zoom in (Safari zooms on a search box under 16px and
+// stays zoomed, which slid the bottom bar over the last cars, 13 Oct), and the
+// last car scrolls clear of the bottom bar.
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme: "ops" };
+  for (let i = 0; i < 20; i++) db.bookings.push({ id: "z" + i, sheet_id: "d0", kind: "drops", ref: "Z" + i, reg: "KN25NT" + String.fromCharCode(65 + i), num: 40 + i, name: "MCANENY MRS", flight: "EZY2338", return_at: iso(TONIGHT, "23:" + String(10 + i).padStart(2, "0")), note: "" });
+  const page = await phone(browser, db, { touch: true });
+  await open(page);
+  check("iPhone: the page doesn't zoom in", /maximum-scale=1\b/.test(await page.getAttribute('meta[name="viewport"]', "content")));
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await sleep(300);
+  check("iPhone: the last car scrolls clear of the bottom bar", await page.evaluate(() => { const r = document.querySelectorAll("#main .row"), nav = document.getElementById("bnav").getBoundingClientRect(); return nav.height > 0 && r[r.length - 1].getBoundingClientRect().bottom <= nav.top; }));
 });
 
 // 1b. the looks: Standard, Airport Parking Bay UI ("pro") and Cards ("cards"), each only by brand
@@ -2545,6 +2558,24 @@ async function shots(dir) {
     await page.click("#bnav [data-bn=menuBtn]"); await sleep(300); await page.click('#menuBody [data-view="settings"]'); await sleep(400);
     await page.locator("[data-saveexit]").scrollIntoViewIfNeeded(); await sleep(300); await page.screenshot({ path: path.join(dir, "exit-settings.png") });
     await page.context().close();
+    return;
+  }
+  // SHOTS_ONLY=bnav: the end of a long DROPS list above the bottom bar, on an
+  // iPhone (390) and an Android (412) sized phone; SHOTS_ZOOM=1.3 shows it zoomed in.
+  if (process.env.SHOTS_ONLY === "bnav") {
+    for (const [width, height, name] of [[390, 844, "iphone"], [412, 915, "android"]]) {
+      const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme: process.env.SHOTS_THEME || "ops" };
+      for (let i = 0; i < 30; i++) db.bookings.push({ id: "x" + i, sheet_id: "d0", kind: "drops", ref: "X" + i, reg: "KN25NT" + String.fromCharCode(65 + i % 26), num: 40 + i, name: "MCANENY MRS", make: "BMW", flight: "EZY2338", return_at: iso(TONIGHT, "23:" + String(10 + i).padStart(2, "0")), note: "" });
+      const page = await phone(browser, db, { width, touch: true }); await page.setViewportSize({ width, height });
+      await open(page);
+      const zoom = Number(process.env.SHOTS_ZOOM || 0);
+      if (zoom) { const cdp = await page.context().newCDPSession(page); await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: zoom }); }
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await sleep(500);
+      const m = await page.evaluate(() => { const rows = document.querySelectorAll("#main .row"), last = rows[rows.length - 1].getBoundingClientRect(), nav = document.getElementById("bnav").getBoundingClientRect(); return { lastBottom: Math.round(last.bottom), navTop: Math.round(nav.top), navBottom: Math.round(nav.bottom), vv: Math.round(visualViewport.height), scale: visualViewport.scale }; });
+      console.log(name, JSON.stringify(m));
+      await page.screenshot({ path: path.join(dir, "bottom-" + name + (zoom ? "-zoomed" : "") + ".png") });
+      await page.context().close();
+    }
     return;
   }
   // SHOTS_ONLY=keys: key check on TakeOff's board.
