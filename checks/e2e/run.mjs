@@ -237,6 +237,8 @@ async function backend(ctx, db) {
     if (p === "/rest/v1/staff") return reply(200, db.staff);
     if (p === "/rest/v1/sheets") return reply(200, db.sheets);
     if (p === "/rest/v1/bookings") {
+      // db.sheetGate[sheetId]: a function that returns a promise, "fail" makes the load fail (sheet-switching tests).
+      if (db.sheetGate && q.sheet_id && q.sheet_id.startsWith("eq.") && db.sheetGate[q.sheet_id.slice(3)]) { const v = await db.sheetGate[q.sheet_id.slice(3)](); if (v === "fail") return reply(500, { message: "boom" }); }
       let rows = db.bookings.filter((b) => !b.removed_at);
       if (q.sheet_id && q.sheet_id.startsWith("eq.")) rows = rows.filter((b) => b.sheet_id === q.sheet_id.slice(3));
       if (q.sheet_id && q.sheet_id.startsWith("neq.")) rows = rows.filter((b) => b.sheet_id !== q.sheet_id.slice(4));
@@ -2299,6 +2301,75 @@ await scenario(async () => {
   const page = await phone(browser, db);
   await open(page);
   check("Key check: no K for a view-only person", !(await page.isVisible("#keyBtn")));
+});
+
+
+// ── switching sheets: the old cars never stay tappable under the new date ──
+await scenario(async () => {
+  const gate = () => { let go; const p = new Promise((r) => { go = r; }); const f = () => p; f.go = go; return f; };
+  const rowIds = (page) => page.evaluate(() => [...document.querySelectorAll("#main .row")].map((r) => r.dataset.id));
+  const db = makeDb(), page = await phone(browser, db);
+  db.sheets.push({ id: "d9", company_id: "c1", kind: "drops", day: addDays(TONIGHT, -40), archived_at: iso(addDays(TONIGHT, -30), "10:00") });
+  db.bookings.push({ id: "ar1", company_id: "c1", sheet_id: "d9", kind: "drops", ref: "AR1", reg: "OLD9CAR", num: 1, name: "ARCHIVED MR", flight: "", return_at: iso(addDays(TONIGHT, -40), "23:00"), note: "" });
+  db.sheetGate = {};
+  await open(page);
+  const pick = (id) => page.evaluate((v) => { const e = document.getElementById("sheetPick"); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); }, id);
+  // 1. a delayed load: a loading line, no old cars, and the old car's panel is shut
+  await page.click('.row[data-id="b1"] .reg'); await sleep(300);
+  check("switch: a car is open on tonight", await page.locator("#panel[open]").count() === 1);
+  db.sheetGate.d1 = gate(); const callsBefore = db.calls.length;
+  await pick("d1"); await sleep(200);
+  check("switch: the car dialog from the old sheet is closed", await page.locator("#panel[open]").count() === 0);
+  check("switch: shows Loading and the picker names the requested day", /Loading/.test(await text(page, "#main")) && (await page.locator("#sheetPick").inputValue()) === "d1", await text(page, "#main"));
+  check("switch: no old cars or buttons while loading", (await rowIds(page)).length === 0 && await page.locator("#main [data-act]").count() === 0);
+  check("switch: old counts are hidden while loading", !(await page.isVisible("#boardHead")));
+  let blocked = false; try { await page.click('[data-act="sent"]', { timeout: 500 }); } catch (e) { blocked = true; }
+  check("switch: a tap on an old row is impossible and nothing is sent", blocked && !db.calls.slice(callsBefore).some((c) => c.fn === "tap_drop"));
+  db.sheetGate.d1.go();
+  await page.waitForSelector('.row[data-id="b5"]'); await sleep(200);
+  check("switch: new rows, date and counts arrive together", (await rowIds(page)).includes("b5") && !(await rowIds(page)).includes("b1") && /Loading/.test(await text(page, "#main")) === false && await page.isVisible("#boardHead") && (await page.locator("#sheetPick").inputValue()) === "d1", await rowIds(page));
+  // 2. a failed load restores the old sheet, with a retry
+  db.sheetGate.d0 = () => Promise.resolve("fail"); await pick("d0"); await sleep(400);
+  check("switch: a failed load says so and offers Try again and Back", /Couldn't load/.test(await text(page, "#main")) && await page.locator("[data-sheetretry]").count() === 1 && await page.locator("#main .row").count() === 0, await text(page, "#main"));
+  await page.click("[data-sheetback]"); await sleep(300);
+  check("switch: Back restores the previous sheet's date and cars", (await rowIds(page)).includes("b5") && !(await rowIds(page)).includes("b1") && (await page.locator("#sheetPick").inputValue()) === "d1", await rowIds(page));
+  await pick("d0"); await sleep(300); db.sheetGate.d0 = null;
+  await page.click("[data-sheetretry]"); await page.waitForSelector('.row[data-id="b1"]');
+  check("switch: Try again loads it once the server answers", (await page.locator("#sheetPick").inputValue()) === "d0" && (await rowIds(page)).includes("b1"));
+  // 3. rapid changes, answers out of order: only the last choice shows
+  const g1 = gate(), g2 = gate(); db.sheetGate.d1 = g1; db.sheetGate.p0 = g2;
+  await pick("d1"); await pick("p0"); await sleep(150);
+  g2.go(); await page.waitForSelector('.row[data-id="p1"]'); g1.go(); await sleep(500);
+  check("switch: a late answer for an older choice never overwrites the latest", (await rowIds(page)).includes("p1") && !(await rowIds(page)).includes("b5") && (await page.locator("#sheetPick").inputValue()) === "p0", await rowIds(page));
+  db.sheetGate = {};
+  // 4. archive: opened, then left
+  db.sheetGate.d9 = gate();
+  await page.evaluate(() => { const b = document.createElement("button"); b.dataset.archopen = "d9"; b.id = "fakeArch"; b.textContent = "x"; document.body.appendChild(b); b.click(); });
+  await sleep(250);
+  check("archive: shows Loading while the old day opens, no cars of the sheet before", /Loading/.test(await text(page, "#main")) && (await rowIds(page)).length === 0);
+  db.sheetGate.d9.go(); await page.waitForSelector('.row[data-id="ar1"]');
+  check("archive: the archived day shows with its own cars and a picker entry", (await page.locator("#sheetPick").inputValue()) === "d9" && await page.locator("#sheetPick optgroup[label='OPENED FROM ARCHIVE']").count() === 1);
+  await pick("d0"); await page.waitForSelector('.row[data-id="b1"]'); await sleep(200);
+  check("archive: leaving it drops the archive entry and shows tonight", await page.locator("#sheetPick optgroup[label='OPENED FROM ARCHIVE']").count() === 0 && !(await rowIds(page)).includes("ar1"));
+  check("switch: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+// Drops | Picks on the Operations look, and a delayed load on a card look
+await scenario(async () => {
+  const gate = () => { let go; const p = new Promise((r) => { go = r; }); const f = () => p; f.go = go; return f; };
+  for (const theme of ["ops", "premium", "cards"]) {
+    const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme }; db.sheetGate = {};
+    const page = await phone(browser, db); await open(page);
+    db.sheetGate.p0 = gate();
+    const sel = (await page.locator("#kindBar [data-kind=picks]:visible").count()) ? "#kindBar [data-kind=picks]" : "#kindSeg [data-kind=picks]";
+    await page.click(sel); await sleep(250);
+    check(theme + ": Drops/Picks switch shows Loading and no old cars", /Loading/.test(await text(page, "#main")) && await page.locator("#main .row").count() === 0 && await page.locator("#main [data-act]").count() === 0);
+    check(theme + ": the Picks button is already marked", (await page.locator(sel).getAttribute("aria-pressed")) === "true");
+    db.sheetGate.p0.go(); await page.waitForSelector('.row[data-id="p1"]'); await sleep(200);
+    check(theme + ": Picks cars arrive and Loading is gone", !/Loading/.test(await text(page, "#main")) && await page.locator('.row[data-id="b1"]').count() === 0);
+    check(theme + ": no errors", page.__errors.length === 0, page.__errors);
+    await page.context().close();
+  }
 });
 
 // ── stress tests (STRESS=1) ──────────────────────────────────────────────
