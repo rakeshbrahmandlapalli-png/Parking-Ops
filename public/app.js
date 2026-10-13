@@ -119,7 +119,7 @@
     imp: null, issued: null, activity: null
   };
   function can(a) { return !!S.perms[a]; }
-  function sheet() { return S.sheets.concat(S.archiveSheet ? [S.archiveSheet] : []).filter(function (s) { return s.id === S.sheetId; })[0] || null; }
+  function sheet() { if (S.switching && S.switching.sheet && !S.switching.o.stay) return S.switching.sheet; return S.sheets.concat(S.archiveSheet ? [S.archiveSheet] : []).filter(function (s) { return s.id === S.sheetId; })[0] || null; }
   function staffName(id) { return id && S.staff[id] ? S.staff[id].name : ""; }
 
   // ── sign-in ───────────────────────────────
@@ -294,23 +294,82 @@
   // switch). Only the newest one for the sheet on screen may fill the board,
   // so a late answer can never put one sheet's cars under another's name.
   var loadSeq = 0;
-  async function loadRows() {
-    if (!S.sheetId) { S.rows = []; return; }
-    var sh = sheet(), want = S.sheetId, seq = ++loadSeq;
-    try { if (sh && !sh.archived_at) sessionStorage.setItem(openSheetKey(), want); } catch (e) {}
-    var r = await sb.from("bookings").select("*").eq("sheet_id", want).order(sh && sh.kind === "picks" ? "drop_at" : "return_at", { ascending: true, nullsFirst: false });
-    if (seq !== loadSeq || want !== S.sheetId) return;
-    if (r.error) {
-      // Keep showing the sheet that's loaded, not another sheet's name over it.
-      if (S.rowsSheet && S.rowsSheet !== S.sheetId) S.sheetId = S.rowsSheet;
-      toast(isDown(r) ? "The server isn't answering. Still showing what was loaded." : r.error.message, true); return;
-    }
+  function rowsOrder(sh) { return sh && sh.kind === "picks" ? "drop_at" : "return_at"; }
+  function fetchSheetRows(id, sh) {
+    return sb.from("bookings").select("*").eq("sheet_id", id).order(rowsOrder(sh), { ascending: true, nullsFirst: false });
+  }
+  function takeRows(want, r, sh) {
     // A different sheet: the filters picked on the last one don't apply here.
     if (S.rowsSheet !== want) { S.catFilter = ""; S.yardFilter = ""; }
     S.rowsSheet = want;
     S.rows = (r.data || []).filter(function (x) { return !x.removed_at; });
     S.removed = (r.data || []).filter(function (x) { return x.removed_at; });
     if (sh && sh.kind === "picks") loadPtUnsaved(want);
+  }
+  async function loadRows() {
+    if (!S.sheetId) { S.rows = []; return; }
+    var sh = sheet(), want = S.sheetId, seq = ++loadSeq;
+    try { if (sh && !sh.archived_at) sessionStorage.setItem(openSheetKey(), want); } catch (e) {}
+    var r = await fetchSheetRows(want, sh);
+    if (seq !== loadSeq || want !== S.sheetId) return;
+    if (r.error) {
+      // Keep showing the sheet that's loaded, not another sheet's name over it.
+      if (S.rowsSheet && S.rowsSheet !== S.sheetId) S.sheetId = S.rowsSheet;
+      toast(isDown(r) ? "The server isn't answering. Still showing what was loaded." : r.error.message, true); return;
+    }
+    takeRows(want, r, sh);
+  }
+  // Switching sheets (day picker, Drops | Picks, Choose shift, Archive). The
+  // sheet on screen stays untouched until the new one's cars have arrived: in
+  // between the board shows only "Loading ...", with no old car to tap. Only
+  // the newest request may land; a failure puts the old sheet back.
+  // o: { view, stay, q, filter, archive } (what the old entry points set).
+  var switchSeq = 0;
+  function sheetByIdAny(id, extra) {
+    return S.sheets.concat(S.handArchived || [], S.archiveSheet ? [S.archiveSheet] : [], extra ? [extra] : []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+  function loadingHtml(sw) {
+    var sh = sw.sheet;
+    return '<div class="msg sheetload" role="status" aria-live="polite" data-loading="' + esc(sw.id) + '">' +
+      (sw.failed ? '<b>Couldn\'t load ' + esc(sh ? sheetLabel(sh) : "that sheet") + '.</b><br>' + esc(sw.failed) + '<br><br><button type="button" class="btn brand" data-sheetretry>Try again</button> <button type="button" class="btn ghost" data-sheetback>Back to ' + esc(sw.prevLabel || "the last sheet") + '</button>'
+        : 'Loading ' + esc(sh ? sheetLabel(sh) : "the sheet") + "…") + "</div>";
+  }
+  async function switchSheet(id, o) {
+    o = o || {};
+    if (!id) return;
+    var sh = sheetByIdAny(id, o.archive);
+    if (!S.switching && id === S.sheetId && !o.force) return;
+    var prev = S.switching ? S.switching.prev : { sheetId: S.sheetId, label: sheet() ? sheetLabel(sheet()) : "" };
+    var seq = ++switchSeq;
+    // A car open from the old sheet must not stay up under the new one.
+    panelRow = null; if ($("panel").open) $("panel").close();
+    if ($("shiftPick").open) $("shiftPick").close();
+    S.switching = { id: id, sheet: sh, seq: seq, o: o, prev: prev, prevLabel: prev.label, failed: "" };
+    render();
+    var r;
+    try { r = await fetchSheetRows(id, sh); } catch (e) { r = { error: e }; }
+    if (seq !== switchSeq || !S.switching) return;          // a newer choice owns the screen
+    if (r.error) {
+      S.switching.failed = isDown(r) ? "The server isn't answering." : (r.error.message || "Try again.");
+      render(); return;
+    }
+    var stay = !!o.stay;
+    if (o.archive) S.archiveSheet = o.archive;
+    else if (S.archiveSheet && S.archiveSheet.id !== id) S.archiveSheet = null;   // leaving an archived sheet
+    S.switching = null; loadSeq++;
+    S.sheetId = id; S.q = o.q || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
+    if (o.filter) S.filter = o.filter;
+    S.view = stay ? S.view : "board"; if (stay) S.activity = null;
+    S.rowsSheet = null;                                      // fresh sheet: filters reset in takeRows
+    takeRows(id, r, sh);
+    if (sh && !sh.archived_at) { try { sessionStorage.setItem(openSheetKey(), id); } catch (e) {} }
+    render(); window.scrollTo(0, 0);
+  }
+  function sheetRetry() { var w = S.switching; if (w) switchSheet(w.id, Object.assign({}, w.o, { force: true })); }
+  function sheetBack() {
+    var w = S.switching; if (!w) return;
+    switchSeq++; S.switching = null;                         // the old sheet was never touched
+    render();
   }
   // PICKS cars whose PT was ticked over 2 hours ago but whose photos aren't
   // saved in the app (database part 51): shown to the office on the row.
@@ -421,6 +480,8 @@
   function saveQueue() { try { localStorage.setItem(queueKey(), JSON.stringify(S.queue)); } catch (e) {} }
 
   function run(fn, args, row, mutate) {
+    // A car from another sheet (an old dialog, a late tap) never acts under this one.
+    if (S.switching || (row && row.sheet_id && S.sheetId && row.sheet_id !== S.sheetId)) { toast("Loading another sheet. Try again in a moment.", true); return; }
     if (row && mutate) mutate(row);
     S.queue.push({ fn: fn, args: args, rowId: row ? row.id : null });
     if (row) S.pending[row.id] = (S.pending[row.id] || 0) + 1;
@@ -600,7 +661,7 @@
       var src = $(b.dataset.bn); b.classList.toggle("hidden", !!src && src.classList.contains("hidden"));
     });
     $("bnBoard").classList.toggle("on", board);
-    show("boardHead", board);
+    show("boardHead", board && !S.switching);
     show("viewHead", !board);
     if (!board) { var vt = (isOps() && OPS_TITLE[S.view]) || VIEW_TITLE[S.view] || ""; $("viewTitle").textContent = vt; $("viewTitle").setAttribute("data-eyebrow", vt.toUpperCase()); }
     // Operations: the open section is marked in the bottom bar too.
@@ -663,7 +724,7 @@
     var ahead = order.filter(function (s) { return s.day >= shift; }).reverse();
     var past = order.filter(function (s) { return s.day < shift; });
     var item = function (s) {
-      return '<button type="button" class="shiftrow' + (s.id === S.sheetId ? " on" : "") + '" data-pickshift="' + s.id + '">' +
+      return '<button type="button" class="shiftrow' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " on" : "") + '" data-pickshift="' + s.id + '">' +
         '<span class="sr-when">' + esc(shiftWhen(s)) + '</span><span class="sr-tag">' + esc(s.kind.toUpperCase() + " · " + shiftTag(s)) + "</span></button>";
     };
     var h = '<h2>Choose shift</h2>';
@@ -675,8 +736,8 @@
   // DROPS/PICKS toggle (Cards look): open the other kind's sheet, keeping the
   // day where there is one, else the current shift's, else the latest.
   function switchKind(kind) {
-    var sh = sheet();
-    if (sh && sh.kind === kind) return;
+    var sh = S.switching && S.switching.sheet || sheet();
+    if (sh && sh.kind === kind && !(S.switching && S.switching.failed)) return;
     var same = sh && S.sheets.filter(function (s) { return s.kind === kind && s.day === sh.day; })[0];
     var now = currentShiftKey();
     var cur = S.sheets.filter(function (s) { return s.kind === kind && s.day === now; })[0];
@@ -687,19 +748,17 @@
   }
   function chooseShift(id) {
     $("shiftPick").close();
-    if (id === S.sheetId) return;
+    if (id === (S.switching ? S.switching.id : S.sheetId)) return;
     // Operations: Drops | Picks on Hourly stats or Shift summary stays on that page.
     var stay = isOps() && (S.view === "summary" || S.view === "stats");
-    S.sheetId = id; S.q = ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.view = stay ? S.view : "board"; S.runs = null; if (stay) S.activity = null;
-    try { sessionStorage.setItem(openSheetKey(), id); } catch (e) {}
-    loadRows().then(render).then(function () { window.scrollTo(0, 0); });
+    switchSheet(id, { stay: stay });
   }
   function pickerHtml(shift) {
     // Operations: Drops | Picks sits beside the picker, so it lists only that
     // kind's days, without the word ("7TH OCT · today").
     var cur = sheet(), oneKind = document.documentElement.classList.contains("ops") && cur ? cur.kind : "";
     var sheets = oneKind ? S.sheets.filter(function (s) { return s.kind === oneKind; }) : S.sheets;
-    function opt(s) { return '<option value="' + s.id + '"' + (s.id === S.sheetId ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
+    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
     var ahead = sheets.filter(function (s) { return s.day >= shift; }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.kind < b.kind ? -1 : 1; });
     var h = ahead.length ? '<optgroup label="TODAY AND COMING UP">' + ahead.map(opt).join("") + "</optgroup>" : "";
     var months = {};
@@ -741,6 +800,7 @@
     try { renderChrome(); } catch (err) { oopsLog(err); }
     var fn = { stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
+    if (S.switching && S.view === "board" || S.switching && S.switching.o.archive) { boardChunks = null; html = loadingHtml(S.switching); setMain(html, "loading"); return; }
     // One screen going wrong never takes the app down: it says so and offers a way out.
     try { html = fn(); } catch (err) {
       oopsLog(err);
@@ -2582,6 +2642,7 @@
   // The office changes the return (the customer rang): DROPS cars, and PICKS cars, whose DROPS car follows (database part 78).
   function canReturn(r) { return can("import") && (r.kind === "picks" || (r.kind === "drops" && !r.early && !r.cleared_at)); }
   function openPanel(r) {
+    if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
     panelRow = r;
     var drops = r.kind === "drops";
     function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(staffName(who)) : "") : "—"; }
@@ -4423,17 +4484,18 @@
     render();
   }
   async function openArchived(sheetId, q) {
+    var arch = null;
     if (!S.sheets.some(function (s) { return s.id === sheetId; })) {
-      var known = (S.handArchived || []).filter(function (x) { return x.id === sheetId; })[0];
-      if (known) { S.archiveSheet = known; S.sheetId = sheetId; S.q = q || ""; S.filter = "all"; S.yardFilter = ""; await loadRows(); return go("board"); }
-      var r = await sb.from("sheets").select("id, kind, day, imported_at, source").eq("id", sheetId).maybeSingle();
-      if (r.error || !r.data) { toast("Couldn't open that day.", true); return; }
-      S.archiveSheet = r.data;
+      arch = (S.handArchived || []).filter(function (x) { return x.id === sheetId; })[0];
+      if (!arch) {
+        var r = await sb.from("sheets").select("id, kind, day, imported_at, source").eq("id", sheetId).maybeSingle();
+        if (r.error || !r.data) { toast("Couldn't open that day.", true); return; }
+        arch = r.data;
+      }
     }
-    S.sheetId = sheetId; S.q = q || ""; S.filter = "all"; S.yardFilter = "";
-    await loadRows(); go("board");
+    if ($("menu").open) $("menu").close();
+    switchSheet(sheetId, { archive: arch, q: q || "", filter: "all", force: true });
   }
-
   async function archiveSheet(id, on) {
     var sh = S.sheets.concat(S.handArchived || [], S.archiveSheet ? [S.archiveSheet] : []).filter(function (x) { return x.id === id; })[0];
     if (!sh) return;
@@ -4885,6 +4947,8 @@
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
     if (t.dataset.kind) return switchKind(t.dataset.kind);
+    if (t.dataset.sheetretry !== undefined) return sheetRetry();
+    if (t.dataset.sheetback !== undefined) return sheetBack();
     if (t.dataset.pickshift) return chooseShift(t.dataset.pickshift);
     if (t.dataset.closeshift !== undefined) return $("shiftPick").close();
     if (t.dataset.bn && isOps() && t.dataset.bn === "flBtn") return go("flights");
@@ -5022,7 +5086,7 @@
   document.addEventListener("change", async function (e) {
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
     var t = e.target;
-    if (t.id === "sheetPick") { S.sheetId = t.value; S.q = ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.view = "board"; S.runs = null; await loadRows(); render(); window.scrollTo(0, 0); return; }
+    if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
       var y = t.value;
@@ -5197,7 +5261,7 @@
   }
   document.addEventListener("touchstart", function (e) {
     sw = null;
-    if (!hasFeatures() || !S.me || S.view !== "board" || e.touches.length !== 1 || document.querySelector("dialog[open]")) return;
+    if (S.switching || !hasFeatures() || !S.me || S.view !== "board" || e.touches.length !== 1 || document.querySelector("dialog[open]")) return;
     var t = e.touches[0];
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, mode: "", row: e.target.closest("#main .row[data-id]"), top: window.scrollY <= 0 };
   }, { passive: true });
