@@ -958,6 +958,93 @@ await scenario(async () => {
   await p4.context().close();
 });
 await scenario(async () => {
+  // Operations on a wide screen: the other pages (Dashboard, Settings, Booking details, Summary, Stats, Archive, Staff, Me, Menu).
+  const mk = () => { const db = deskDb(); db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
+    db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true });
+    db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }]; return db; };
+  const db = mk(), page = await phone(browser, db, { width: 1440 }); await page.setViewportSize({ width: 1440, height: 1000 }); await open(page); await sleep(400);
+  const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
+  const go = async (v) => { if (!(await page.$("#menu[open]"))) await menu(); await page.click('#menuBody [data-view="' + v + '"]'); await sleep(600); };
+  const ctl = () => page.evaluate(() => [...document.querySelectorAll("#main input,#main select,#main textarea,#main button")].filter((e) => !e.closest(".set-nav")).map((e) => e.id || [...e.attributes].filter((a) => a.name.startsWith("data-")).map((a) => a.name + "=" + a.value).join(" ") || e.textContent.trim()).sort().join("|"));
+  const noSide = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
+  // Menu
+  await menu();
+  const mn = await page.evaluate(() => ({ g: [...document.querySelectorAll("#menuBody > .mgrp")].length, cols: getComputedStyle(document.getElementById("menuBody")).gridTemplateColumns.split(" ").length }));
+  check("Ops wide Menu: sections side by side in three columns", mn.g >= 4 && mn.cols === 3, mn);
+  // Dashboard
+  await go("dashboard");
+  const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, a = r(".od-attn"), p = r(".od-parked"), w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
+    return { attnFull: a && a.width > innerWidth - 80, three: p && w && q && Math.abs(p.top - w.top) < 2 && Math.abs(w.top - q.top) < 2 && p.right <= w.left && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
+  check("Ops wide Dashboard: Needs attention across, Parked / Upcoming / Live queues in one row", dsh.attnFull && dsh.three, dsh);
+  check("Ops wide Dashboard: Refresh and the period buttons visible and clickable", dsh.tools, dsh);
+  check("Ops wide Dashboard: no sideways scrolling", await noSide());
+  // Settings
+  await go("settings");
+  const deskSet = await ctl();
+  const st = await page.evaluate(() => ({ nav: [...document.querySelectorAll(".set-nav [data-setgo]")].map((b) => b.textContent).join("|"), groups: [...document.querySelectorAll(".set-group > h2.set-gh")].map((h) => h.textContent).join("|") }));
+  check("Ops wide Settings: grouped with a section list", st.nav === "Parking & yards|Flight checks|Exit fees & charges|Alerts & photos|Backup" && st.groups === st.nav, st);
+  await page.click('.set-nav [data-setgo="alerts"]'); await sleep(900);
+  check("Ops wide Settings: a section button scrolls to its group", await page.evaluate(() => { const t = document.getElementById("set-alerts").getBoundingClientRect().top; return scrollY > 0 && t > -5 && t < 200; }));
+  check("Ops wide Settings: no sideways scrolling", await noSide());
+  // Summary and Stats
+  await go("summary");
+  const sm = await page.evaluate(() => ({ two: !!document.querySelector(".sum-desk > .sum-l") && !!document.querySelector(".sum-desk > .sum-r .alog, .sum-desk > .sum-r"), day: (document.querySelector(".sum-r .aday, .sum-r h3, .sum-r .ops-dayhead") || {}).textContent || document.querySelector(".sum-r").innerText }));
+  check("Ops wide Summary: figures left, activity right", sm.two, sm);
+  check("Ops wide Summary: the day header has the full date", /Today · \w+day \d+ \w+/i.test(sm.day), sm.day);
+  await go("stats");
+  const sb = await page.evaluate(() => { const bars = [...document.querySelectorAll(".st-bar")].map((b) => b.querySelector(".st-n").textContent || "0"), rows = [...document.querySelectorAll(".st-main .ops-tr:not(.th):not(.tot)")].filter((r) => /^\d\d:00/.test(r.querySelector("b").textContent)).map((r) => r.querySelector("i").textContent);
+    return { bars, rows, side: !!document.querySelector(".st-desk > .st-side") }; });
+  check("Ops wide Stats: bars match the hourly table, panels at the side", sb.side && sb.bars.length > 0 && sb.bars.join() === sb.rows.join(), sb);
+  // Archive
+  await go("archive"); await page.fill("#archQ", "CD34"); await page.click("#archGo"); await sleep(600);
+  const ar = await page.evaluate(() => ({ th: [...document.querySelectorAll(".arch-tbl .ot-th span")].map((s) => s.textContent).join("|"), rows: document.querySelectorAll(".arch-tbl [data-archopen]").length }));
+  check("Ops wide Archive: results as a table, each opens its day", ar.th.startsWith("Registration|Customer|Reference|Board|Day|Time") && ar.rows >= 1, ar);
+  // Staff
+  await go("staff");
+  const sf = await page.evaluate(() => ({ th: document.querySelector(".ops-person.ops-th") ? document.querySelector(".ops-person.ops-th").innerText.replace(/\s+/g, " ").trim() : "", roles: document.querySelector(".ops-team").innerText }));
+  check("Ops wide Staff: a header row and each person's role", ["PERSON", "ROLE", "ACCOUNT", "STATUS", "ACTIONS"].every((w) => sf.th.toUpperCase().includes(w)) && /Bongo driver/.test(sf.roles) && /Terminal/.test(sf.roles), sf.th);
+  // Me
+  await go("me");
+  const me = await page.evaluate(() => ({ cols: document.querySelectorAll(".me-desk > .me-col").length, tuts: document.querySelectorAll(".me-tuts [data-tutorial]").length, pin: !!document.querySelector(".me-desk #pinNew, .me-desk input[type=password]") }));
+  check("Ops wide Me: three columns, the PIN form and the tutorials", me.cols === 3 && me.tuts > 0 && me.pin, me);
+  // Booking details
+  if (await page.$("#menu[open]")) await page.keyboard.press("Escape");
+  await page.click("#bnBoard"); await sleep(300);
+  const carCtl = () => page.evaluate(() => [...document.querySelectorAll("#panel input,#panel select,#panel textarea,#panel button,#panel a[data-act],#panel [data-step]")].map((e) => e.id || [...e.attributes].filter((a) => a.name.startsWith("data-")).map((a) => a.name + "=" + a.value).join(" ") || e.textContent.trim()).sort().join("|"));
+  await page.click('.row[data-id="w6"] .reg'); await sleep(500);
+  const car = await page.evaluate(() => ({ two: !!document.querySelector("#panel .ops-2col > .ops-sheet + .ops-carside"), status: !!document.querySelector("#panel .ops-carside") && /Status/.test(document.querySelector("#panel .ops-carside").textContent) }));
+  const deskCar = await carCtl();
+  check("Ops wide Booking details: details left, status and payments right", car.two && car.status, car);
+  await page.keyboard.press("Escape"); await sleep(300);
+  // Back to a phone: the same controls, laid out as before.
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
+  await page.click('.row[data-id="w6"] .reg'); await sleep(500);
+  check("Ops phone Booking details: one column as before, the same buttons and fields as wide", await page.evaluate(() => !document.querySelector("#panel .ops-2col")) && (await carCtl()) === deskCar, { desk: deskCar.slice(0, 300) });
+  await page.keyboard.press("Escape"); await sleep(300);
+  await go("settings");
+  check("Ops phone Settings: no groups, the same fields and buttons as wide", await page.evaluate(() => !document.querySelector(".set-desk")) && (await ctl()) === deskSet);
+  await go("summary"); check("Ops phone Summary: one column", await page.evaluate(() => !document.querySelector(".sum-desk")));
+  await go("stats"); check("Ops phone Stats: no bars, one column", await page.evaluate(() => !document.querySelector(".st-desk") && !document.querySelector(".st-bar")));
+  await go("me"); check("Ops phone Me: as before", await page.evaluate(() => !document.querySelector(".me-desk")));
+  await menu(); check("Ops phone Menu: no side-by-side sections", await page.evaluate(() => !document.querySelector("#menuBody > .mgrp")));
+  check("Ops wide pages: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+  // A driver on a wide screen: no Dashboard, Settings or Staff, the Menu and Me still work.
+  const drv = mk(); drv.me = { ...drv.me, role: "bongo" }; drv.perms = { sent: true, called: true, note: true, intake: true };
+  const p2 = await phone(browser, drv, { width: 1440 }); await p2.setViewportSize({ width: 1440, height: 1000 }); await open(p2); await sleep(300);
+  await p2.evaluate(() => document.querySelector("#bnav [data-bn=menuBtn]").click()); await p2.waitForSelector("#menu[open]"); await sleep(300);
+  check("Ops wide driver: Menu has no Dashboard, Settings or Staff", await p2.evaluate(() => !document.querySelector('#menuBody [data-view="dashboard"],#menuBody [data-view="settings"],#menuBody [data-view="staff"]') && !!document.querySelector('#menuBody [data-view="me"]')));
+  await p2.click('#menuBody [data-view="me"]'); await sleep(500);
+  check("Ops wide driver: Me in columns", await p2.evaluate(() => document.querySelectorAll(".me-desk > .me-col").length === 3));
+  await p2.context().close();
+  // View-only: Booking details opens with nothing to press.
+  const vw = mk(); vw.me = { ...vw.me, role: "view" }; vw.perms = {};
+  const p3 = await phone(browser, vw, { width: 1440 }); await p3.setViewportSize({ width: 1440, height: 1000 }); await open(p3); await sleep(300);
+  await p3.click('.row[data-id="w6"] .reg'); await sleep(500);
+  check("Ops wide view-only: Booking details has no status or payment buttons", await p3.evaluate(() => document.getElementById("panel").open && !document.querySelector('#panel [data-exitshot],#panel [data-exitnophoto],#panel [data-removecar]')));
+  await p3.context().close();
+});
+await scenario(async () => {
   const page = await phone(browser, makeDb(), { width: 360 }); await open(page);
   check("Standard: still no bottom bar", await page.evaluate(() => getComputedStyle(document.getElementById("bnav")).display === "none"));
 });
@@ -3087,20 +3174,25 @@ async function shots(dir) {
   }
   // SHOTS_ONLY=audit: every page of the Operations look at desktop and phone width (sample data only).
   if (process.env.SHOTS_ONLY === "audit") {
-    for (const [width, height, name] of [[1440, 1000, "desktop"], [390, 844, "phone"]]) {
-      const db = deskDb(); db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
+    const AW = process.env.AUDIT_W ? process.env.AUDIT_W.split(",").map((w) => [+w, w > 1100 ? 1000 : 844, w >= 1200 ? "desktop" : w >= 900 ? "tablet" : "phone"]) : [[1440, 1000, "desktop"], [390, 844, "phone"]];
+    const AP = process.env.AUDIT_P ? process.env.AUDIT_P.split(",") : null, want = (n) => !AP || AP.includes(n);
+    for (const [width, height, name] of AW) {
+      const db = deskDb(); { const bi = biDb("ops"); Object.assign(db, { autoImport: bi.autoImport, reviews: bi.reviews, preview: bi.preview, imports: bi.imports }); } db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
       db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true }, { id: "s5", name: "OLD DRIVER", role: "bongo", active: false });
       db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }, { at: new Date(Date.now() - 3600000).toISOString(), action: "CALLED", value: "", reg: "CD34EFG", staff_id: "s2", booking_id: "w2" }];
       const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
       const snap = async (n) => { await sleep(600); const h = Math.min(2600, await page.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight))); await page.setViewportSize({ width, height: h }); await sleep(250); await page.screenshot({ path: path.join(dir, name + "-" + n + ".png") }); await page.setViewportSize({ width, height }); };
       const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
       await open(page); await sleep(400);
-      await menu(); await page.screenshot({ path: path.join(dir, name + "-menu.png") });
-      for (const v of ["stats", "summary", "dashboard", "import", "archive", "staff", "settings", "me"]) { if (!(await page.$("#menu[open]"))) await menu(); const b = await page.$('#menuBody [data-view="' + v + '"]'); if (!b) continue; await b.click(); await snap(v); }
+      await menu(); if (want("menu")) await page.screenshot({ path: path.join(dir, name + "-menu.png") });
+      for (const v of ["stats", "summary", "dashboard", "import", "archive", "staff", "settings", "me"]) { if (!want(v)) continue; if (!(await page.$("#menu[open]"))) await menu(); const b = await page.$('#menuBody [data-view="' + v + '"]'); if (!b) continue; await b.click(); await snap(v);
+        if (v === "import" && await page.$("[data-autopreview]")) { await page.click("[data-autopreview]"); await sleep(800); await snap("import-checked"); }
+        if (v === "archive") { await page.fill("#archQ", "CD34"); await page.click("#archGo"); await snap("archive-found"); } }
+      if (await page.$("#menu[open]")) await page.keyboard.press("Escape");
       await page.click("#bnBoard"); await sleep(300);
-      await page.click('.row[data-id="w6"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, name + "-car.png") }); await page.keyboard.press("Escape"); await sleep(300);
-      await menu(); await page.click("#menuBody [data-removedlist]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-removed.png") }); await page.keyboard.press("Escape"); await sleep(300);
-      await menu(); await page.click("#menuBody [data-tutorials]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-tutorials.png") }); await page.keyboard.press("Escape"); await sleep(300);
+      if (want("car")) { await page.click('.row[data-id="w6"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, name + "-car.png") }); await page.keyboard.press("Escape"); await sleep(300); }
+      if (want("removed")) { await menu(); await page.click("#menuBody [data-removedlist]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-removed.png") }); await page.keyboard.press("Escape"); await sleep(300); }
+      if (want("tutorials")) { await menu(); await page.click("#menuBody [data-tutorials]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-tutorials.png") }); await page.keyboard.press("Escape"); await sleep(300); }
       await page.context().close();
     }
     return;

@@ -2695,7 +2695,7 @@
     }
     // Operations: "Booking details" with the reg under it, the details in two
     // columns, and the boxes in sections, each with a plain name.
-    var o = isOps();
+    var o = isOps(), desk = o && opsDesk(), R = "";
     var h = o ? '<button type="button" class="ops-x" data-close aria-label="Close">&times;</button><h2 id="panelTitle">Booking details</h2>' +
         '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
       : '<h2 id="panelTitle">' + esc(r.reg || "NO REG") + (r.num ? " <small>#" + r.num + "</small>" : "") + "</h2>" +
@@ -2707,7 +2707,7 @@
     // driver can fill in a missing one when the car comes in.
     var canReg = can("import") || (can("intake") && !r.reg);
     // Swipe instead of buttons: the buttons live here, to undo or fix a swipe.
-    if (drops && swipeOnly()) h += '<label>' + L("STEPS") + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts");
+    if (drops && swipeOnly()) { var steps = '<label>' + L("STEPS") + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts"); if (desk) R += opsSec("Status") + steps; else h += steps; }
     var parking = canReg || canReturn(r) || (drops ? can("yard") : picksYard() && can("intake")) || (drops ? can("flights") : canPickFlight());
     if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
     if (canReg) h += fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true);
@@ -2730,7 +2730,7 @@
     }
     // The return flight, when the booking came without one: it goes on to the DROPS car (database part 78).
     if (!drops && canPickFlight()) h += fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
-    h += docBlockHtml(r);
+    var docs = docBlockHtml(r); if (!desk) h += docs;
     if (can("note")) h += opsSec("Notes & status") + fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true);
     var extra = "";
     if (drops) {
@@ -2741,17 +2741,21 @@
       extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">NEW BOOKING</button>';
       if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">NO SHOW</button>';
     }
-    if (extra) h += (can("note") ? "" : opsSec("Status")) + fld('<label>' + L("MARK AS") + '</label><div class="pseg">' + extra + "</div>", true);
-    if (drops) h += chargePanelHtml(r) + exitPanelHtml(r);
-    h += drops ? earlyHtml(r) : pickEarlyHtml(r);
+    // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
+    var side = "";
+    if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + fld('<label>' + L("MARK AS") + '</label><div class="pseg">' + extra + "</div>", true);
+    if (drops) side += chargePanelHtml(r) + exitPanelHtml(r);
+    side += drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    h += '<div id="ptPhotos"></div>';
-    if (can("import")) h += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
+    side += '<div id="ptPhotos"></div>';
+    if (can("import")) side += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
+    if (desk) R = (R || opsSec("Status")) + side + (docs ? opsSec("Documents") + docs : ""); else h += side;
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
     var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
     var hist = can("log") ? '<div id="carHist"></div>' : "";
     // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
-    h = o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
+      : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
     $("panelBody").innerHTML = h;
     $("panel").classList.toggle("ops-car", o);
     if (o) opsMenuPlace();
@@ -3189,6 +3193,7 @@
   }
   // ── Operations: Hourly stats and Shift summary as pages (ops.css) ──
   function opsSub(sh) {
+    if (opsDesk()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
@@ -3457,24 +3462,33 @@
   function renderStats() {
     var sh = sheet();
     if (!sh) return '<div class="msg">Choose a sheet first.</div>';
-    var h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
+    var desk = opsDesk(), h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
     if (sh.kind === "drops") {
       var D = dropsStats(), owed = chargeLines();
-      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) +
-        opsPanel("Returns by booked hour", "", opsTable(["Hour", "Due", "Sent", "Collected"],
+      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) + statsCols(
+        opsPanel("Returns by booked hour", desk ? "Due and collected" : "", (desk ? statBars(D.hours.map(function (x) { return [x.label, x.due, x.done]; })) : "") + opsTable(["Hour", "Due", "Sent", "Collected"],
           D.hours.map(function (x) { return [esc(x.label), x.due, x.sent, x.done]; }).concat(D.over.due ? [["Overstays", D.over.due, D.over.sent, D.over.done]] : []),
-          ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : "") +
+          ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : ""),
         opsPanel("Shift breakdown", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])) +
         opsPanel("Collected lately", "", opsTable(null, [["Last 30 minutes", D.last30], ["Last 60 minutes", D.last60]])) +
-        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : "");
+        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
     } else {
       var P = picksStats(), cats = catLines();
-      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) +
-        opsPanel("Arrivals by booked hour", "", opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
-          "Completed counts Collected and RTC, by booked arrival hour.") +
-        (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : "");
+      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
+        opsPanel("Arrivals by booked hour", desk ? "Scheduled and completed" : "", (desk ? statBars(P.hours.map(function (x) { return [x.label, x.sched, x.done]; })) : "") + opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
+          "Completed counts Collected and RTC, by booked arrival hour."),
+        (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
     }
     return h;
+  }
+  // A wide screen: the hourly panel on the left, the rest beside it.
+  function statsCols(main, side) { return opsDesk() ? '<div class="st-desk"><div class="st-main">' + main + '</div><div class="st-side">' + side + "</div></div>" : main + side; }
+  // Bars for the same hourly numbers as the table under them: [label, all, done] per hour.
+  function statBars(rows) {
+    var max = rows.reduce(function (m, x) { return Math.max(m, +x[1] || 0, +x[2] || 0); }, 0) || 1;
+    return '<div class="st-bars" role="img" aria-label="Bars by hour, the same numbers as the table">' + rows.map(function (x) {
+      return '<div class="st-bar"><span class="st-n num">' + (+x[1] || "") + '</span><div class="st-col"><i class="st-all" style="height:' + Math.round((+x[1] || 0) / max * 100) + '%"></i><i class="st-done" style="height:' + Math.round((+x[2] || 0) / max * 100) + '%"></i></div><small class="num">' + esc(String(x[0]).slice(0, 2)) + "</small></div>";
+    }).join("") + "</div>";
   }
   function copyText(kind) {
     var lines;
@@ -3780,6 +3794,7 @@
           '<div class="section-label">Cars in by hour</div>' + (hasFeatures() ? hourBars(hours) : '<div class="box">' + (Object.keys(hours).sort().map(function (k) { return '<div class="rowline"><span class="num grow">' + k + ':00</span><strong class="num">' + hours[k] + "</strong></div>"; }).join("") || '<div class="empty">None yet.</div>') + "</div>");
       }
     }
+    var mid = h.length;
     if (can("log")) {
       h += '<div class="section-label">Activity</div>';
       if (!S.activity) { loadActivity(); h += '<div class="empty">Loading…</div>'; }
@@ -3789,6 +3804,8 @@
           '<div class="note">' + esc(a.staff_name || "System") + (a.value ? " · " + esc(a.value) : "") + "</div></div></div>";
       }).join("") + '</div><div class="row-actions"><button type="button" class="btn ghost small" data-reloadlog>Refresh</button></div>' : '<div class="empty">Nothing yet.</div>';
     }
+    // A wide screen: the shift's numbers on the left, the activity beside them.
+    if (opsDesk() && mid && h.length > mid) return '<div class="sum-desk"><div class="sum-l">' + h.slice(0, mid) + '</div><div class="sum-r">' + h.slice(mid) + "</div></div>";
     return h || '<div class="empty">Nothing to show for your role.</div>';
   }
   // Premium: cars in by hour as bars, every hour from the first to the last
@@ -3879,7 +3896,8 @@
       var key = londonParts(new Date(a.at)).key;
       if (key !== last) {
         if (last) h += "</div>";
-        h += '<div class="actday">' + (key === today ? "Today" : key === addDaysKey(today, -1) ? "Yesterday" : esc(longDay(key))) + '</div><div class="box actbox">';
+        var near = key === today ? "Today" : key === addDaysKey(today, -1) ? "Yesterday" : "";
+        h += '<div class="actday">' + (opsDesk() ? (near ? near + " · " : "") + esc(longDate(key)) : near || esc(longDay(key))) + '</div><div class="box actbox">';
         last = key;
       }
       h += '<div class="actrow k-' + actKind(a) + '"><span class="num at">' + esc(hhmm(a.at)) + '</span><i class="adot d-' + actDot(a) + '" aria-hidden="true"></i><div class="grow"><strong>' + esc(a.reg ? a.reg + " · " : "") + esc(nice(a.action).replace(/\bPt\b/g, "PT")) + "</strong>" +
@@ -4915,7 +4933,7 @@
         '<label class="field">Role<select id="newRole">' + roles.map(function (r) { return '<option value="' + r + '">' + ROLE_LABEL[r] + "</option>"; }).join("") + "</select></label></div>" +
         '<div class="ops-btns"><button class="btn" id="addGo">Add and get link</button></div></form>'
         : '<div class="ops-acts"><button type="button" class="btn" data-addperson>Add person</button></div>') +
-      opsPanel("Team members", people.length + (people.length === 1 ? " person" : " people"), '<div class="staffbox ops-team">' + people.map(function (p) {
+      opsPanel("Team members", people.length + (people.length === 1 ? " person" : " people"), '<div class="staffbox ops-team">' + (opsDesk() ? '<div class="ops-person ops-th" aria-hidden="true"><i></i><div class="grow"><strong>Person</strong><small>Account</small><span>Role</span></div><div class="ops-side"><em>Status</em><b>Actions</b></div></div>' : "") + people.map(function (p) {
         var acts = p.id === S.me.id ? "" : (canManage(p) ? '<button type="button" data-manage="' + p.id + '">PIN and access</button>' : "") +
           (canChange(p) ? '<button type="button" data-reset="' + p.id + '">New link</button><button type="button" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "");
         return '<div class="ops-person' + (p.active ? "" : " off") + '"><i>' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + "</i>" +
@@ -4946,7 +4964,12 @@
       '<button class="btn small" id="archGo">Search</button></div></form>';
     if (A.results) {
       h += '<div class="section-label">' + (A.results.length ? A.results.length + (A.results.length === 50 ? "+" : "") + " found" : "Nothing found") + "</div>";
-      if (A.results.length) h += '<div class="box">' + A.results.map(function (r) {
+      if (A.results.length && opsDesk()) h += '<div class="box ops-tbl arch-tbl"><div class="ot-tr ot-th"><span>Registration</span><span>Customer</span><span>Reference</span><span>Board</span><span>Day</span><span>Time</span><span></span></div>' + A.results.map(function (r) {
+        var sh = r.sheets || {}, kind = sh.kind || r.kind;
+        return '<div class="ot-tr"><span><b>' + esc(r.reg || "NO REG") + "</b></span><span>" + esc(r.name || "(details removed)") + '</span><span class="num">' + esc(r.ref) + "</span><span>" + esc(String(kind || "").toUpperCase()) + "</span><span>" + esc(sh.day ? longDate(sh.day) + " " + sh.day.slice(0, 4) : "") +
+          "</span><span>" + esc(r.kind === "picks" ? "drop-off " + hhmm(r.drop_at) : "back " + hhmm(r.return_at)) + '</span><span><button type="button" class="btn ghost small" data-archopen="' + r.sheet_id + '" data-archq="' + esc(r.reg || r.ref) + '">Open day</button></span></div>';
+      }).join("") + "</div>";
+      else if (A.results.length) h += '<div class="box">' + A.results.map(function (r) {
         var sh = r.sheets || {};
         return '<div class="rowline"><div class="grow"><strong>' + esc(r.reg || "NO REG") + "</strong> · " + esc(r.name || "(details removed)") + '<div class="note">' + esc(sheetLabel({ day: sh.day, kind: sh.kind || r.kind })) + " · " + esc(r.ref) +
           " · " + esc(r.kind === "picks" ? "drop-off " + hhmm(r.drop_at) : "back " + hhmm(r.return_at)) + '</div></div><button type="button" class="btn ghost small" data-archopen="' + r.sheet_id + '" data-archq="' + esc(r.reg || r.ref) + '">Open day</button></div>';
@@ -5050,8 +5073,8 @@
     // Operations: shorter words, so two boxes fit side by side; a note when there are unsaved changes.
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
-    return (dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "") +
-      capacityHtml() + '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
+    var unsaved = dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
+    var flights = '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
       sel("enabled", [["true", "On"], ["false", o ? "Off" : "Off: no automatic checks"]], "Automatic checks") +
       (String(T.enabled) === "false" ? "" :
@@ -5062,7 +5085,13 @@
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
-      discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + backupHtml();
+      "";
+    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + backupHtml();
+    // A wide screen: the same boxes in groups, with a list of them on the left.
+    var groups = [["parking", "Parking & yards", capacityHtml() + yardColoursHtml()], ["flights", "Flight checks", flights], ["charges", "Exit fees & charges", exitFeeHtml() + overstayRateHtml()],
+      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
+    return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
+      '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
   }
   // A settings box's title; Operations adds what it's set to on the right.
   function boxTitle(t, aside) { return "<strong>" + esc(t) + (isOps() && aside ? "<small>" + esc(aside) + "</small>" : "") + "</strong>"; }
@@ -5385,10 +5414,22 @@
       '<button type="button" class="btn ghost" data-copy="' + esc(link) + '">Copy my link</button></div>';
   }
   function renderMe() {
+    if (opsDesk() && !S.platform) {
+      // A wide screen: you and your alerts, your PIN, and the tutorials side by side.
+      var tuts = myTutorials();
+      return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
+        '<div class="me-desk"><div class="me-col">' + notifyHtml() + discordSwitchHtml() + myLinkHtml() + "</div>" +
+        '<div class="me-col">' + pinFormHtml() + "</div>" +
+        '<div class="me-col">' + opsPanel("Tutorials", tuts.length + (tuts.length === 1 ? " video" : " videos"), '<div class="me-tuts">' + tuts.map(function (x) {
+          return '<button type="button" data-tutorial="' + x[0] + '"><span>' + esc(x[1]) + '<small class="num">' + x[2] + "</small></span><b>Play</b></button>";
+        }).join("") + "</div>") + "</div></div>";
+    }
     return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
       (S.platform ? "" : notifyHtml() + discordSwitchHtml()) +
-      myLinkHtml() +
-      '<form class="box pinbox" id="pinChange" novalidate><strong>Change my PIN</strong><p class="note">Your link stays the same.</p>' +
+      myLinkHtml() + pinFormHtml();
+  }
+  function pinFormHtml() {
+    return '<form class="box pinbox" id="pinChange" novalidate><strong>Change my PIN</strong><p class="note">Your link stays the same.</p>' +
       '<label>Current PIN<input id="pinOld" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password"></label>' +
       '<label>New PIN<input id="pinNew" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"></label>' +
       '<label>New PIN again<input id="pinNew2" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"></label>' +
@@ -5453,6 +5494,7 @@
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.keyreset !== undefined) return resetKeys();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
+    if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
@@ -5701,17 +5743,19 @@
     // Operations: a Menu page of panels, in the words of its other pages.
     if (o) { if (have.summary) have.stats = "Hourly stats"; Object.assign(have, { board: "Operations board", summary: have.summary && "Shift summary", archive: have.archive && "Archive", staff: have.staff && "Staff & access", me: "Me and sign out" }); }
     var btn = function (k) { return '<button type="button" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : "") + ">" + menuIcon(k) + "<span>" + esc(have[k]) + "</span></button>"; };
-    var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""; };
+    // A wide screen: each section in its own panel, side by side.
+    var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
+    var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? '<h2>Menu</h2><p class="sub">' + esc(S.me.name) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>" : "<h2>" + esc(S.company.name) + '</h2><p class="sub">' + esc(S.me.name) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>") +
       group(o ? "Operations" : "TODAY", ["board", "flights", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
-      h += "<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
+      h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +
         '<button type="button" data-removedlist>' + menuIcon("removed") + "<span>Removed cars" + ((S.removed || []).length ? " (" + S.removed.length + ")" : "") + "</span></button>" +
         (sh.archived_at ? '<button type="button" data-unarchive="' + sh.id + '">' + menuIcon("box") + "<span>Bring back to the list</span></button>"
-          : '<button type="button" data-archivesheet="' + sh.id + '">' + menuIcon("box") + "<span>Archive this sheet</span></button>") + "</div>";
+          : '<button type="button" data-archivesheet="' + sh.id + '">' + menuIcon("box") + "<span>Archive this sheet</span></button>") + "</div>");
     }
-    h += modeHtml() + swipeMenuHtml() + '<label>' + (o ? "You" : "YOU") + '</label><div class="menu-list"><button type="button" data-tutorials>' + menuIcon("play") + "<span>Tutorials</span></button>" + btn("me") + "</div>";
+    h += W(modeHtml() + swipeMenuHtml()) + W('<label>' + (o ? "You" : "YOU") + '</label><div class="menu-list"><button type="button" data-tutorials>' + menuIcon("play") + "<span>Tutorials</span></button>" + btn("me") + "</div>");
     if (sh && can("import")) h += '<div class="menu-danger"><button type="button" class="danger" data-deletesheet="' + sh.id + '">' + menuIcon("bin") + "<span>Delete this sheet</span></button></div>";
     return h + '<div class="pbtns"><button type="button" data-closemenu>Close</button></div>' + appVersionHtml();
   }
