@@ -1,6 +1,6 @@
 -- Parking Ops — database part 86: read-only Swift booking sync (manual, preview first).
 --
--- WRITTEN 14 Oct, NOT APPLIED. It waits for the owner's approval of the reviewed PR.
+-- WRITTEN and APPLIED by Claude on 14 Oct, at the owner's request.
 -- Safe to run twice.
 --
 -- Part 61 made private.auto_import without a `config` column and without
