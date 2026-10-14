@@ -614,7 +614,7 @@
   // picker, who is signed in, and a row of icon buttons. The yard tally, TO DO /
   // ALL, search and column captions belong to the board only.
   var OPS_TITLE = { summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
-  var VIEW_TITLE = { dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Import bookings", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
+  var VIEW_TITLE = { dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
   var YARD_LABEL = { Y: "NB", S: "S YARD" };
   // The tally reads left to right as the Sheet's did; any yard not listed follows.
   var YARD_ORDER = ["Y", "S", "CP", "NY", "T"];
@@ -4050,55 +4050,158 @@
     if (!dt.time || cutoff === "00:00" || dt.time > cutoff) return dt.key;
     return addDaysKey(dt.key, -1);
   }
-  // Bookings from the booking site (TakeOff / Swift), by hand only: "Check bookings"
-  // shows what would change and writes nothing; "Get bookings now" then imports exactly
-  // that. Shown only for a company that has it set up on the platform. The schedule is off.
-  function autoImportSection() {
-    if (S.autoImport === undefined) { S.autoImport = null; loadAutoImport(); return ""; }
-    var a = S.autoImport;
-    if (!a || !a.available || !can("import")) return "";
-    var P = a.preview, busy = a.running || a.checking;
-    var when = a.last_ok ? "Last update " + dayShort(a.last_ok) + " " + hhmm(a.last_ok) : "Not run yet";
-    var status = a.blocked_until ? '<span class="bad">Paused after a failed sign-in until ' + esc(hhmm(a.blocked_until)) + ". Check the saved login.</span>"
-      : a.last_error ? '<span class="bad">Last try failed: ' + esc(String(a.last_error).slice(0, 160)) + "</span>"
-      : esc(when);
-    if (a.running) status = "Getting bookings…";
-    else if (a.checking) status = "Checking the booking site…";
-    var h = '<div class="section-label">Bookings from the booking site</div><div class="box" style="padding:12px" data-autobox>' +
-      '<div class="note" style="margin-bottom:10px">' + status + "</div>" +
-      '<div class="row-actions" style="gap:8px"><button type="button" class="btn ghost" style="flex:1" data-autopreview' + (busy ? " disabled" : "") + ">Check bookings</button>" +
-      '<button type="button" class="btn brand" style="flex:1" data-autorun' + (busy || !(P && P.can_apply && !a.stale) ? " disabled" : "") + ">" + (a.running ? "Getting bookings…" : "Get bookings now") + "</button></div>";
-    if (a.error) h += '<div class="alert" role="alert" style="margin-top:10px">' + esc(a.error) + "</div>";
-    if (P) {
-      var c = P.counts || {};
-      h += '<p class="hint" data-autopreviewsum>' + esc((c["new"] || 0) + " new · " + (c.changed || 0) + " changed · " + (c.unchanged || 0) + " unchanged · " + (c.review || 0) + " for review" + (c.invalid ? " · " + c.invalid + " can't be read" : "")) + "</p>";
-      if (P.report) {
-        ["picks", "drops"].forEach(function (k) {
-          var R = P.report[k]; if (!R) return;
-          h += '<p class="hint" data-autoreport>' + esc("On the site, " + k + ": " + R.rows + " · " + Object.keys(R.by_day).sort().map(function (d) { return d.slice(8) + "th " + R.by_day[d] + (R.site && R.site[d] != null ? " of " + R.site[d] : ""); }).join(" · ") + " · " + Object.keys(R.by_status).map(function (x) { return x + " " + R.by_status[x]; }).join(", ")) + "</p>" + (R.form ? '<p class="hint">' + esc("Search form: " + R.form) + "</p>" : "");
-        });
+  // Booking import, "Auto import" tab: bookings from the connected booking site, by hand only.
+  // "Check bookings" shows what would change and writes nothing; "Import N bookings" then imports
+  // exactly that (same hash check as before). Shown only for a company that has it set up on the
+  // platform. The schedule is off.
+  var BI_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var BI_FIELD = { reg: "Registration", name: "Name", phone: "Phone", make: "Vehicle", drop: "Drop-off", "return": "Return", flight: "Flight", note: "Note", day: "Sheet day" };
+  var BI_STATUS = { "new": "New", changed: "Changed", review: "Review", unchanged: "Unchanged", invalid: "Can't read" };
+  function biDay(k) { var m = String(k || "").match(/^(\d{4})-(\d\d)-(\d\d)/); return m ? (+m[3]) + " " + BI_MON[+m[2] - 1] : String(k || ""); }
+  function biWhen(v) { var m = String(v || "").match(/^(\d{4}-\d\d-\d\d)(?: (\d\d:\d\d))?/); return m ? biDay(m[1]) + (m[2] ? " " + m[2] : "") : String(v || ""); }
+  function biStamp(ts) { return ts ? (dayShort(ts) === dayShort(Date.now()) ? hhmm(ts) : dayShort(ts) + " " + hhmm(ts)) : ""; }
+  function biChange(c) {
+    var f = c.field, a = c.from, b = c.to;
+    if (f === "phone") return "Phone number updated";
+    if (f === "drop" || f === "return") {
+      var pa = String(a || "").match(/^(\S+) (\d\d:\d\d)$/), pb = String(b || "").match(/^(\S+) (\d\d:\d\d)$/);
+      if (pa && pb && pa[1] === pb[1]) return (f === "return" ? "Return time" : "Drop-off time") + ": " + pa[2] + " → " + pb[2];
+      return BI_FIELD[f] + ": " + (a ? biWhen(a) : "–") + " → " + biWhen(b);
+    }
+    if (f === "day") return "Sheet day: " + biDay(a) + " → " + biDay(b);
+    return (BI_FIELD[f] || f) + ": " + (a || "–") + " → " + (b || "–");
+  }
+  function biQ(ref, reg) { return (String(ref || "") + String(reg || "")).toLowerCase().replace(/\s+/g, ""); }
+  // The preview as one list of rows: new, changed, held for review, can't be read; the unchanged ones when the check sent them.
+  function biRows(P) {
+    var rows = [], conflict = {};
+    (P.reviews || []).forEach(function (r) { if (r.kind === "conflict" && r.detail) conflict[(r.detail.kind || "") + "|" + r.ref] = r; });
+    (P.items || []).forEach(function (i) {
+      var r = { key: i.kind + "|" + i.ref, board: String(i.kind).toUpperCase(), date: biDay(i.day), ref: i.ref, reg: i.reg || "", status: i.status, lines: [], sub: [], explain: "" };
+      if (i.status === "new") r.lines = ["New booking"];
+      else if (i.status === "changed") r.lines = (i.changes || []).map(biChange);
+      else if (i.status === "review") {
+        var rv = conflict[i.kind + "|" + i.ref], why = rv && rv.detail && rv.detail.why ? String(rv.detail.why).replace(/\b\d{4}-\d\d-\d\d\b/g, biDay) : "";
+        r.lines = [why ? why.charAt(0).toUpperCase() + why.slice(1) : "Needs an office decision"];
+        r.sub = (i.changes || []).map(biChange);
+        r.explain = "Held back. This booking stays out of the import until the office decides.";
       }
-      var rows = (P.items || []).map(function (i) {
-        return "<div>" + esc(i.kind.toUpperCase() + " " + i.day + " · " + i.ref + " " + (i.reg || "") + " · " + i.status + (i.changes && i.changes.length ? " (" + i.changes.map(function (x) { return x.field + ": " + (x.from || "–") + " → " + x.to; }).join(", ") + ")" : "")) + "</div>";
-      }).concat((P.invalid || []).map(function (i) { return '<div class="bad">' + esc((i.ref || "no ref") + " · " + i.reason) + "</div>"; }));
-      if (rows.length) h += '<div class="impundo" data-autoitems style="max-height:220px;overflow:auto">' + rows.join("") + "</div>";
-      if (!P.can_apply && c.invalid) h += '<p class="hint bad">Fix the records above on the booking site before importing.</p>';
-      else if (!P.can_apply) h += '<p class="hint">Nothing to import.</p>';
+      rows.push(r);
+    });
+    (P.reviews || []).forEach(function (r) {
+      if (r.kind !== "cancelled") return;
+      var d = r.detail || {};
+      rows.push({ key: "x|" + (d.kind || "") + "|" + r.ref, board: String(d.kind || "").toUpperCase(), date: d.on_sheet ? biDay(d.on_sheet) : "", ref: r.ref, reg: d.reg || "", status: "review",
+        lines: ["Cancellation requires review"], sub: d.name ? [d.name] : [], explain: "Cancelled on the booking site. Nothing is removed here; check the car and remove it by hand if it really is cancelled." });
+    });
+    (P.invalid || []).forEach(function (i) { rows.push({ key: "i|" + (i.kind || "") + "|" + (i.ref || ""), board: String(i.kind || "").toUpperCase(), date: "", ref: i.ref || "No reference", reg: "", status: "invalid", lines: [i.reason || "Can't be read"], sub: [], explain: "Fix this record on the booking site, then check again." }); });
+    return rows;
+  }
+  function biUnchangedRows(P) {
+    return (P.unchanged || []).map(function (i) { return { key: "u|" + i.kind + "|" + i.ref, board: String(i.kind).toUpperCase(), date: biDay(i.day), ref: i.ref, reg: i.reg || "", status: "unchanged", lines: ["No changes"], sub: [], explain: "" }; });
+  }
+  function biRowHtml(r, open, hide) {
+    var more = r.lines.slice(1).concat(r.sub || []);
+    return '<div class="bi-row s-' + r.status + (open ? " open" : "") + '" data-biq="' + esc(biQ(r.ref, r.reg)) + '"' + (hide ? " hidden" : "") + ">" +
+      '<button type="button" class="bi-hd" data-birow="' + esc(r.key) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
+      '<span class="bi-board">' + esc(r.board) + '</span><span class="bi-date">' + esc(r.date) + '</span><span class="bi-ref">' + esc(r.ref) + '</span><span class="bi-reg">' + esc(r.reg) + "</span>" +
+      '<span class="bi-chg"><span class="bi-main">' + esc(r.lines[0] || "") + "</span>" + (more.length ? '<span class="bi-more">' + more.map(function (x) { return "<small>" + esc(x) + "</small>"; }).join("") + "</span>" : "") + "</span>" +
+      '<span class="bi-st"><em class="bi-pill s-' + r.status + '">' + esc(BI_STATUS[r.status] || r.status) + '</em></span><span class="bi-chev" aria-hidden="true"></span></button>' +
+      (r.explain ? '<p class="bi-ex bi-more">' + esc(r.explain) + "</p>" : "") + "</div>";
+  }
+  function biConn(a) {
+    if (a.running) return { cls: "busy", text: "Importing…" };
+    if (a.checking) return { cls: "busy", text: "Checking…" };
+    if (a.blocked_until) return { cls: "bad", text: "Paused", note: "Sign-in failed. Paused until " + hhmm(a.blocked_until) + ". Check the saved login." };
+    if (a.error && !a.stale) return { cls: "bad", text: "Check failed" };
+    if (a.last_error && !a.checked_at) return { cls: "bad", text: "Last try failed", note: String(a.last_error).slice(0, 160) };
+    if (a.checked_at || a.last_ok) return { cls: "ok", text: "Connected" };
+    return { cls: "idle", text: "Not checked yet" };
+  }
+  function biReport(P) {
+    if (!P.report) return "";
+    return ["picks", "drops"].map(function (k) {
+      var X = P.report[k]; if (!X) return "";
+      return "<p>" + esc("On the booking site, " + k + ": " + X.rows + " · " + Object.keys(X.by_day).sort().map(function (d) { return d.slice(8) + "th " + X.by_day[d] + (X.site && X.site[d] != null ? " of " + X.site[d] : ""); }).join(" · ") + " · " + Object.keys(X.by_status).map(function (x) { return x + " " + X.by_status[x]; }).join(", ")) + "</p>" +
+        (X.form ? "<p>" + esc("Search form: " + X.form) + "</p>" : "");
+    }).join("");
+  }
+  function biChecked(P) {
+    var seen = 0, ok = true;
+    ["picks", "drops"].forEach(function (k) { var X = P.report && P.report[k]; if (!X) return; seen++; if (!X.site || !Object.keys(X.site).length) ok = false; });
+    return seen && ok;
+  }
+  function autoPanel(a) {
+    var P = a.preview, busy = a.running || a.checking, c = (P && P.counts) || {}, B = S.bi;
+    var conn = biConn(a), nImp = (c["new"] || 0) + (c.changed || 0);
+    var canGo = !busy && P && P.can_apply && !a.stale;
+    var go = a.running ? "Importing…" : !P ? "Import bookings" : nImp ? "Import " + nImp + (nImp === 1 ? " booking" : " bookings") : c.review ? "Save review list" : "Nothing to import";
+    var h = '<div class="bi-panel" data-autobox>' +
+      '<div class="bi-status"><span class="bi-conn ' + conn.cls + '"><i class="bi-dot"></i>' + esc(conn.text) + "</span>" +
+      "<span>Last checked " + (a.checked_at ? esc(biStamp(a.checked_at)) : "–") + "</span><span>Last imported " + (a.last_ok ? esc(biStamp(a.last_ok)) : "–") + "</span>" +
+      (conn.note ? '<span class="bi-note">' + esc(conn.note) + "</span>" : "") + "</div>" +
+      '<div class="bi-act"><button type="button" class="btn ghost" data-autopreview' + (busy ? " disabled" : "") + ">" + (a.checking ? "Checking…" : "Check bookings") + "</button>" +
+      '<button type="button" class="btn brand" data-autorun' + (canGo ? "" : " disabled") + ">" + esc(go) + "</button></div>" +
+      '<div class="bi-body">';
+    if (a.error) h += '<div class="alert" role="alert">' + esc(a.error) + "</div>";
+    if (!P) {
+      if (!a.error && !busy) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
+    } else {
+      var rows = biRows(P), un = biUnchangedRows(P), f = B.f || "all";
+      var list = f === "unchanged" ? un : f === "all" ? rows : rows.filter(function (r) { return r.status === f; });
+      var q = String(B.q || "").toLowerCase().replace(/\s+/g, "");
+      h += '<div class="bi-counts" data-autopreviewsum role="group" aria-label="Check result">' +
+        [["new", "New"], ["changed", "Changed"], ["review", "Needs review"], ["unchanged", "Unchanged"]].map(function (x) { return '<div class="' + (x[0] === "review" && c.review ? "warn" : "") + '"><b class="num">' + (c[x[0]] || 0) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
+      if (c.invalid) h += '<div class="alert" role="alert">' + c.invalid + (c.invalid === 1 ? " record can't" : " records can't") + " be read. Fix " + (c.invalid === 1 ? "it" : "them") + " on the booking site before importing.</div>";
+      if (c.review) h += '<div class="bi-warn" role="status">' + c.review + (c.review === 1 ? " booking needs" : " bookings need") + " an office decision. These will stay out of this import.</div>";
+      var tabs = [["all", "All changes", rows.length], ["new", "New", c["new"] || 0], ["changed", "Changed", c.changed || 0], ["review", "Needs review", c.review || 0]];
+      if (c.unchanged) tabs.push(["unchanged", "Unchanged", c.unchanged]);
+      h += '<div class="bi-filters" role="group" aria-label="Filter the check result">' + tabs.map(function (x) {
+        return '<button type="button" class="bi-chip" data-bifilter="' + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + ' <span class="num">' + x[2] + "</span></button>";
+      }).join("") + '<input type="search" id="biQ" class="bi-search" placeholder="Reference or reg" aria-label="Search by reference or registration" autocomplete="off" value="' + esc(B.q || "") + '"></div>';
+      if (!list.length) {
+        h += '<p class="bi-hint" data-autoitems>' + (f === "unchanged" ? (c.unchanged ? "This check didn't list the " + c.unchanged + " unchanged bookings. They already match the app." : "No unchanged bookings.")
+          : f === "all" && !rows.length ? "No booking changes. Everything on the booking site already matches the app." : "Nothing in this view.") + "</p>";
+      } else {
+        h += '<div class="bi-tbl" data-autoitems><div class="bi-th" aria-hidden="true"><span>Board</span><span>Date</span><span>Reference</span><span>Registration</span><span>Change</span><span>Status</span><span></span></div>' +
+          list.map(function (r) { return biRowHtml(r, !!B.open[r.key], q && biQ(r.ref, r.reg).indexOf(q) < 0); }).join("") + "</div>";
+        h += '<p class="bi-hint" id="biShown">' + (P.items && P.items.length >= 200 ? "Showing the first 200 changes. " : "") + "</p>";
+      }
+      h += '<details class="bi-diag"><summary><span>Diagnostics</span>' + (biChecked(P) ? '<span class="bi-chk">Report checks passed</span>' : '<span class="bi-chk off">Report counts not verified</span>') + '</summary><div class="bi-diagbody" data-autoreport>' + biReport(P) + "</div></details>";
     }
     if (a.reviews && a.reviews.length) {
-      h += '<div class="section-label" style="margin-top:12px">For the office to check</div><div class="impundo" data-autoreviews>' + a.reviews.map(function (r) {
+      h += '<div class="bi-held"><h3>Held for the office</h3><div data-autoreviews>' + a.reviews.map(function (r) {
         var d = r.detail || {};
         return "<div><span>" + esc((r.kind === "cancelled" ? "Cancelled · " : "Changed · ") + r.ref) + "<small>" + esc(r.kind === "cancelled" ? ((d.name || "") + " " + (d.reg || "") + " · " + (d.kind || "")) : (d.why || "")) +
           '</small></span><button type="button" class="btn ghost small" data-reviewdone="' + esc(r.id) + '">Done</button></div>';
-      }).join("") + "</div>";
-    } else if (a.open_reviews) h += '<p class="hint">' + a.open_reviews + " to check.</p>";
-    return h + '<p class="hint">It only reads from the booking site. Cancelled or changed bookings are listed for you; nothing is removed.</p></div>';
+      }).join("") + "</div></div>";
+    } else if (a.open_reviews) h += '<p class="bi-hint">' + a.open_reviews + " to check.</p>";
+    return h + '<p class="bi-hint">It only reads from the booking site. Cancelled or changed bookings are listed for you; nothing is removed.</p></div></div>';
+  }
+  // The recent imports of the last 24 hours, newest first, for both tabs. Undo only where the backend says it can still be undone.
+  function recentImportsHtml() {
+    if (!S.recentImports) loadRecentImports();
+    var L = S.recentImports || [];
+    var h = '<section class="bi-recent" aria-labelledby="biRecent"><div class="bi-rh"><h3 id="biRecent">Recent imports</h3><button type="button" class="link" data-view="summary">View history</button></div>';
+    if (!L.length) return h + '<p class="bi-hint">No imports in the last 24 hours.</p></section>';
+    return h + '<div class="bi-rlist">' + L.map(function (x) {
+      var src = x.source === "auto" ? "Auto import" : x.source === "manual" ? "Manual import" : "Import";
+      var res = x.undone ? "Undone" : (x.added || x.changed) ? x.added + " added · " + x.changed + " updated" : "No booking changes";
+      var undo = x.latest && !x.undone && (x.added || x.changed);
+      return '<div class="bi-rr"><span class="bi-t num">' + esc(biStamp(x.at)) + '</span><span class="bi-by">' + esc(x.by || "") + '</span><span class="bi-src">' + esc(src) + '</span><span class="bi-bd">' + esc(String(x.kind || "").toUpperCase() + " " + biDay(x.day).toUpperCase()) +
+        '</span><span class="bi-res">' + esc(res) + "</span>" + (undo ? '<button type="button" class="link bi-undo" data-undoimport="' + esc(x.id) + '">Undo</button>' : '<span class="bi-undo">–</span>') + "</div>";
+    }).join("") + "</div></section>";
+  }
+  function autoInfo() {
+    if (S.autoImport === undefined) { S.autoImport = null; loadAutoImport(); }
+    var a = S.autoImport;
+    return a && a.available && can("import") ? a : null;
   }
   async function loadAutoImport() {
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, reviews: keep.reviews };
+    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews };
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -4115,7 +4218,7 @@
     if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
     else if (out.ok === false) a.error = out.error || "The booking site didn't answer.";
     else if (out.error) a.error = out.error;
-    else a.preview = out.preview;
+    else { a.preview = out.preview; a.checked_at = Date.now(); a.stale = false; S.bi.open = {}; }
     render(); loadAutoImport();
   }
   async function runAutoImport(btn) {
@@ -4145,23 +4248,19 @@
     loadAutoImport();
   }
   function renderImport() {
-    var I = S.imp || (S.imp = newImport("drops"));
-    var h = '<h2 class="title">Import bookings</h2><div class="toolbar"><div class="seg" role="group" aria-label="Sheet type">' +
-      '<button type="button" data-impkind="drops" aria-pressed="' + (I.kind === "drops") + '">Drops</button><button type="button" data-impkind="picks" aria-pressed="' + (I.kind === "picks") + '">Picks</button></div></div>';
-    h += autoImportSection();
+    var I = S.imp || (S.imp = newImport("drops")), B = S.bi || (S.bi = { tab: "", f: "all", q: "", open: {} });
+    var auto = autoInfo(), tab = auto ? (B.tab || "auto") : "manual";
+    var h = '<div class="bi">';
+    if (auto) h += '<div class="bi-tabs" role="tablist" aria-label="Booking source"><button type="button" role="tab" data-bitab="auto" aria-selected="' + (tab === "auto") + '">Auto import</button><button type="button" role="tab" data-bitab="manual" aria-selected="' + (tab === "manual") + '">Manual import</button></div>';
+    if (tab === "auto") return h + autoPanel(auto) + recentImportsHtml() + "</div>";
     if (I.stage !== "preview") {
-      if (!S.recentImports) loadRecentImports();
-      var undoable = (S.recentImports || []).filter(function (x) { return !x.undone && x.latest; });
-      if (undoable.length) h += '<div class="impundo"><strong>Imported in the last 24 hours</strong>' + undoable.map(function (x) {
-        return "<div><span>" + esc(x.kind.toUpperCase() + " " + R.boardName(x.day, x.kind)) + "<small>" + esc(dayShort(x.at) + " " + hhmm(x.at) + " · " + x.by + " · " + x.added + " added, " + x.changed + " changed") +
-          '</small></span><button type="button" class="btn ghost small" data-undoimport="' + esc(x.id) + '">Undo</button></div>';
-      }).join("") + "</div>";
+      h += '<div class="toolbar"><div class="seg" role="group" aria-label="Sheet type"><button type="button" data-impkind="drops" aria-pressed="' + (I.kind === "drops") + '">Drops</button><button type="button" data-impkind="picks" aria-pressed="' + (I.kind === "picks") + '">Picks</button></div></div>';
       var joblist = I.excelFile && /\.pdf$/i.test(I.excelFile.name || "");
       h += '<div class="steps">' + dropZone("excel", "1. Bookings", I.kind === "drops" ? "The booking list covering two days, e.g. 17th to 18th, exactly as downloaded. Excel or a Joblist PDF." : "The booking list for the day, exactly as downloaded. Excel or a Joblist PDF.", I.excelFile) +
         (I.kind === "drops" && !joblist ? dropZone("pdf", "2. Flight numbers (PDF)", "Return Report PDF for the same days. Not needed with a Joblist PDF, which already carries the flights.", I.pdfFile) : "") + "</div>" +
         (I.error ? '<div class="alert" role="alert">' + esc(I.error) + "</div>" : "") +
         '<div class="row-actions"><button type="button" class="btn brand" data-read' + (I.excelFile && I.stage !== "reading" ? "" : " disabled") + ">" + (I.stage === "reading" ? "Reading…" : "Read files") + "</button></div>";
-      return h;
+      return h + recentImportsHtml() + "</div>";
     }
     var P = I.preview, miss = P.rows.filter(function (r) { return I.kind === "drops" && !r.flight; }).length;
     var existing = S.sheets.filter(function (s) { return s.kind === I.kind && s.day === P.dateKey; })[0];
@@ -4178,7 +4277,7 @@
           (I.kind === "drops" ? '<td class="num">' + esc(r.ret ? r.ret.time : "") + "</td><td>" + (r.flight ? esc(r.flight) : '<input data-fix="' + i + '" placeholder="U22305" aria-label="Flight for ' + esc(r.reg) + '">') + "</td>" : '<td class="num">' + esc(r.meet ? r.meet.time : "") + "</td>") + "</tr>";
       }).join("") + "</tbody></table></div>" +
       '<div class="row-actions"><button type="button" class="btn ghost" data-restart>Start again</button><button type="button" class="btn brand" data-create' + (I.saving ? " disabled" : "") + ">" + (I.saving ? "Saving…" : "Create " + esc(R.boardName(P.dateKey, I.kind))) + "</button></div>";
-    return h;
+    return h + "</div>";
   }
   function dropZone(key, title, text, file) {
     return '<div class="drop' + (file ? " filled" : "") + '"><strong>' + esc(title) + '</strong><p class="note">' + (file ? "✓ " + esc(file.name) : esc(text)) + "</p>" +
@@ -5185,6 +5284,13 @@
     if (t.dataset.archretry !== undefined) { S.arch.days = null; render(); return; }
     if (t.dataset.impkind) { S.imp = newImport(t.dataset.impkind); render(); return; }
     if (t.dataset.undoimport && !t.closest("#panel")) return undoImport(t.dataset.undoimport, t);
+    if (t.dataset.bitab) { S.bi.tab = t.dataset.bitab; render(); return; }
+    if (t.dataset.bifilter) { S.bi.f = t.dataset.bifilter; render(); return; }
+    if (t.dataset.birow !== undefined) {
+      var open = t.getAttribute("aria-expanded") !== "true"; t.setAttribute("aria-expanded", open ? "true" : "false");
+      t.closest(".bi-row").classList.toggle("open", open); if (open) S.bi.open[t.dataset.birow] = 1; else delete S.bi.open[t.dataset.birow];
+      return;
+    }
     if (t.dataset.autopreview !== undefined) return previewAutoImport();
     if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
     if (t.dataset.autorun !== undefined) return runAutoImport(t);
@@ -5252,6 +5358,12 @@
     if (got) { S.issued = got; S.addPerson = false; render(); window.scrollTo(0, 0); }
   });
   document.addEventListener("input", function (e) {
+    if (e.target.id === "biQ" && S.bi) {
+      S.bi.q = e.target.value; var bq = S.bi.q.toLowerCase().replace(/\s+/g, ""), shown = 0, rows = document.querySelectorAll(".bi-row");
+      Array.prototype.forEach.call(rows, function (r) { var hide = !!bq && r.getAttribute("data-biq").indexOf(bq) < 0; r.hidden = hide; if (!hide) shown++; });
+      var bs = document.getElementById("biShown"); if (bs) bs.textContent = bq ? "Showing " + shown + " of " + rows.length + "." : "";
+      return;
+    }
     if (e.target.id === "q") { S.q = e.target.value; show("qClear", !!S.q); searchOtherDays(); setMain(renderBoard(), "board"); }
     // Yard colours: the tag beside the picker shows the colour as it's chosen.
     var yc = e.target.dataset && e.target.dataset.ycol;

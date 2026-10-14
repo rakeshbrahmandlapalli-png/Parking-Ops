@@ -1489,17 +1489,18 @@ await scenario(async () => {
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
   await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
-  check("auto-import: the section shows when it's set up", /Bookings from the booking site/i.test(await page.locator("#main").innerText()));
+  check("auto-import: the page shows Auto import and Manual import tabs when it's set up", /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator('[data-bitab="auto"]').count() === 1 && await page.locator('[data-bitab="manual"]').count() === 1);
   check("auto-import: no on/off switch (the schedule is off)", await page.locator("[data-autotoggle]").count() === 0);
-  check("auto-import: Get bookings now waits for a check first", await page.locator("[data-autorun]").isDisabled());
+  check("auto-import: Import waits for a check first", await page.locator("[data-autorun]").isDisabled());
   check("auto-import: cancellations wait for the office", (await page.locator("[data-autoreviews]").innerText()).includes("Cancelled · T2"));
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: Check bookings asks for a preview only", (db.autoRuns || []).length === 1 && db.autoRuns[0].action === "preview" && !(db.autoRuns || []).some((x) => x.action === "apply"));
-  check("auto-import: the preview shows new / changed / unchanged / review", /2 new · 1 changed · 4 unchanged · 1 for review/.test(await page.locator("[data-autopreviewsum]").innerText()));
-  check("auto-import: the changed field is listed", /return: 10:00 → 12:30/.test(await page.locator("[data-autoitems]").innerText()));
+  check("auto-import: the preview shows New / Changed / Needs review / Unchanged", /2\s*New\s*1\s*Changed\s*1\s*Needs review\s*4\s*Unchanged/.test(await page.locator("[data-autopreviewsum]").innerText()), await page.locator("[data-autopreviewsum]").innerText());
+  check("auto-import: the button says how many bookings it imports", /Import 3 bookings/.test(await page.locator("[data-autorun]").innerText()), await page.locator("[data-autorun]").innerText());
+  check("auto-import: the changed field is listed", /Return: 10:00 → 12:30/.test(await page.locator("[data-autoitems]").innerText()));
   await page.click("[data-autorun]"); await sleep(900);
   const ap = (db.autoRuns || []).find((x) => x.action === "apply");
-  check("auto-import: Get bookings now imports the previewed plan (hash sent)", ap && ap.expect_hash === "h1", db.autoRuns);
+  check("auto-import: Import imports the previewed plan (hash sent)", ap && ap.expect_hash === "h1", db.autoRuns);
   check("auto-import: the result is shown (added / updated)", /Bookings in: 5 added, 1 updated/.test(await toast(page)), await toast(page));
   await page.click("[data-reviewdone]"); await sleep(500);
   check("auto-import: marking a review done removes it", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 5) && await page.locator("[data-autoreviews]").count() === 0);
@@ -1517,7 +1518,7 @@ await scenario(async () => {
   await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: a failed check shows why", /web page instead of the report/.test(await page.locator("[data-autobox]").innerText()));
-  check("auto-import: and Get bookings now stays off", await page.locator("[data-autorun]").isDisabled());
+  check("auto-import: and Import stays off", await page.locator("[data-autorun]").isDisabled());
   db.previewError = null; db.preview = { hash: "h2", window: {}, counts: { new: 0, changed: 0, unchanged: 0, review: 0, invalid: 2 }, can_apply: false, items: [], reviews: [], invalid: [{ kind: "drops", ref: "D1", reason: "ambiguous: the same reference appears 2 times with different details" }] };
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: invalid records are listed and block the import", /ambiguous/.test(await page.locator("[data-autoitems]").innerText()) && await page.locator("[data-autorun]").isDisabled());
@@ -1546,7 +1547,148 @@ await scenario(async () => {
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
-  check("auto-import: hidden for a company without it set up", !/Bookings from the booking site/i.test(await page.locator("#main").innerText()));
+  check("auto-import: hidden for a company without it set up", await page.locator("[data-bitab]").count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator("[data-impkind]").count() === 2);
+});
+
+// A pretend Booking import page: sample data only (DEMO references), never real bookings.
+function biDb(theme, over = {}) {
+  const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme };
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+  db.autoImport = { available: true, running: false, last_ok: ago(75), last_error: null, open_reviews: 1 };
+  db.reviews = [{ id: 5, ref: "DEMO-1047", kind: "cancelled", detail: { name: "C Demo", reg: "CD34EFG", kind: "picks" } }];
+  const site = (d, n) => ({ rows: n, by_day: { [d]: n }, by_status: { Completed: n }, site: { [d]: n }, form: "producttype=all (All) of all:All/0:Meet and Greet; filter_status=1 (Completed)" });
+  db.preview = {
+    hash: "h9", window: { from: TONIGHT, to: TOMORROW }, counts: { new: 3, changed: 3, unchanged: 4, review: 2, invalid: 0 }, can_apply: true,
+    items: [
+      { kind: "drops", day: TONIGHT, ref: "DEMO-1042", reg: "AB12CDE", status: "review", changes: [{ field: "return", from: TONIGHT + " 23:45", to: TOMORROW + " 00:30" }] },
+      { kind: "drops", day: TONIGHT, ref: "DEMO-1051", reg: "EF56GHI", status: "changed", changes: [{ field: "make", from: "Kia Niro", to: "Toyota Auris" }] },
+      { kind: "picks", day: TOMORROW, ref: "DEMO-1053", reg: "GH78JKL", status: "changed", changes: [{ field: "return", from: TOMORROW + " 20:25", to: TOMORROW + " 20:40" }] },
+      { kind: "drops", day: TONIGHT, ref: "DEMO-1055", reg: "IJ90MNO", status: "changed", changes: [{ field: "phone", from: "07700900000", to: "07700900111" }] },
+      { kind: "picks", day: TOMORROW, ref: "DEMO-1058", reg: "KL12PQR", status: "new" },
+      { kind: "drops", day: TONIGHT, ref: "DEMO-1059", reg: "MN34STU", status: "new" },
+      { kind: "picks", day: TOMORROW, ref: "DEMO-1060", reg: "OP56VWX", status: "new" },
+    ],
+    reviews: [
+      { ref: "DEMO-1042", kind: "conflict", detail: { kind: "drops", why: "moved from sheet " + TONIGHT + " to " + TOMORROW + "; the app can't move it safely", changes: [] } },
+      { ref: "DEMO-1047", kind: "cancelled", detail: { kind: "picks", name: "C Demo", reg: "CD34EFG", return: "", on_sheet: TOMORROW } },
+    ],
+    invalid: [], unchanged: ["DEMO-1001", "DEMO-1002", "DEMO-1003", "DEMO-1004"].map((r, i) => ({ kind: i % 2 ? "picks" : "drops", day: TONIGHT, ref: r, reg: "ZZ0" + i + "AAA" })),
+    report: { picks: site(TOMORROW, 5), drops: site(TONIGHT, 6) },
+    ...over,
+  };
+  db.imports = [
+    { id: 90, kind: "drops", day: TONIGHT, at: ago(20), by: "OFFICE", added: 9, changed: 1, undone: false, latest: true, source: "auto" },
+    { id: 89, kind: "picks", day: TONIGHT, at: ago(35), by: "OFFICE", added: 0, changed: 0, undone: false, latest: true, source: "auto" },
+    { id: 88, kind: "drops", day: TOMORROW, at: ago(120), by: "SUGU", added: 5, changed: 0, undone: false, latest: false, source: "manual" },
+    { id: 87, kind: "picks", day: TOMORROW, at: ago(180), by: "SUGU", added: 4, changed: 2, undone: true, latest: false, source: "manual" },
+  ];
+  return db;
+}
+
+// 18d. Booking import redesign: Auto import / Manual import, the check as a compact table, filters, search,
+// review cases, collapsed diagnostics, Recent imports with their source and Undo only where it is possible.
+for (const theme of ["ops", "stdplus", ""]) await scenario(async () => {
+  const L = theme || "standard";
+  const db = biDb(theme);
+  const page = await phone(browser, db, { width: 1100 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  const main0 = await page.locator("#main").innerText();
+  check("import page (" + L + "): one heading, Booking import", await page.locator("#main h2").count() === 0 && /^Booking import$/.test((await page.locator("#viewTitle").innerText()).trim()));
+  check("import page (" + L + "): tabs Auto import and Manual import, Auto first", (await page.locator(".bi-tabs button").allInnerTexts()).join("|") === "Auto import|Manual import" && await page.locator('[data-bitab="auto"][aria-selected=true]').count() === 1);
+  check("import page (" + L + "): connection, last checked and last imported are separate", /Connected/.test(main0) && /Last checked –/.test(main0) && /Last imported \d\d:\d\d/.test(main0), main0.slice(0, 200));
+  check("import page (" + L + "): no provider name anywhere on the page", !/swift/i.test(await page.locator("body").innerText()));
+  check("import page (" + L + "): Import is off until a check, and says so", await page.locator("[data-autorun]").isDisabled() && /Check bookings to see what would change/.test(main0));
+  await page.click("[data-autopreview]"); await sleep(800);
+  const sum = await page.locator("[data-autopreviewsum]").innerText();
+  check("import page (" + L + "): counts New 3, Changed 3, Needs review 2, Unchanged 4", /3\s*New\s*3\s*Changed\s*2\s*Needs review\s*4\s*Unchanged/.test(sum), sum);
+  check("import page (" + L + "): the button shows the eligible count", /Import 6 bookings/.test(await page.locator("[data-autorun]").innerText()) && !(await page.locator("[data-autorun]").isDisabled()));
+  check("import page (" + L + "): last checked now shows a time", /Last checked \d\d:\d\d/.test(await page.locator(".bi-status").innerText()));
+  check("import page (" + L + "): the review notice says they stay out of the import", /2 bookings need an office decision\. These will stay out of this import\./.test(await page.locator(".bi-warn").innerText()));
+  const tbl = await page.locator(".bi-tbl").innerText();
+  check("import page (" + L + "): rows for new, changed, review and cancelled; unchanged are not in the default view", await page.locator(".bi-row").count() === 8 && !/DEMO-1001/.test(tbl), await page.locator(".bi-row").count());
+  check("import page (" + L + "): changed fields show previous → new", /Vehicle: Kia Niro → Toyota Auris/.test(tbl) && /Return time: 20:25 → 20:40/.test(tbl), tbl.slice(0, 400));
+  check("import page (" + L + "): a phone number change shows no number", /Phone number updated/.test(tbl) && !/0770090/.test(tbl));
+  check("import page (" + L + "): a moved return is explained as a review case", /Moved from sheet .* to .*; the app can't move it safely/.test(tbl) && /Return: .* 23:45 → .* 00:30/.test(tbl) && /Held back/.test(tbl), tbl.slice(0, 700));
+  check("import page (" + L + "): a cancellation is explained and never removed", /Cancellation requires review/.test(tbl) && /Nothing is removed here/.test(tbl));
+  const diag = page.locator(".bi-diag");
+  check("import page (" + L + "): diagnostics start collapsed, with the report result", !(await diag.evaluate((d) => d.open)) && /Report checks passed/.test(await diag.locator("summary").innerText()) && !(await page.locator(".bi-diagbody").isVisible()));
+  await diag.locator("summary").click(); await sleep(200);
+  check("import page (" + L + "): opened diagnostics hold the raw report and search form", /On the booking site, picks: 5/.test(await page.locator(".bi-diagbody").innerText()) && /Search form: producttype=all/.test(await page.locator(".bi-diagbody").innerText()));
+  await page.click('[data-bifilter="changed"]'); await sleep(200);
+  check("import page (" + L + "): the Changed filter shows 3", await page.locator(".bi-row").count() === 3);
+  await page.click('[data-bifilter="review"]'); await sleep(200);
+  check("import page (" + L + "): the Needs review filter shows 2", await page.locator(".bi-row").count() === 2);
+  await page.click('[data-bifilter="unchanged"]'); await sleep(200);
+  check("import page (" + L + "): the optional Unchanged view lists them", await page.locator(".bi-row").count() === 4 && /DEMO-1001/.test(await page.locator(".bi-tbl").innerText()));
+  await page.click('[data-bifilter="all"]'); await sleep(200);
+  await page.fill("#biQ", "gh 78"); await sleep(200);
+  check("import page (" + L + "): searching by registration narrows the list", await page.locator(".bi-row:not([hidden])").count() === 1 && /DEMO-1053/.test(await page.locator(".bi-row:not([hidden])").innerText()));
+  await page.fill("#biQ", "demo-1059"); await sleep(200);
+  check("import page (" + L + "): searching by reference too", await page.locator(".bi-row:not([hidden])").count() === 1 && /MN34STU/.test(await page.locator(".bi-row:not([hidden])").innerText()));
+  await page.fill("#biQ", ""); await sleep(200);
+  const rr = await page.locator(".bi-rr").allInnerTexts();
+  check("import page (" + L + "): Recent imports list time, staff, source, board and results", rr.length === 4 && /Auto import/.test(rr[0]) && /DROPS/.test(rr[0]) && /9 added · 1 updated/.test(rr[0]) && /OFFICE/.test(rr[0]) && /Manual import/.test(rr[2]) && /SUGU/.test(rr[2]), rr);
+  check("import page (" + L + "): a run with no changes says No booking changes", /No booking changes/.test(rr[1]) && /Undone/.test(rr[3]));
+  check("import page (" + L + "): Undo only where the backend says it can be undone", await page.locator(".bi-rr [data-undoimport]").count() === 1 && (await page.locator(".bi-rr").nth(0).locator("[data-undoimport]").count()) === 1);
+  await page.click("[data-autorun]"); await sleep(900);
+  const ap = (db.autoRuns || []).find((x) => x.action === "apply");
+  check("import page (" + L + "): Import sends the previewed plan's hash, with nothing on a timer", ap && ap.expect_hash === "h9" && !(db.autoRuns || []).some((x) => x.action === "timer"), db.autoRuns);
+  await page.click('[data-bitab="manual"]'); await sleep(300);
+  check("import page (" + L + "): Manual import keeps Drops/Picks, the booking file and the flight PDF", await page.locator("[data-impkind]").count() === 2 && await page.locator('[data-file="excel"]').count() === 1 && await page.locator('[data-file="pdf"]').count() === 1 && await page.locator("[data-autopreview]").count() === 0);
+  check("import page (" + L + "): Recent imports show on the Manual tab too", await page.locator(".bi-recent").count() === 1);
+  check("import page (" + L + "): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
+// 18d2. The same page on a phone: rows with expandable details, actions at the bottom, nothing wider than the screen.
+await scenario(async () => {
+  const db = biDb("ops");
+  const page = await phone(browser, db, { width: 390 });
+  await open(page);
+  await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+  await page.click('#menuBody [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  await page.click("[data-autopreview]"); await sleep(800);
+  check("import phone: no sideways scrolling", await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]));
+  check("import phone: the column header row is hidden, rows are stacked", !(await page.locator(".bi-th").isVisible()) && (await page.locator(".bi-row").count()) === 8);
+  const row = page.locator(".bi-row.s-review").first();
+  check("import phone: a review row starts collapsed and expands on tap", (await row.locator(".bi-hd").getAttribute("aria-expanded")) === "false" && !(await row.locator(".bi-ex").isVisible()));
+  await row.locator(".bi-hd").click(); await sleep(200);
+  check("import phone: the tapped row shows its explanation", (await row.locator(".bi-hd").getAttribute("aria-expanded")) === "true" && await row.locator(".bi-ex").isVisible());
+  const act = await page.locator(".bi-act").evaluate((e) => ({ pos: getComputedStyle(e).position, top: e.getBoundingClientRect().top, h: window.innerHeight }));
+  check("import phone: Check and Import stay within reach at the bottom", act.pos === "sticky" && act.top > act.h * 0.55, act);
+  check("import phone: tap targets are at least 44px", await page.evaluate(() => [...document.querySelectorAll(".bi-act .btn,.bi-chip,.bi-hd,.bi-tabs button")].every((e) => e.getBoundingClientRect().height >= 40)));
+  check("import phone: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
+// 18d3. A check with nothing to do, and a failed check, read plainly.
+await scenario(async () => {
+  const db = biDb("ops", { counts: { new: 0, changed: 0, unchanged: 5, review: 0, invalid: 0 }, can_apply: false, items: [], reviews: [], unchanged: [] });
+  db.reviews = []; db.autoImport.open_reviews = 0;
+  const page = await phone(browser, db, { width: 1100 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  await page.click("[data-autopreview]"); await sleep(800);
+  check("import page: a check with nothing to do says No booking changes", /No booking changes/.test(await page.locator("[data-autoitems]").innerText()) && /Nothing to import/.test(await page.locator("[data-autorun]").innerText()) && await page.locator("[data-autorun]").isDisabled());
+  db.previewError = "The booking site lists 125 bookings for 15 Oct but its download holds only 31. Nothing was imported.";
+  await page.click("[data-autopreview]"); await sleep(800);
+  check("import page: a failed check shows the reason and the status says so", /holds only 31/.test(await page.locator(".alert").innerText()) && /Check failed/.test(await page.locator(".bi-conn").innerText()) && await page.locator("[data-autorun]").isDisabled());
+  check("import page: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
+// 18d4. A company without the connected importer sees the manual import only, under the same heading.
+await scenario(async () => {
+  const db = makeDb(); db.company = { ...db.company, name: "Airport Parking Bay", slug: "airport-parking-bay", brand: { colour: "#1560BD", ink: "#FFFFFF", short: "Parking Bay", theme: "premium" } };
+  const page = await phone(browser, db, { width: 1000 });
+  await open(page);
+  await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); await page.click('#menuBody [data-view="import"]'); await sleep(500);
+  check("import page: Airport Parking Bay has no Auto import tab, only the manual import", await page.locator("[data-bitab]").count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator('[data-file="excel"]').count() === 1);
+  await page.context().close();
 });
 
 // 18a. DROPS file with the date and the time in separate columns (BookingList .xls):
@@ -2230,8 +2372,8 @@ await scenario(async () => {
   await page.click("#panelBody .pclose"); await sleep(300);
   check("after import: ✕ closes the box and removes nothing", !(await page.evaluate(() => document.getElementById("panel").open)) && !db.calls.some((c) => c.fn === "remove_booking"));
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(600);
-  check("Import screen lists the import with an Undo button", await page.locator(".impundo [data-undoimport]").count() === 1, await page.locator(".impundo").innerText().catch(() => ""));
-  await page.click(".impundo [data-undoimport]"); await sleep(800);
+  check("Import screen lists the import with an Undo button", await page.locator(".bi-recent [data-undoimport]").count() === 1, await page.locator(".bi-recent").innerText().catch(() => ""));
+  await page.click(".bi-recent [data-undoimport]"); await sleep(800);
   check("Undo asks, then undoes that import on the server", db.calls.some((c) => c.fn === "undo_import" && c.args.p_id === 70) && /Import undone/.test(await toast(page)), await toast(page));
   check("undo: no errors", page.__errors.length === 0, page.__errors);
 });
@@ -2751,6 +2893,26 @@ process.exit(failed ? 1 : 0);
 // ── previews (SHOTS=dir) ─────────────────────────────────────────────────
 async function shots(dir) {
   fs.mkdirSync(dir, { recursive: true });
+  // SHOTS_ONLY=import: the Booking import page on TakeOff's look, desktop and phone, with sample data only.
+  if (process.env.SHOTS_ONLY === "import") {
+    for (const [width, height, name] of [[1440, 1000, "desktop"], [390, 844, "phone"]]) {
+      const db = biDb(process.env.SHOTS_THEME || "ops");
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      const snap = async (n, full) => { await sleep(400); if (full) await page.setViewportSize({ width, height: Math.min(2400, await page.evaluate(() => document.documentElement.scrollHeight)) }); await page.screenshot({ path: path.join(dir, "import-" + name + "-" + n + ".png") }); if (full) await page.setViewportSize({ width, height }); };
+      await open(page); await sleep(300);
+      await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+      await page.click('#menuBody [data-view="import"]'); await sleep(700);
+      await snap("1-before-check", true);
+      await page.click("[data-autopreview]"); await sleep(900);
+      await snap("2-checked", true);
+      if (name === "phone") { await page.evaluate(() => window.scrollTo(0, 520)); await snap("2b-scrolled", false); await page.evaluate(() => window.scrollTo(0, 0)); }
+      if (name === "phone") { await page.locator(".bi-row.s-review").first().locator(".bi-hd").click(); await page.locator(".bi-row.s-changed").first().locator(".bi-hd").click(); await snap("3-expanded", true); }
+      await page.click('[data-bifilter="review"]'); await sleep(300); await snap("4-needs-review", false);
+      await page.click('[data-bitab="manual"]'); await sleep(400); await snap("5-manual", true);
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=dash: the dashboard on the Operations look, Airport Parking Bay and TakeOff, phone and desktop.
   if (process.env.SHOTS_ONLY === "dash") {
     for (const who of ["parkingbay", "takeoff"]) {

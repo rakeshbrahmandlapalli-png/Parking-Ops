@@ -355,5 +355,7 @@ export function previewView(p, hash) {
   return {
     hash, window: p.window, counts: p.counts, can_apply: p.counts.invalid === 0 && (p.batches.length > 0 || p.reviews.length > 0),
     items: lim(p.items.filter((i) => i.status !== "unchanged")), reviews: lim(p.reviews), invalid: lim(p.invalid),
+    // The unchanged ones, for the optional "Unchanged" view: just which booking, nothing else.
+    unchanged: p.items.filter((i) => i.status === "unchanged").slice(0, 600).map((i) => ({ kind: i.kind, day: i.day, ref: i.ref, reg: i.reg })),
   };
 }

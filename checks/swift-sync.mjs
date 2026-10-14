@@ -287,5 +287,10 @@ ok("the service-role-only functions are not callable by the app's users", (await
   ok("the tab-separated export is read as text (quotes, line breaks, blank rows)", g && g.length === 3 && g[1][2] === 'two\nlines, "q"' && g[2][1] === "AB2" && g[2][2] === "", JSON.stringify(g));
   ok("a real spreadsheet or a web page is not read as text", parseTsv(new Uint8Array([0x50, 0x4b, 3, 4])) === null && parseTsv(enc("<html>no tabs</html>")) === null);
 }
+{ // the optional "Unchanged" view: refs only, never phone numbers, and unchanged cars stay out of the default list
+  const p0 = { window: { from: "2026-10-14", to: "2026-10-15" }, counts: { new: 0, changed: 0, unchanged: 2, review: 0, invalid: 0 }, batches: [], reviews: [], invalid: [],
+    items: [{ kind: "drops", day: "2026-10-14", ref: "A1", reg: "AB12CDE", name: "X", status: "unchanged" }, { kind: "picks", day: "2026-10-15", ref: "B2", reg: "CD34EFG", name: "Y", status: "unchanged" }] };
+  const v = previewView(p0, "h");
+  ok("the preview lists unchanged bookings (kind, day, ref, reg only) apart from the changes", v.items.length === 0 && v.unchanged.length === 2 && Object.keys(v.unchanged[0]).sort().join() === "day,kind,ref,reg" && v.can_apply === false, JSON.stringify(v.unchanged)); }
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
