@@ -9,9 +9,9 @@ owner; also the platform admin, "Parking Ops").
   one IIFE), `app.css` (Standard), look stylesheets (below), `reader.js` (booking
   PDF/Excel reader), `pt.html/pt.js` (PT photo link page), `sw.js` (offline cache;
   **bump `CACHE` when adding a file to `FILES`**).
-- `setup/NN-*.sql` — database parts, applied in order to the live DB. Latest: **85** (85 (dashboard totals not capped at 300 rows, `exit.paid_cars`, early returns counted per car, handover note `set_handover_note` for owners/managers) applied by Claude on 14 Oct at the user's request; 84 (dashboard exit fees: `owner_dashboard` returns `exit` — paid, cash/card, no photo, exempt, cars handed back with none recorded since the first exit fee) applied by Claude on 13 Oct at the user's request; 83 (a typed scheduled/collection time more than 6 h from the booking lands inside the DROPS sheet's night, so 00:22 on a 12:00 booking is tonight's; `set_sched_time`/`set_collect_time`, same rule in `collectAt`) applied by Claude on 10 Oct at the user's request; 79–82 dashboard parts; 78 (PICKS car: Return flight `set_pick_flight`, carried to its DROPS car when that has none, logged FLIGHT so imports keep it; office changes the return `set_pick_return`, its DROPS car follows via `set_return`) written 10 Oct, **not applied yet** (waits for the user); 77 (yard colours, `set_yard_colours` owners only; APB starts MY green, GS orange, T yellow) applied by Claude on 10 Oct at the user's request; 76 (exit fee, `set_exit_fee` owners only, `set_exit_paid` with photo) applied by Claude on 10 Oct at the user's request; 75 (EARLY RETURN on a night picked: `early_return(uuid, date)`, `early_return_from_picks(uuid, date)`; the one-argument versions mean tonight) and 74 (EARLY RETURN from the PICKS car) applied by Claude on 10 Oct at the user's request; all applied; the Supabase MCP's execute_sql hangs on DROP statements (asks for a confirmation), so avoid DROP in tests; 73 (dashboard counts DROPS yards, DROPS yard fills empty PICKS location) by Claude on 8 Oct at the user's request; 72 (Operations look) by Claude on 7 Oct at the user's request; 70 and 71 (capacity) by Claude on 7 Oct at the user's request; 68 and 69 run by the user in the SQL editor on 7 Oct — they prefer running SQL themselves; DB checks: checks/carry-from-picks.mjs, checks/desk-booking.mjs, checks/drops-yard-to-picks.mjs, checks/yard-colours.mjs, checks/picks-return-flight.mjs).
+- `setup/NN-*.sql` — database parts, applied in order to the live DB. Latest applied: **86** (read-only Swift sync: lock, review list, preview helpers, atomic apply) applied by Claude on 14 Oct at the user's request; (85 (dashboard totals not capped at 300 rows, `exit.paid_cars`, early returns counted per car, handover note `set_handover_note` for owners/managers) applied by Claude on 14 Oct at the user's request; 84 (dashboard exit fees: `owner_dashboard` returns `exit` — paid, cash/card, no photo, exempt, cars handed back with none recorded since the first exit fee) applied by Claude on 13 Oct at the user's request; 83 (a typed scheduled/collection time more than 6 h from the booking lands inside the DROPS sheet's night, so 00:22 on a 12:00 booking is tonight's; `set_sched_time`/`set_collect_time`, same rule in `collectAt`) applied by Claude on 10 Oct at the user's request; 79–82 dashboard parts; 78 (PICKS car: Return flight `set_pick_flight`, carried to its DROPS car when that has none, logged FLIGHT so imports keep it; office changes the return `set_pick_return`, its DROPS car follows via `set_return`) written 10 Oct, **not applied yet** (waits for the user); 77 (yard colours, `set_yard_colours` owners only; APB starts MY green, GS orange, T yellow) applied by Claude on 10 Oct at the user's request; 76 (exit fee, `set_exit_fee` owners only, `set_exit_paid` with photo) applied by Claude on 10 Oct at the user's request; 75 (EARLY RETURN on a night picked: `early_return(uuid, date)`, `early_return_from_picks(uuid, date)`; the one-argument versions mean tonight) and 74 (EARLY RETURN from the PICKS car) applied by Claude on 10 Oct at the user's request; all applied; the Supabase MCP's execute_sql hangs on DROP statements (asks for a confirmation), so avoid DROP in tests; 73 (dashboard counts DROPS yards, DROPS yard fills empty PICKS location) by Claude on 8 Oct at the user's request; 72 (Operations look) by Claude on 7 Oct at the user's request; 70 and 71 (capacity) by Claude on 7 Oct at the user's request; 68 and 69 run by the user in the SQL editor on 7 Oct — they prefer running SQL themselves; DB checks: checks/carry-from-picks.mjs, checks/desk-booking.mjs, checks/drops-yard-to-picks.mjs, checks/yard-colours.mjs, checks/picks-return-flight.mjs).
 - `supabase/functions/` — edge functions (flights, manage-staff, pt-photos, pt-r2,
-  send-alerts, staff-login, takeoff-bookings).
+  send-alerts, staff-login, takeoff-bookings — Swift read-only sync, see below).
 - `checks/` — tests (see `checks/README.md`).
 - `public/tutorials/` — the 7 how-to videos (owner, terminal, bongo); played from Menu → Tutorials (not cached by `sw.js`); see its README.
 - Hosting: Vercel (`takeoff-ops.vercel.app` TakeOff, `parkingbay-ops.vercel.app`
@@ -79,7 +79,7 @@ The user wants looks kept **separate** (a change to one must not change another)
   force-push it (it only carries merged history).
 - Keep UI text short; the user removed explanatory notes in the menu (keep only
   the Display note).
-- Tests: `cd checks/e2e && timeout 580 node run.mjs` — **723 passing** as of 13 Oct
+- Tests: `cd checks/e2e && timeout 580 node run.mjs` — **777 passing, 4 dashboard date-dependent failures also on main** as of 14 Oct
   2026. Add tests for every change. Write output to a file and grep `FAIL|passed`.
   The mock Supabase lives in run.mjs (`rpc()` cases, REST routes).
   Previews: `SHOTS=<dir> node run.mjs` screenshots TakeOff's look (phone and desktop).
@@ -89,9 +89,21 @@ The user wants looks kept **separate** (a change to one must not change another)
   needed, check the live definition matches the previous part first, apply with
   the Supabase MCP, keep the file in `setup/`.
 - Commit trailer: `Co-Authored-By` + `Claude-Session` lines (see system reminder).
-- Do **not** build automated login/scraping of TakeOff's Swift booking admin
-  site; that was declined. `supabase/functions/takeoff-bookings` exists but is
-  switched off (no config).
+- Swift booking access (TakeOff only, **never Airport Parking Bay**): on 14 Oct the
+  user said Swift confirmed there is no API and told them to use the login Swift
+  gave, which supersedes the earlier "declined" note. The read-only sync is built in
+  `supabase/functions/takeoff-bookings` (`swift.mjs` guarded client + planner,
+  `index.ts`; setup 86; steps in its README) and is **manual only**: Import →
+  "Check bookings" (dry run, writes nothing) then "Get bookings now". **State (14 Oct):
+  setup 86 applied, function `takeoff-bookings` v3 deployed, TakeOff's config row saved
+  (`manual_enabled`, scope `{all:true}`, no secrets), schedule off (`enabled` false, timer
+  refused). The login secrets are added by the user; nothing imported live yet. Never ask for or accept the Swift
+  password in chat (Supabase secrets `TAKEOFF_BOOKING_LOGIN` / `_PASSWORD` only).
+  Known from the user's photos (14 Oct): every booking on that site is TakeOff's; pages
+  `bookinglist-parkandride.php` and `arrival_report_parkandride.php`; flights come from the Return
+  Report's HTML table. Not yet verified (no login here): the search query strings, the Excel
+  export link/format, pagination, the sign-in response. Do not turn the
+  schedule on, or import live, without the user's go-ahead after the first reviewed run.
 - Unused: `companies.swipe_only` / `set_swipe_only()` (setup 64, superseded by
   per-person choice).
 

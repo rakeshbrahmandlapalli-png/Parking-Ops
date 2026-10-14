@@ -38,7 +38,7 @@ export function parseDateTime(text) {
 
 // grid: array of rows, each an array of cell strings (dates already normalised
 // to "yyyy-mm-dd[ HH:MM]" by the caller, as the browser reader does with SheetJS).
-export function parseExcelGrid(grid) {
+export function parseExcelGrid(grid, opts) {
   let headRow = -1, cols = null;
   for (let r = 0; r < Math.min(grid.length, 20) && headRow < 0; r++) {
     const found = {}, used = {};
@@ -56,7 +56,8 @@ export function parseExcelGrid(grid) {
   grid.slice(headRow + 1).forEach(function (row) {
     const ref = get(row, "ref"), name = get(row, "name");
     if (!ref && !name) return;
-    if (/cancel/i.test(get(row, "status"))) return;
+    const cancelled = /cancel/i.test(get(row, "status"));
+    if (cancelled && !(opts && opts.keepCancelled)) return;
     let vehicle = get(row, "vehicle"), reg = get(row, "reg"), make = vehicle;
     if (!reg) { const m = vehicle.match(UKREG); if (m) { reg = m[1]; make = vehicle.slice(0, m.index).trim(); } }
     const flight = function (key) { const m = get(row, key).toUpperCase().match(FLIGHT_RE); return m ? m[1] + m[2] : ""; };
@@ -64,7 +65,7 @@ export function parseExcelGrid(grid) {
     if (/^[\d.\s]*$/.test(note)) note = "";
     out.push({ ref: ref, name: name, phone: get(row, "phone"), make: make || "", reg: reg.toUpperCase().replace(/\s+/g, " "),
       flightIn: flight("flightIn") || flight("flight"), flightOut: flight("flightOut") || flight("flight"), note: note,
-      meet: parseDateTime(get(row, "meet")), ret: parseDateTime(get(row, "ret")) });
+      meet: parseDateTime(get(row, "meet")), ret: parseDateTime(get(row, "ret")), cancelled: cancelled });
   });
   return { rows: out, columns: Object.keys(cols) };
 }

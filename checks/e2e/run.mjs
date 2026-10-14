@@ -133,8 +133,9 @@ function rpc(db, fn, a) {
     case "import_sheet": { const sh = db.sheets.find((x) => x.kind === a.p_kind && x.day === a.p_day); (db.imports = db.imports || []).push({ id: 70 + db.imports.length, kind: a.p_kind, day: a.p_day, at: now(), by: "RAKESH", added: a.p_rows.length, changed: 0, undone: false, latest: true }); return { sheet_id: sh ? sh.id : "p0", added: a.p_rows.length, updated: 0, early: 0, moved: 0, new_marked: 0, undo_id: 70 + db.imports.length - 1 }; }
     case "admin_save_client": (db.clientSaves = db.clientSaves || []).push(a.p); return { id: a.p.id, name: a.p.name, brand: a.p.brand };
     case "recent_imports": return db.imports || [];
-    case "auto_import_status": return db.autoImport || { enabled: false };
-    case "set_auto_import": { db.autoImport = Object.assign(db.autoImport || {}, { enabled: a.p_enabled }); return { enabled: a.p_enabled }; }
+    case "auto_import_status": return db.autoImport || { available: false };
+    case "swift_reviews_open": return db.reviews || [];
+    case "swift_review_resolve": { db.reviews = (db.reviews || []).filter((r) => r.id !== a.p_id); db.autoImport.open_reviews = db.reviews.length; return null; }
     case "pt_copy_report": (db.reports = db.reports || []).push(a); return null;
     case "undo_import": { const i = (db.imports || []).find((x) => x.id === a.p_id); if (i) i.undone = true; return { removed: 2, kept: 0, restored: 0, sheet_id: "p0", sheet_gone: false }; }
     case "pt_unsaved": return db.ptUnsaved || [];
@@ -211,7 +212,9 @@ async function backend(ctx, db) {
       return reply(200, a.action === "timetable" ? { schedule: { filled: 2, moved: 0, notfound: 0 } } : { company: "TAKEOFF", live: { written: 1, landed: 1 } });
     }
     if (p.startsWith("/functions/v1/takeoff-bookings")) {
-      (db.autoRuns = db.autoRuns || []).push(JSON.parse(req.postData() || "{}"));
+      const ar = JSON.parse(req.postData() || "{}"); (db.autoRuns = db.autoRuns || []).push(ar);
+      if (ar.action === "preview") return db.previewError ? reply(200, { ok: false, error: db.previewError }) : reply(200, { ok: true, preview: db.preview || { hash: "h1", window: {}, counts: { new: 2, changed: 1, unchanged: 4, review: 1, invalid: 0 }, can_apply: true, items: [{ kind: "drops", day: TONIGHT, ref: "T1", reg: "AB12CDE", status: "changed", changes: [{ field: "return", from: "10:00", to: "12:30" }] }], reviews: [], invalid: [] } });
+      if (db.applyError) return reply(200, { ok: false, error: db.applyError });
       return reply(200, { ok: true, summary: { days: [{ kind: "drops", day: TONIGHT, added: 2, updated: 1 }, { kind: "picks", day: TONIGHT, added: 3, updated: 0 }], drops_rows: 3, picks_rows: 3 } });
     }
     if (p.startsWith("/functions/v1/pt-r2")) {
@@ -1477,21 +1480,63 @@ await scenario(async () => {
   check("import: cars missing from the file are listed, with the moved-day warning", /no longer lists them/.test(gone) && /Only remove cars you know are cancelled/.test(gone));
 });
 
-// 18b. Automatic bookings: the office's on/off switch and "Get bookings now".
+// 18b. Bookings from the booking site: Check first, then Get bookings now; nothing on a timer.
 await scenario(async () => {
   const db = makeDb();
-  db.autoImport = { config: { base: "https://example.test/admin/" }, enabled: false, last_ok: null, last_error: null };
+  db.autoImport = { available: true, running: false, last_ok: null, last_error: null, open_reviews: 1 };
+  db.reviews = [{ id: 5, ref: "T2", kind: "cancelled", detail: { name: "B Two", reg: "CD34EFG", kind: "drops" } }];
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
-  await page.waitForSelector("[data-autotoggle]", { timeout: 6000 });
-  check("auto-import: the Automatic bookings section shows when it's set up", /Automatic bookings/i.test(await page.locator("#main").innerText()));
-  check("auto-import: starts off, offering Turn on and Get bookings now", await page.locator("[data-autotoggle]").innerText() === "Turn on" && await page.locator("[data-autorun]").count() === 1);
-  await page.click("[data-autotoggle]"); await sleep(400);
-  check("auto-import: Turn on reaches the server and flips to Turn off", db.calls.some((c) => c.fn === "set_auto_import" && c.args.p_enabled === true) && await page.locator("[data-autotoggle]").innerText() === "Turn off");
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  check("auto-import: the section shows when it's set up", /Bookings from the booking site/i.test(await page.locator("#main").innerText()));
+  check("auto-import: no on/off switch (the schedule is off)", await page.locator("[data-autotoggle]").count() === 0);
+  check("auto-import: Get bookings now waits for a check first", await page.locator("[data-autorun]").isDisabled());
+  check("auto-import: cancellations wait for the office", (await page.locator("[data-autoreviews]").innerText()).includes("Cancelled · T2"));
+  await page.click("[data-autopreview]"); await sleep(700);
+  check("auto-import: Check bookings asks for a preview only", (db.autoRuns || []).length === 1 && db.autoRuns[0].action === "preview" && !(db.autoRuns || []).some((x) => x.action === "apply"));
+  check("auto-import: the preview shows new / changed / unchanged / review", /2 new · 1 changed · 4 unchanged · 1 for review/.test(await page.locator("[data-autopreviewsum]").innerText()));
+  check("auto-import: the changed field is listed", /return: 10:00 → 12:30/.test(await page.locator("[data-autoitems]").innerText()));
   await page.click("[data-autorun]"); await sleep(900);
-  check("auto-import: Get bookings now calls the import function", (db.autoRuns || []).some((x) => x.action === "run"));
+  const ap = (db.autoRuns || []).find((x) => x.action === "apply");
+  check("auto-import: Get bookings now imports the previewed plan (hash sent)", ap && ap.expect_hash === "h1", db.autoRuns);
   check("auto-import: the result is shown (added / updated)", /Bookings in: 5 added, 1 updated/.test(await toast(page)), await toast(page));
+  await page.click("[data-reviewdone]"); await sleep(500);
+  check("auto-import: marking a review done removes it", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 5) && await page.locator("[data-autoreviews]").count() === 0);
+  check("auto-import: no errors", page.__errors.length === 0, page.__errors);
+});
+
+// 18b2. A failed check shows the reason and offers no import; an invalid record blocks it.
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: false, open_reviews: 0 };
+  db.previewError = "The booking site sent a web page instead of the report. Nothing was imported.";
+  const page = await phone(browser, db, { width: 1000 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  await page.click("[data-autopreview]"); await sleep(700);
+  check("auto-import: a failed check shows why", /web page instead of the report/.test(await page.locator("[data-autobox]").innerText()));
+  check("auto-import: and Get bookings now stays off", await page.locator("[data-autorun]").isDisabled());
+  db.previewError = null; db.preview = { hash: "h2", window: {}, counts: { new: 0, changed: 0, unchanged: 0, review: 0, invalid: 2 }, can_apply: false, items: [], reviews: [], invalid: [{ kind: "drops", ref: "D1", reason: "ambiguous: the same reference appears 2 times with different details" }] };
+  await page.click("[data-autopreview]"); await sleep(700);
+  check("auto-import: invalid records are listed and block the import", /ambiguous/.test(await page.locator("[data-autoitems]").innerText()) && await page.locator("[data-autorun]").isDisabled());
+  check("auto-import: no errors", page.__errors.length === 0, page.__errors);
+});
+
+// 18b3. A changed plan between check and import is refused, nothing imported.
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: false, open_reviews: 0 };
+  const page = await phone(browser, db, { width: 1000 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  await page.click("[data-autopreview]"); await sleep(700);
+  db.applyError = "The bookings changed since the preview. Check them again before importing.";
+  await page.click("[data-autorun]"); await sleep(800);
+  check("auto-import: a plan that changed is refused with the reason", /changed since the preview/.test(await page.locator("[data-autobox]").innerText()));
+  check("auto-import: the stale preview can't be imported again", await page.locator("[data-autorun]").isDisabled());
   check("auto-import: no errors", page.__errors.length === 0, page.__errors);
 });
 
@@ -1501,7 +1546,7 @@ await scenario(async () => {
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
-  check("auto-import: hidden for a company without it set up", !/Automatic bookings/i.test(await page.locator("#main").innerText()));
+  check("auto-import: hidden for a company without it set up", !/Bookings from the booking site/i.test(await page.locator("#main").innerText()));
 });
 
 // 18a. DROPS file with the date and the time in separate columns (BookingList .xls):
