@@ -65,7 +65,7 @@ export function parseExcelGrid(grid, opts) {
     if (/^[\d.\s]*$/.test(note)) note = "";
     out.push({ ref: ref, name: name, phone: get(row, "phone"), make: make || "", reg: reg.toUpperCase().replace(/\s+/g, " "),
       flightIn: flight("flightIn") || flight("flight"), flightOut: flight("flightOut") || flight("flight"), note: note,
-      meet: parseDateTime(get(row, "meet")), ret: parseDateTime(get(row, "ret")), cancelled: cancelled });
+      meet: parseDateTime(get(row, "meet")), ret: parseDateTime(get(row, "ret")), cancelled: cancelled, status: get(row, "status") });
   });
   return { rows: out, columns: Object.keys(cols) };
 }
