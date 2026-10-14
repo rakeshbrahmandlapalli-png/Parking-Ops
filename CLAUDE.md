@@ -94,7 +94,7 @@ The user wants looks kept **separate** (a change to one must not change another)
   gave, which supersedes the earlier "declined" note. The read-only sync is built in
   `supabase/functions/takeoff-bookings` (`swift.mjs` guarded client + planner,
   `index.ts`; setup 86; steps in its README) and is **manual only**: Import →
-  "Check bookings" (dry run, writes nothing) then "Get bookings now". **State (14 Oct):
+  Booking import → Auto import → "Check bookings" (dry run, writes nothing) then "Import N bookings" (the page was redesigned on branch `claude/booking-import-redesign`: Auto import / Manual import tabs, no provider name in the UI; setup 89 adds the import source to `recent_imports`, **not applied yet**). 14 Oct fix: the site's product filter is `producttype` (our searches said `productype` and the site fell back to its default, so the 15th showed 31 instead of 125); TakeOff's saved searches were corrected in the DB. **State (14 Oct):
   setups 86 and 87 applied, function `takeoff-bookings` v12 deployed (reads one day at a time, answers at once
   and keeps the connection alive, reads the export as plain text), TakeOff's config row saved (`manual_enabled`,
   scope `{all:true}`, no secrets), schedule off (`enabled` false, timer refused). The user added the login secrets and

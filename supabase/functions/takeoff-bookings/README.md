@@ -1,8 +1,8 @@
 # takeoff-bookings — read-only Swift booking sync (TakeOff only)
 
-Manual only. The phone's Import screen has **Check bookings** (a dry run: it signs in
+Manual only. The Booking import page (Auto import tab) has **Check bookings** (a dry run: it signs in
 to the booking site, reads the approved reports and shows new / changed / unchanged /
-for review / unreadable; it writes nothing to bookings) and **Get bookings now**
+for review / unreadable; it writes nothing to bookings) and **Import N bookings**
 (imports exactly the plan that was checked; if the site's answer has changed since, it
 refuses). The timer action is refused. Airport Parking Bay is refused in the code.
 
@@ -43,9 +43,9 @@ select id, 'swift', '{
   "login_path": "index.php?req=login",
   "login_fields": {"login": "login", "password": "password", "extra": {"action": "Sign In", "url": "%3F"}},
   "export_path": "export_to_excel.php",
-  "drops_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=1&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
-  "picks_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=1&supplier=all&filter_field=bookings.booking_from&filter_from={FROM}&filter_to={TO}&submit=Search",
-  "cancelled_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=2&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
+  "drops_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&producttype=all&filter_status=1&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
+  "picks_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&producttype=all&filter_status=1&supplier=all&filter_field=bookings.booking_from&filter_from={FROM}&filter_to={TO}&submit=Search",
+  "cancelled_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&producttype=all&filter_status=2&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
   "flights_search": "arrival_report_parkandride.php",
   "flights_format": "html",
   "flights_post": {"action_Search": "action_Search", "search": "", "productype": "all", "supplier": "all", "airports": "all", "filter_from": "{FROM}", "filter_to": "{TO}", "submit": "Search"},
@@ -56,7 +56,7 @@ from companies where slug = 'takeoff'
 on conflict (company_id) do update set config = excluded.config;
 ```
    Completed bookings only are imported; cancelled ones come from the status-2 search and go to the review list. The check also refuses an export whose dates don't match the search (in case the site ignores the filter).
-6. Import → Check bookings. Read the list. Only then Get bookings now, and use Undo if needed.
+6. Import → Auto import → Check bookings. Read the list. Only then Import N bookings, and use Undo if needed.
 Leave the schedule off until the first import has been reviewed.
 
 Tests: `cd checks && npm install @electric-sql/pglite && node swift-sync.mjs`.
