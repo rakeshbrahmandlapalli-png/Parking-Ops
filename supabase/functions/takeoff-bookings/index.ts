@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
       }
       let days: unknown[] = [];
       if (c.p.batches.length) {
-        const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, manual: true, provider: "swift" } });
+        const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, manual: true, provider: "swift" }, p_user: me.user_id });
         if (res.error) throw new Error("Nothing was imported (" + res.error.message + ").");
         days = res.data as unknown[];
       }
