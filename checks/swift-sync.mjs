@@ -59,7 +59,10 @@ const mk = (s, user = "u", pass = "p") => makeClient(CFG, { fetch: s.fetch, slee
   const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
   ok("the site's own result count is read from the search page", b.siteRows === 125, b.siteRows); }
 { const s = site(); const c = mk(s); await c.login(); const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
-  ok("no count on the page means no count to compare", b.siteRows === null); }
+  ok("no count on the page means no count to compare", b.siteRows === null && typeof b.siteNote === "string"); }
+{ const s = site({ results: "<html><b>Total:</b> (<b>125</b>&nbsp;results)</html>" }); const c = mk(s); await c.login();
+  const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
+  ok("the count is found even with tags around the number", b.siteRows === 125, b.siteRows); }
 { const s = site(); const c = mk(s);
   await c.login(); const buf = await c.download("bookinglist.php?a=1", "export_to_excel.php");
   ok("signs in once, searches, downloads", s.calls.filter((x) => x.method === "POST").length === 1 && buf.length > 0 && s.calls.length === 3, s.calls.map((x) => x.method + x.url));

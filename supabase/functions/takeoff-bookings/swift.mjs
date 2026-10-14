@@ -132,8 +132,11 @@ export function makeClient(cfg, io) {
       if (declared && declared !== buf.length) throw new Error("The download was cut short (" + buf.length + " of " + declared + " bytes). Nothing was imported.");
       const out = checkDownload(buf, x.res.headers.get("content-type") || "");
       // The search page says how many bookings it found ("(125 results)"); the caller compares that with the download.
-      const m = st.match(/\(\s*(\d[\d,]*)\s+results?\s*\)/i);
+      const plain = st.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+      const m = plain.match(/(\d[\d,]*)\s+results?\b/i);
       out.siteRows = m ? Number(m[1].replace(/,/g, "")) : null;
+      const at = plain.search(/results?\b/i);
+      out.siteNote = (at >= 0 ? plain.slice(Math.max(0, at - 60), at + 40) : plain.slice(0, 100)).trim();
       return out;
     },
   };

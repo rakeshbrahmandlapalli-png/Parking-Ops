@@ -92,7 +92,8 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
       const r = readReport(gridFrom(buf), scope, { ...opts, field, window: one, allowEmpty: true });
       // The site's own count for that search against what the download holds: a short download is never imported.
       const siteRows = (buf as unknown as { siteRows: number | null }).siteRows;
-      if (siteRows != null) site[d] = siteRows;
+      if (siteRows == null) throw new Error("Couldn't read how many bookings the site lists for " + d + ", so the download can't be checked. Page text: \"" + String((buf as unknown as { siteNote?: string }).siteNote ?? "").slice(0, 120) + "\". Nothing was imported.");
+      site[d] = siteRows;
       if (siteRows != null && r.rows.length < siteRows) throw new Error("The booking site lists " + siteRows + " bookings for " + d + " but its download holds only " + r.rows.length + ". Nothing was imported.");
       rows.push(...(keep ? r.rows.filter((x: never) => keep(x, d)) : r.rows)); excludedScope += r.excludedScope;
     }
