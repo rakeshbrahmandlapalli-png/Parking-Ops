@@ -4,7 +4,8 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate, rangeFor, requestBudget, MAX_REQUESTS, cleanTimes, dueSlot, scheduleDecision } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate, rangeFor, requestBudget, MAX_REQUESTS, cleanTimes, dueSlot, scheduleDecision, flightFields } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { matchFlights } from "../supabase/functions/takeoff-bookings/reader.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -19,7 +20,7 @@ ok("site date box format", siteDate("2026-10-05") === "05-October-2026");
   const now = Date.parse("2026-10-14T12:00:00Z"), bad = (a, b) => { try { rangeFor(now, a, b); return false; } catch { return true; } };
   ok("a typed range of 14 days is accepted", rangeFor(now, "2026-10-20", "2026-11-02").to === "2026-11-02");
   ok("a typed range of 15 days, backwards, bad or far-off dates is refused", bad("2026-10-20", "2026-11-03") && bad("2026-10-20", "2026-10-19") && bad("20/10/2026", "2026-10-21") && bad("2026-02-30", "2026-03-01") && bad("2026-09-01", "2026-09-05") && bad("2026-12-20", "2026-12-21"));
-  ok("the request budget grows with the days but never drops below the default", requestBudget(1) === MAX_REQUESTS && requestBudget(14) === 68);
+  ok("the request budget grows with the days but never drops below the default", requestBudget(1) === MAX_REQUESTS && requestBudget(14) === 82);
 }
 ok("window is bounded to 14 days", windowFor(Date.parse("2026-10-14T12:00:00Z"), 99).to === "2026-10-27" && windowFor(Date.parse("2026-10-14T12:00:00Z"), 2).to === "2026-10-15");
 
@@ -312,6 +313,23 @@ ok("the service-role-only functions are not callable by the app's users", (await
   ok("a new review case holds it, a known one does not", scheduleDecision(plan({ reviews: [{ kind: "drops", ref: "A1" }] }), new Set()).go === false && scheduleDecision(plan({ reviews: [{ kind: "drops", ref: "A1" }] }), new Set(["drops|A1"])).go === true);
   ok("an unusually large change holds it", scheduleDecision(plan({ counts: { new: 250 } }), new Set()).go === false);
 }
+
+// Return flights (14 Oct: the 16th had 2 of 59): one Return Report search per day, product filter under the site's name
+{ const f = flightFields({ productype: "all", filter_from: "{FROM}", filter_to: "{TO}" }, "2026-10-16", siteDate);
+  ok("the Return Report search sends the site's producttype filter", f.producttype === "all" && f.productype === "all", JSON.stringify(f));
+  ok("the Return Report search is for that one day", f.filter_from === siteDate("2026-10-16") && f.filter_to === siteDate("2026-10-16"));
+  const s = site(); s.state.hook = (u, init) => u.pathname.endsWith("report.php") && init.method === "POST" ? new Response("<table></table>", { status: 200 }) : null;
+  const c = makeClient({ ...CFG, scripts: [...CFG.scripts, "report.php"], post_scripts: ["report.php"], max_search_posts: 5 }, { fetch: s.fetch, sleep: async () => {}, user: "u", pass: "p" });
+  await c.login(); let m = "";
+  for (let i = 0; i < 5; i++) m = m || await throws(() => c.postPage("report.php", {}));
+  ok("a search per day is allowed up to the run's limit", !m, m);
+  ok("and stops past it", /too many searches/.test(await throws(() => c.postPage("report.php", {}))));
+  const grid = parseHtmlTable("<table><tr><th>Time</th><th>Agent</th><th>Ref#</th><th>Client</th><th>Airport</th><th>Telephone</th><th>Day</th><th>Car Make</th><th>Car Reg</th><th>Flight No.</th><th>Flight Time</th><th>Booking Status</th><th>Return Type</th><th>Drivers</th></tr>" +
+    "<tr><td>07:35</td><td>Web</td><td>LKNLZL</td><td>MISS T ZWOLINSKI</td><td>Luton</td><td></td><td>Fri</td><td>FORD RANGER</td><td>HG68SCV</td><td>W61601</td><td></td><td>Completed</td><td></td><td></td></tr></table>");
+  const fr = readReport(grid, { all: true }, { allowEmpty: true, flights: true });
+  const drops = [{ ref: "LKNLZL", reg: "HG68SCV", flightIn: "" }];
+  const n = matchFlights(drops, fr.rows.map((r) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
+  ok("a Return Report row gives its DROPS car the return flight", n === 1 && drops[0].flightIn === "W61601", JSON.stringify(fr.rows)); }
 
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);

@@ -31,7 +31,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights, addDaysKey } from "./reader.mjs";
-import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget, cleanTimes, dueSlot, scheduleDecision } from "./swift.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget, cleanTimes, dueSlot, scheduleDecision, flightFields } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -73,9 +73,10 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
   if (!base || !dropsSearch || !picksSearch) throw new Error("The report addresses aren't set up for " + company.slug + ".");
   const scope = cfg.scope as never; // {all:true} | {column, values} | [{column, values}, …]
   const dw = range ?? windowFor(Date.now(), Number(cfg.drops_days ?? 2)), pw = range ?? windowFor(Date.now(), Number(cfg.picks_days ?? 3));
+  const spanDays = (w: { from: string; to: string }) => Math.round((Date.parse(w.to + "T12:00:00Z") - Date.parse(w.from + "T12:00:00Z")) / 86400000) + 1;
   const fill = (path: string, w: { from: string; to: string }) => path.replace(/\{FROM\}/g, siteDate(w.from)).replace(/\{TO\}/g, siteDate(w.to));
   const client = makeClient({
-    base, max_requests: range ? requestBudget(Math.round((Date.parse(range.to + "T12:00:00Z") - Date.parse(range.from + "T12:00:00Z")) / 86400000) + 1) : undefined, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
+    base, max_requests: range ? requestBudget(spanDays(dw)) : undefined, max_search_posts: spanDays(dw) + 2, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
     scripts: [dropsSearch, picksSearch, flightsSearch, cancelledSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
@@ -104,16 +105,23 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
   // Returns before the cutoff on the day after belong to the last sheet, so that day is searched too, for those only.
   const dwx = { from: dw.from, to: addDaysKey(dw.to, 1) };
   const drops = await readDays(dropsSearch, dwx, "ret", (r, d) => d !== dwx.to || (!!r.ret && !!r.ret.time && r.ret.time <= cutoff));
+  const flights: { rows: number; matched: number; cars: number; by_day: Record<string, number> } = { rows: 0, matched: 0, cars: drops.rows.length, by_day: {} };
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
+    // One search per day, like the bookings: a several-day search can come back cut short.
     const fFields = cfg.flights_post as Record<string, string> | undefined; // the Return Report's search is a POST form
-    const fGrid = cfg.flights_format === "html"
-      ? parseHtmlTable(fFields
-          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dwx)])))
-          : await client.page(fill(flightsSearch, dwx)))
-      : gridFrom(await client.download(fill(flightsSearch, dwx), String(cfg.flights_export_path ?? exportPath)));
-    const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
-    matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
+    // deno-lint-ignore no-explicit-any
+    const fRows: any[] = [];
+    for (const d of eachDay(dwx)) {
+      const one = { from: d, to: d };
+      const fGrid = cfg.flights_format === "html"
+        ? parseHtmlTable(fFields ? await client.postPage(flightsSearch, flightFields(fFields, d, siteDate)) : await client.page(fill(flightsSearch, one)))
+        : gridFrom(await client.download(fill(flightsSearch, one), String(cfg.flights_export_path ?? exportPath)));
+      const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
+      flights.by_day[d] = f.rows.length; fRows.push(...f.rows);
+    }
+    flights.rows = fRows.length;
+    flights.matched = matchFlights(drops.rows, fRows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   }
   const picks = await readDays(picksSearch, pw, "meet");
   // Cancelled bookings need their own search (the main ones list Completed only).
@@ -134,7 +142,7 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
   const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff, cancelledRows: cancelledRows as never });
-  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: { ...reportStats(picks.rows, "meet", picks.site), form: picks.form } }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
+  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: { ...reportStats(picks.rows, "meet", picks.site), form: picks.form }, flights }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {
