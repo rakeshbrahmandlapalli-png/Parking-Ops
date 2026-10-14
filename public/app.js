@@ -4050,53 +4050,93 @@
     if (!dt.time || cutoff === "00:00" || dt.time > cutoff) return dt.key;
     return addDaysKey(dt.key, -1);
   }
-  // Automatic bookings (TakeOff / Swift): shown only for a company that has it
-  // set up on the platform (config.base). The office turns the 10-minute import
-  // on or off, and "Get bookings now" imports straight away either way.
+  // Bookings from the booking site (TakeOff / Swift), by hand only: "Check bookings"
+  // shows what would change and writes nothing; "Get bookings now" then imports exactly
+  // that. Shown only for a company that has it set up on the platform. The schedule is off.
   function autoImportSection() {
     if (S.autoImport === undefined) { S.autoImport = null; loadAutoImport(); return ""; }
     var a = S.autoImport;
     if (!a || !a.available || !can("import")) return "";
-    var on = !!a.enabled, run = a.running;
+    var P = a.preview, busy = a.running || a.checking;
     var when = a.last_ok ? "Last update " + dayShort(a.last_ok) + " " + hhmm(a.last_ok) : "Not run yet";
-    var status = a.last_error ? '<span class="bad">Last try failed: ' + esc(String(a.last_error).slice(0, 120)) + "</span>"
-      : (on ? "Connected · " + esc(when) : "Off · press Get bookings now whenever you like");
-    return '<div class="section-label">Automatic bookings</div><div class="box" style="padding:12px">' +
-      '<div class="rowline" style="border:0;padding:0 0 10px"><div class="grow"><strong>Bookings from the booking site</strong>' +
-      '<div class="note">' + status + "</div></div>" +
-      '<button type="button" class="btn ' + (on ? "ghost" : "brand") + ' small" data-autotoggle>' + (on ? "Turn off" : "Turn on") + "</button></div>" +
-      '<button type="button" class="btn brand" style="width:100%" data-autorun' + (run ? " disabled" : "") + ">" + (run ? "Getting bookings…" : "Get bookings now") + "</button>" +
-      '<p class="hint">It never changes anything on the booking site; it only reads. Cancelled bookings are flagged for you, not removed.</p></div>';
+    var status = a.blocked_until ? '<span class="bad">Paused after a failed sign-in until ' + esc(hhmm(a.blocked_until)) + ". Check the saved login.</span>"
+      : a.last_error ? '<span class="bad">Last try failed: ' + esc(String(a.last_error).slice(0, 160)) + "</span>"
+      : esc(when);
+    if (a.running) status = "Getting bookings…";
+    else if (a.checking) status = "Checking the booking site…";
+    var h = '<div class="section-label">Bookings from the booking site</div><div class="box" style="padding:12px" data-autobox>' +
+      '<div class="note" style="margin-bottom:10px">' + status + "</div>" +
+      '<div class="row-actions" style="gap:8px"><button type="button" class="btn ghost" style="flex:1" data-autopreview' + (busy ? " disabled" : "") + ">Check bookings</button>" +
+      '<button type="button" class="btn brand" style="flex:1" data-autorun' + (busy || !(P && P.can_apply && !a.stale) ? " disabled" : "") + ">" + (a.running ? "Getting bookings…" : "Get bookings now") + "</button></div>";
+    if (a.error) h += '<div class="alert" role="alert" style="margin-top:10px">' + esc(a.error) + "</div>";
+    if (P) {
+      var c = P.counts || {};
+      h += '<p class="hint" data-autopreviewsum>' + esc((c["new"] || 0) + " new · " + (c.changed || 0) + " changed · " + (c.unchanged || 0) + " unchanged · " + (c.review || 0) + " for review" + (c.invalid ? " · " + c.invalid + " can't be read" : "")) + "</p>";
+      var rows = (P.items || []).map(function (i) {
+        return "<div>" + esc(i.kind.toUpperCase() + " " + i.day + " · " + i.ref + " " + (i.reg || "") + " · " + i.status + (i.changes && i.changes.length ? " (" + i.changes.map(function (x) { return x.field + ": " + (x.from || "–") + " → " + x.to; }).join(", ") + ")" : "")) + "</div>";
+      }).concat((P.invalid || []).map(function (i) { return '<div class="bad">' + esc((i.ref || "no ref") + " · " + i.reason) + "</div>"; }));
+      if (rows.length) h += '<div class="impundo" data-autoitems style="max-height:220px;overflow:auto">' + rows.join("") + "</div>";
+      if (!P.can_apply && c.invalid) h += '<p class="hint bad">Fix the records above on the booking site before importing.</p>';
+      else if (!P.can_apply) h += '<p class="hint">Nothing to import.</p>';
+    }
+    if (a.reviews && a.reviews.length) {
+      h += '<div class="section-label" style="margin-top:12px">For the office to check</div><div class="impundo" data-autoreviews>' + a.reviews.map(function (r) {
+        var d = r.detail || {};
+        return "<div><span>" + esc((r.kind === "cancelled" ? "Cancelled · " : "Changed · ") + r.ref) + "<small>" + esc(r.kind === "cancelled" ? ((d.name || "") + " " + (d.reg || "") + " · " + (d.kind || "")) : (d.why || "")) +
+          '</small></span><button type="button" class="btn ghost small" data-reviewdone="' + esc(r.id) + '">Done</button></div>';
+      }).join("") + "</div>";
+    } else if (a.open_reviews) h += '<p class="hint">' + a.open_reviews + " to check.</p>";
+    return h + '<p class="hint">It only reads from the booking site. Cancelled or changed bookings are listed for you; nothing is removed.</p></div>';
   }
   async function loadAutoImport() {
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
-    var cfg = d.config || {};
-    S.autoImport = { available: !!cfg.base, enabled: !!d.enabled, last_ok: d.last_ok, last_error: d.last_error };
+    var keep = S.autoImport || {};
+    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, reviews: keep.reviews };
+    if (d.available && d.open_reviews) {
+      var rv = await sb.rpc("swift_reviews_open");
+      S.autoImport.reviews = rv && !rv.error ? rv.data : null;
+    } else S.autoImport.reviews = null;
     if (S.view === "import") render();
   }
-  async function toggleAutoImport() {
-    var a = S.autoImport || {};
-    var r = await sb.rpc("set_auto_import", { p_enabled: !a.enabled });
-    if (r.error) return toast(r.error.message, true);
-    a.enabled = !a.enabled; toast(a.enabled ? "Automatic bookings on" : "Automatic bookings off"); render();
+  async function previewAutoImport() {
+    var a = S.autoImport; if (!a || a.checking || a.running) return;
+    a.checking = true; a.error = ""; a.preview = null; render();
+    var r;
+    try { r = await sb.functions.invoke("takeoff-bookings", { body: { action: "preview" } }); } catch (e) { r = { error: e }; }
+    a.checking = false;
+    var out = r && r.data;
+    if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
+    else if (out.ok === false) a.error = out.error || "The booking site didn't answer.";
+    else if (out.error) a.error = out.error;
+    else a.preview = out.preview;
+    render(); loadAutoImport();
   }
   async function runAutoImport(btn) {
-    if (S.autoImport) S.autoImport.running = true; render();
+    var a = S.autoImport; if (!a || !a.preview || !a.preview.can_apply) return;
+    a.running = true; a.error = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
-    try { r = await sb.functions.invoke("takeoff-bookings", { body: { action: "run" } }); }
-    catch (e) { r = { error: e }; }
-    if (S.autoImport) S.autoImport.running = false;
+    try { r = await sb.functions.invoke("takeoff-bookings", { body: { action: "apply", expect_hash: a.preview.hash } }); } catch (e) { r = { error: e }; }
+    a.running = false;
     var out = r && r.data;
-    if (r && r.error) { toast("Couldn't get the bookings. Try again in a minute.", true); render(); return loadAutoImport(); }
-    if (out && out.ok === false) { toast(out.error || "The booking site didn't answer. Try again shortly.", true); render(); return loadAutoImport(); }
-    var days = (out && out.summary && out.summary.days) || [];
+    if ((r && r.error) || !out || out.ok === false) {
+      a.error = (out && out.error) || "Couldn't get the bookings. Nothing was imported. Try again in a minute.";
+      a.stale = out && /changed since the preview/.test(a.error);
+      toast(a.error, true); render(); return loadAutoImport();
+    }
+    var days = (out.summary && out.summary.days) || [];
     var added = days.reduce(function (n, d) { return n + (d.added || 0); }, 0);
     var updated = days.reduce(function (n, d) { return n + (d.updated || 0); }, 0);
+    a.preview = null; a.stale = false;
     await loadSheets(); await loadRows();
     toast("✓ Bookings in: " + added + " added, " + updated + " updated across " + days.length + " sheet(s).");
     S.recentImports = null; loadAutoImport();
+  }
+  async function reviewDone(id) {
+    var r = await sb.rpc("swift_review_resolve", { p_id: Number(id) });
+    if (r.error) return toast(r.error.message, true);
+    loadAutoImport();
   }
   function renderImport() {
     var I = S.imp || (S.imp = newImport("drops"));
@@ -5139,7 +5179,8 @@
     if (t.dataset.archretry !== undefined) { S.arch.days = null; render(); return; }
     if (t.dataset.impkind) { S.imp = newImport(t.dataset.impkind); render(); return; }
     if (t.dataset.undoimport && !t.closest("#panel")) return undoImport(t.dataset.undoimport, t);
-    if (t.dataset.autotoggle !== undefined) return toggleAutoImport();
+    if (t.dataset.autopreview !== undefined) return previewAutoImport();
+    if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
     if (t.dataset.autorun !== undefined) return runAutoImport(t);
     if (t.dataset.read !== undefined) return readImport();
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
