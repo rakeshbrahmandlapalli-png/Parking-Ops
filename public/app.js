@@ -1087,7 +1087,7 @@
     if (!path && r.kind === "drops" && r.ref) {
       var m = await sb.from("bookings").select("doc_path").eq("kind", "picks").eq("ref", r.ref).neq("doc_path", "").limit(1);
       path = m.data && m.data[0] && m.data[0].doc_path;
-      if (!path) { var box = $("docBox"); if (box && !box.querySelector(".docadd")) { box.previousElementSibling.remove(); box.remove(); } return; }
+      if (!path) { var box = $("docBox"); if (box && !box.querySelector(".docadd")) { var sec = box.closest(".ops-docs"); if (sec) sec.remove(); else { box.previousElementSibling.remove(); box.remove(); } } return; }
       if ($("docNone")) $("docNone").outerHTML = '<a class="docimg" id="docImg" target="_blank" rel="noopener"><span class="note">Loading photo…</span></a>';
     }
     if (!path) return;
@@ -2749,7 +2749,7 @@
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
     side += '<div id="ptPhotos"></div>';
     if (can("import")) side += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
-    if (desk) R = (R || opsSec("Status")) + side + (docs ? opsSec("Documents") + docs : ""); else h += side;
+    if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
     var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
     var hist = can("log") ? '<div id="carHist"></div>' : "";

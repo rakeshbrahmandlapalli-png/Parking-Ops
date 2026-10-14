@@ -1015,6 +1015,7 @@ await scenario(async () => {
   const car = await page.evaluate(() => ({ two: !!document.querySelector("#panel .ops-2col > .ops-sheet + .ops-carside"), status: !!document.querySelector("#panel .ops-carside") && /Status/.test(document.querySelector("#panel .ops-carside").textContent) }));
   const deskCar = await carCtl();
   check("Ops wide Booking details: details left, status and payments right", car.two && car.status, car);
+  check("Ops wide Booking details: no empty Documents section when the car has no docket", await page.evaluate(() => !document.querySelector("#panel .ops-docs") && !/Documents/.test(document.querySelector("#panel .ops-carside").textContent)));
   await page.keyboard.press("Escape"); await sleep(300);
   // Back to a phone: the same controls, laid out as before.
   await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
