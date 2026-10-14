@@ -6,7 +6,7 @@
 import { parseExcelGrid, groupForImport, addDaysKey } from "./reader.mjs";
 
 export const DEFAULT_HOSTS = ["www.luton.swiftairportparking.co.uk"];
-export const MAX_REQUESTS = 8;
+export const MAX_REQUESTS = 24; // one search + one export per day read, a sign-in, a flights search, a cancelled search
 export const MAX_BYTES = 5 * 1024 * 1024;
 export const MAX_SPAN_DAYS = 14;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -130,7 +130,11 @@ export function makeClient(cfg, io) {
       const buf = new Uint8Array(await x.res.arrayBuffer());
       const declared = Number(x.res.headers.get("content-length"));
       if (declared && declared !== buf.length) throw new Error("The download was cut short (" + buf.length + " of " + declared + " bytes). Nothing was imported.");
-      return checkDownload(buf, x.res.headers.get("content-type") || "");
+      const out = checkDownload(buf, x.res.headers.get("content-type") || "");
+      // The search page says how many bookings it found ("(125 results)"); the caller compares that with the download.
+      const m = st.match(/\(\s*(\d[\d,]*)\s+results?\s*\)/i);
+      out.siteRows = m ? Number(m[1].replace(/,/g, "")) : null;
+      return out;
     },
   };
 }
@@ -142,6 +146,26 @@ export function checkDownload(buf, contentType) {
   if (/text\/html/i.test(contentType) || head.startsWith("<!doctype html") || head.startsWith("<html") || /<form|<body/.test(head))
     throw new Error("The booking site sent a web page instead of the report. Nothing was imported.");
   return buf;
+}
+
+// The export is plain tab-separated text. Reading it directly is far lighter than SheetJS (the function has a small CPU
+// allowance, and a run now reads one export per day). Returns null when the file is not that kind of text.
+export function parseTsv(buf) {
+  if (!buf || buf.length < 2 || (buf[0] === 0x50 && buf[1] === 0x4b) || (buf[0] === 0xd0 && buf[1] === 0xcf)) return null; // zip / old binary xls
+  const t = new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "");
+  const nl = t.indexOf("\n");
+  if (t.indexOf("\t") < 0 || (nl >= 0 && t.indexOf("\t") > nl) || t.indexOf("\0") >= 0) return null;
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; continue; }
+    if (c === '"' && cell === "") q = true;
+    else if (c === "\t") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; row.push(cell); cell = ""; if (row.some((x) => x !== "")) rows.push(row); row = []; }
+    else cell += c;
+  }
+  row.push(cell); if (row.some((x) => x !== "")) rows.push(row);
+  return rows;
 }
 
 // The Return Report page only offers a PDF, but its table (with the Flight No. boxes) is
@@ -300,7 +324,7 @@ export async function planHash(p) {
 
 // What the app shows: counts and short lists, no phone numbers.
 // How many rows each report held, per day and per status, so the office can compare with the booking site.
-export function reportStats(rows, field) {
+export function reportStats(rows, field, site) {
   const by_day = {}, by_status = {};
   rows.forEach((r) => {
     const d = r[field] && r[field].key ? r[field].key : "?";
@@ -308,7 +332,7 @@ export function reportStats(rows, field) {
     const st = r.cancelled ? "Cancelled" : (r.status || "—");
     by_status[st] = (by_status[st] || 0) + 1;
   });
-  return { rows: rows.length, by_day, by_status };
+  return { rows: rows.length, by_day, by_status, site: site || {} };
 }
 
 export function previewView(p, hash) {

@@ -95,14 +95,15 @@ The user wants looks kept **separate** (a change to one must not change another)
   `supabase/functions/takeoff-bookings` (`swift.mjs` guarded client + planner,
   `index.ts`; setup 86; steps in its README) and is **manual only**: Import →
   "Check bookings" (dry run, writes nothing) then "Get bookings now". **State (14 Oct):
-  setup 86 applied, function `takeoff-bookings` v3 deployed, TakeOff's config row saved
-  (`manual_enabled`, scope `{all:true}`, no secrets), schedule off (`enabled` false, timer
-  refused). The login secrets are added by the user; nothing imported live yet. Never ask for or accept the Swift
+  setups 86 and 87 applied, function `takeoff-bookings` v12 deployed (reads one day at a time, answers at once
+  and keeps the connection alive, reads the export as plain text), TakeOff's config row saved (`manual_enabled`,
+  scope `{all:true}`, no secrets), schedule off (`enabled` false, timer refused). The user added the login secrets and
+  imported live once. OPEN: the site shows 125 picks for the 15th but our search exports 31; the check now prints "of N"
+  (the site's own count) per day and stops if a download is shorter than that. Never ask for or accept the Swift
   password in chat (Supabase secrets `TAKEOFF_BOOKING_LOGIN` / `_PASSWORD` only).
   Known from the user's photos (14 Oct): every booking on that site is TakeOff's; pages
   `bookinglist-parkandride.php` and `arrival_report_parkandride.php`; flights come from the Return
-  Report's HTML table. Not yet verified (no login here): the search query strings, the Excel
-  export link/format, pagination, the sign-in response. Do not turn the
+  Report's HTML table. Not yet verified (no login here): pagination, why the 15th is short. Do not turn the
   schedule on, or import live, without the user's go-ahead after the first reviewed run.
 - Unused: `companies.swipe_only` / `set_swipe_only()` (setup 64, superseded by
   per-person choice).

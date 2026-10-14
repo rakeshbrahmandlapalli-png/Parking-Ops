@@ -29,8 +29,8 @@
 // TAKEOFF_BOOKING_PASSWORD. The service-role key is a function secret too.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
-import { matchFlights } from "./reader.mjs";
-import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
+import { matchFlights, addDaysKey } from "./reader.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -46,8 +46,10 @@ const reply = (status: number, body: unknown) =>
 
 
 function gridFrom(buf: Uint8Array): string[][] {
-  // The export is a tab-separated "xls"; SheetJS reads it. Dates are already
-  // text ("2026-10-05 15:00") in this export, so no serial-date handling.
+  // The export is a tab-separated "xls"; read it as text (cheap), SheetJS only for a real spreadsheet.
+  // Dates are already text ("2026-10-05 15:00") in this export, so no serial-date handling.
+  const tsv = parseTsv(buf);
+  if (tsv) return tsv;
   const wb = XLSX.read(buf, { type: "array", raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return (XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }) as unknown[][])
@@ -77,19 +79,41 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
   const opts = { pageSize: Number(cfg.page_size ?? 0) || undefined };
-  const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, { ...opts, field: "ret", window: dw });
+  // The site's export comes back cut short for a multi-day search (14 Oct: 72 rows for three days that hold
+  // about 230), but a one-day search exports in full. So: one search and export per day, like the office does by hand.
+  const cutoff = (company.drops_day_end ?? "06:00").slice(0, 5);
+  const eachDay = (w: { from: string; to: string }) => { const out: string[] = []; for (let d = w.from; d <= w.to; d = addDaysKey(d, 1)) out.push(d); return out; };
+  async function readDays(search: string, w: { from: string; to: string }, field: string, keep?: (r: { ret?: { time: string } }, day: string) => boolean) {
+    // deno-lint-ignore no-explicit-any
+    const rows: any[] = []; let excludedScope = 0; const site: Record<string, number> = {};
+    for (const d of eachDay(w)) {
+      const one = { from: d, to: d };
+      const buf = await client.download(fill(search, one), exportPath);
+      const r = readReport(gridFrom(buf), scope, { ...opts, field, window: one, allowEmpty: true });
+      // The site's own count for that search against what the download holds: a short download is never imported.
+      const siteRows = (buf as unknown as { siteRows: number | null }).siteRows;
+      if (siteRows != null) site[d] = siteRows;
+      if (siteRows != null && r.rows.length < siteRows) throw new Error("The booking site lists " + siteRows + " bookings for " + d + " but its download holds only " + r.rows.length + ". Nothing was imported.");
+      rows.push(...(keep ? r.rows.filter((x: never) => keep(x, d)) : r.rows)); excludedScope += r.excludedScope;
+    }
+    if (!rows.length) throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");
+    return { rows, excludedScope, site };
+  }
+  // Returns before the cutoff on the day after belong to the last sheet, so that day is searched too, for those only.
+  const dwx = { from: dw.from, to: addDaysKey(dw.to, 1) };
+  const drops = await readDays(dropsSearch, dwx, "ret", (r, d) => d !== dwx.to || (!!r.ret && !!r.ret.time && r.ret.time <= cutoff));
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
     const fFields = cfg.flights_post as Record<string, string> | undefined; // the Return Report's search is a POST form
     const fGrid = cfg.flights_format === "html"
       ? parseHtmlTable(fFields
-          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dw)])))
-          : await client.page(fill(flightsSearch, dw)))
-      : gridFrom(await client.download(fill(flightsSearch, dw), String(cfg.flights_export_path ?? exportPath)));
+          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dwx)])))
+          : await client.page(fill(flightsSearch, dwx)))
+      : gridFrom(await client.download(fill(flightsSearch, dwx), String(cfg.flights_export_path ?? exportPath)));
     const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
     matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   }
-  const picks = readReport(gridFrom(await client.download(fill(picksSearch, pw), exportPath)), scope, { ...opts, field: "meet", window: pw });
+  const picks = await readDays(picksSearch, pw, "meet");
   // Cancelled bookings need their own search (the main ones list Completed only).
   const cw = windowFor(Date.now(), Number(cfg.cancelled_days ?? 14));
   const cancelled = cancelledSearch ? readReport(gridFrom(await client.download(fill(cancelledSearch, cw), exportPath)), scope, { allowEmpty: true }) : { rows: [], excludedScope: 0 };
@@ -107,15 +131,15 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     ...picks.rows.filter((r: { cancelled: boolean }) => r.cancelled).map((row: unknown) => ({ kind: "picks", row })),
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
-  const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff: (company.drops_day_end ?? "06:00").slice(0, 5), cancelledRows: cancelledRows as never });
-  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret"), picks: reportStats(picks.rows, "meet") }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
+  const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff, cancelledRows: cancelledRows as never });
+  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: reportStats(picks.rows, "meet", picks.site) }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {
   await admin.rpc("auto_import_record", { p_company: companyId, p_ok: ok, p_error: error, p_summary: summary ?? null });
 }
 
-Deno.serve(async (req) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply(405, { error: "POST only." });
   let body: Record<string, unknown> = {};
@@ -174,4 +198,28 @@ Deno.serve(async (req) => {
   } catch (err) {
     return reply(500, { error: (err as Error).message || String(err) });
   }
+}
+
+// A run reads about twenty pages from the booking site, which can take longer than the gateway waits for a first
+// answer (then the app only sees "couldn't reach"). So the answer starts at once, a blank is sent every few seconds
+// while the work goes on, and the JSON follows (leading blanks are valid JSON). Errors come back inside the body.
+Deno.serve((req) => {
+  if (req.method !== "POST") return handle(req);
+  const enc = new TextEncoder(), t0 = Date.now();
+  let beat: number | undefined;
+  const stream = new ReadableStream({
+    start(ctl) {
+      beat = setInterval(() => { try { ctl.enqueue(enc.encode(" ")); } catch { /* closed */ } }, 5000);
+      handle(req).then(async (r) => {
+        const text = await r.text();
+        let out = text;
+        try { const j = JSON.parse(text); if (j && typeof j === "object" && !Array.isArray(j)) { if (r.status >= 400 && !j.error) j.error = "Failed (" + r.status + ")."; if (j.error && j.ok === undefined) j.ok = false; j.ms = Date.now() - t0; out = JSON.stringify(j); } } catch { /* leave as is */ }
+        clearInterval(beat); ctl.enqueue(enc.encode(out)); ctl.close();
+      }).catch((e) => {
+        clearInterval(beat); ctl.enqueue(enc.encode(JSON.stringify({ ok: false, error: (e as Error).message || String(e) }))); ctl.close();
+      });
+    },
+    cancel() { clearInterval(beat); },
+  });
+  return new Response(stream, { status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 });

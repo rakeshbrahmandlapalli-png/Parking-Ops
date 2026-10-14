@@ -4,7 +4,7 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { parseHtmlTable, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -46,7 +46,7 @@ function site(over = {}) {
       state.loggedIn = true; const h = new Headers({ location: "/admin/home.php" }); h.append("set-cookie", "PHPSESSID=abc123; path=/"); return new Response(null, { status: 302, headers: h });
     }
     if (!state.loggedIn || state.expired) return R(200, '<html><form><input type="password" name="password"></form></html>', { "content-type": "text/html" });
-    if (script === "bookinglist.php") return R(200, "<html>results</html>", { "content-type": "text/html" });
+    if (script === "bookinglist.php") return R(200, state.results || "<html>results</html>", { "content-type": "text/html" });
     if (script === "export_to_excel.php") { const b = state.export || "x\ty"; return R(200, b, { "content-type": "application/vnd.ms-excel", ...(state.length ? { "content-length": String(state.length) } : {}) }); }
     return R(404, "no");
   };
@@ -55,6 +55,11 @@ function site(over = {}) {
 const CFG = { base: BASE, hosts: H, scripts: ["bookinglist.php", "export_to_excel.php"] };
 const mk = (s, user = "u", pass = "p") => makeClient(CFG, { fetch: s.fetch, sleep: async () => {}, user, pass });
 
+{ const s = site({ results: "<html>Completed (125 results)</html>" }); const c = mk(s); await c.login();
+  const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
+  ok("the site's own result count is read from the search page", b.siteRows === 125, b.siteRows); }
+{ const s = site(); const c = mk(s); await c.login(); const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
+  ok("no count on the page means no count to compare", b.siteRows === null); }
 { const s = site(); const c = mk(s);
   await c.login(); const buf = await c.download("bookinglist.php?a=1", "export_to_excel.php");
   ok("signs in once, searches, downloads", s.calls.filter((x) => x.method === "POST").length === 1 && buf.length > 0 && s.calls.length === 3, s.calls.map((x) => x.method + x.url));
@@ -80,7 +85,7 @@ ok("empty and oversized downloads are rejected", /empty/.test(await throws(() =>
   const c = mk(s); await c.login();
   ok("a redirect into a non-report page is blocked", /approved reports|could change/.test(await throws(() => c.download("bookinglist.php", "export_to_excel.php")))); }
 { const s = site(); const c = mk(s); await c.login();
-  let m = ""; for (let i = 0; i < 9 && !m; i++) m = await throws(() => c.download("bookinglist.php", "export_to_excel.php"));
+  let m = ""; for (let i = 0; i < 14 && !m; i++) m = await throws(() => c.download("bookinglist.php", "export_to_excel.php"));
   ok("request count is capped per run", /too many requests/.test(m), m); }
 
 // a report whose search is a POST form (the Return Report): one allowed search, nothing else
@@ -273,5 +278,11 @@ const m = await err(`select swift_apply($1,$2)`, [co, JSON.stringify(bad)]);
 ok("if a later day fails nothing from that sync is kept (no partial import)", /boom/.test(m) && (await q(`select count(*)::int n from done`))[0].n === 2, m);
 ok("the service-role-only functions are not callable by the app's users", (await q(`select has_function_privilege('authenticated','swift_apply(uuid,jsonb,jsonb)','execute') a, has_function_privilege('authenticated','swift_lock(uuid,int)','execute') b, has_function_privilege('service_role','swift_apply(uuid,jsonb,jsonb)','execute') c`))[0].a === false);
 
+{
+  const enc = (t) => new TextEncoder().encode(t);
+  const g = parseTsv(enc('Sr#\tRef\tNotes\r\n1\tAB1\t"two\nlines, ""q"""\r\n2\tAB2\t\r\n\r\n'));
+  ok("the tab-separated export is read as text (quotes, line breaks, blank rows)", g && g.length === 3 && g[1][2] === 'two\nlines, "q"' && g[2][1] === "AB2" && g[2][2] === "", JSON.stringify(g));
+  ok("a real spreadsheet or a web page is not read as text", parseTsv(new Uint8Array([0x50, 0x4b, 3, 4])) === null && parseTsv(enc("<html>no tabs</html>")) === null);
+}
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
