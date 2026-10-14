@@ -98,6 +98,14 @@ export function makeClient(cfg, io) {
         const e = new Error("Booking site sign-in failed. Check the saved login; no further attempts are made."); e.code = "login_failed"; throw e;
       }
     },
+    // The search page itself, as text (for a report that has no export, like the Return Report).
+    async page(searchPath) {
+      const s = await send(new URL(searchPath, cfg.base).toString(), "GET");
+      const t = await s.res.text();
+      if (/name=["']?password/i.test(t)) { const e = new Error("The booking site asked for a sign-in again (session expired). Nothing was imported."); e.code = "session_expired"; throw e; }
+      if (!s.res.ok || t.length > MAX_BYTES) throw new Error("The report page didn't load properly. Nothing was imported.");
+      return t;
+    },
     async download(searchPath, exportPath) {
       const s = await send(new URL(searchPath, cfg.base).toString(), "GET");
       const st = await s.res.text();
@@ -121,6 +129,23 @@ export function checkDownload(buf, contentType) {
   return buf;
 }
 
+// The Return Report page only offers a PDF, but its table (with the Flight No. boxes) is
+// plain HTML: read it as a grid. Text of each cell; for a cell holding an <input>, its value.
+export function parseHtmlTable(html) {
+  const grid = [];
+  const text = (h) => h.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&pound;/g, "£").replace(/\s+/g, " ").trim();
+  (String(html).match(/<tr[\s\S]*?<\/tr>/gi) || []).forEach((tr) => {
+    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map((c) => {
+      const inp = c.match(/<input[^>]*value=["']([^"']*)["']/i);
+      const sel = c.match(/<option[^>]*selected[^>]*>([\s\S]*?)<\/option>/i);
+      return inp ? inp[1].trim() : sel ? text(sel[1]) : text(c);
+    });
+    if (cells.some(Boolean)) grid.push(cells);
+  });
+  if (!grid.length) throw new Error("No table was found on the report page. Nothing was imported.");
+  return grid;
+}
+
 // ── report validation ─────────────────────────────────────────────────────
 const REQUIRED = ["ref", "name", "meet", "ret"];
 
@@ -129,28 +154,32 @@ const REQUIRED = ["ref", "name", "meet", "ret"];
 export function readReport(grid, scope, opts = {}) {
   // scope: one {column, values} or a list of them; a booking must match every one
   // (e.g. Supplier Name AND Booking Type).
-  const conds = (Array.isArray(scope) ? scope : scope ? [scope] : []);
-  if (!conds.length || conds.some((c) => !c || !c.column || !Array.isArray(c.values) || !c.values.length))
+  // {all: true} = the owner confirmed every booking on this site is TakeOff's (14 Oct).
+  const allMine = !!(scope && !Array.isArray(scope) && scope.all === true);
+  const conds = allMine ? [] : (Array.isArray(scope) ? scope : scope ? [scope] : []);
+  if (!allMine && (!conds.length || conds.some((c) => !c || !c.column || !Array.isArray(c.values) || !c.values.length)))
     throw new Error("Supplier scope isn't configured, so no bookings were read. Nothing was imported.");
   let excludedScope = 0, hr = -1;
   const idx = [];
+  if (allMine) hr = 0;
   for (let r = 0; r < Math.min(grid.length, 20) && hr < 0; r++) {
     const cols = conds.map((c) => grid[r].findIndex((x) => String(x).trim().toLowerCase() === String(c.column).trim().toLowerCase()));
     if (cols.every((c) => c >= 0)) { hr = r; idx.push(...cols); }
   }
-  if (hr < 0) throw new Error("The report has no " + conds.map((c) => "'" + c.column + "'").join(" / ") + " column, so TakeOff's bookings can't be told apart. Nothing was imported.");
+  if (!allMine && hr < 0) throw new Error("The report has no " + conds.map((c) => "'" + c.column + "'").join(" / ") + " column, so TakeOff's bookings can't be told apart. Nothing was imported.");
   const want = conds.map((c) => c.values.map((v) => String(v).trim().toLowerCase()));
-  const body = grid.slice(hr + 1).filter((row) => {
+  const body = allMine ? grid.slice(0) : grid.slice(hr + 1).filter((row) => {
     if (!row.some((x) => String(x).trim())) return false;
     const ok = idx.every((c, i) => want[i].includes(String(row[c]).trim().toLowerCase()));
     if (!ok) excludedScope++;
     return ok;
   });
-  const g = grid.slice(0, hr + 1).concat(body);
+  const g = allMine ? grid : grid.slice(0, hr + 1).concat(body);
   const parsed = parseExcelGrid(g, { keepCancelled: true });
-  const missing = REQUIRED.filter((k) => !parsed.columns.includes(k));
+  const need = opts.flights ? ["ref", "flight"] : REQUIRED; // the Return Report has no meet/return columns, only flights
+  const missing = need.filter((k) => !parsed.columns.includes(k));
   if (missing.length) throw new Error("The report is missing columns (" + missing.join(", ") + "); it may have changed. Nothing was imported.");
-  if (!parsed.columns.includes("reg") && !parsed.columns.includes("vehicle")) throw new Error("The report has no registration or vehicle column. Nothing was imported.");
+  if (!opts.flights && !parsed.columns.includes("reg") && !parsed.columns.includes("vehicle")) throw new Error("The report has no registration or vehicle column. Nothing was imported.");
   if (!parsed.rows.length) {
     if (opts.allowEmpty) return { rows: [], excludedScope, columns: parsed.columns };
     throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");

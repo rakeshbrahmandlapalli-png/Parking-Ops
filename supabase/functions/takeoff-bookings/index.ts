@@ -30,7 +30,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights } from "./reader.mjs";
-import { makeClient, readReport, plan, planHash, previewView, windowFor, siteDate, scriptOf } from "./swift.mjs";
+import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, windowFor, siteDate, scriptOf } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -63,7 +63,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const dropsSearch = String(cfg.drops_search ?? ""), picksSearch = String(cfg.picks_search ?? "");
   const flightsSearch = cfg.flights_search ? String(cfg.flights_search) : "";
   if (!base || !dropsSearch || !picksSearch) throw new Error("The report addresses aren't set up for " + company.slug + ".");
-  const scope = cfg.scope as { column: string; values: string[] } | undefined;
+  const scope = cfg.scope as never; // {all:true} | {column, values} | [{column, values}, …]
   const dw = windowFor(Date.now(), Number(cfg.drops_days ?? 2)), pw = windowFor(Date.now(), Number(cfg.picks_days ?? 3));
   const fill = (path: string, w: { from: string; to: string }) => path.replace(/\{FROM\}/g, siteDate(w.from)).replace(/\{TO\}/g, siteDate(w.to));
   const client = makeClient({
@@ -74,7 +74,11 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const opts = { pageSize: Number(cfg.page_size ?? 0) || undefined };
   const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, opts);
   if (flightsSearch) {
-    const f = readReport(gridFrom(await client.download(fill(flightsSearch, dw), String(cfg.flights_export_path ?? exportPath))), scope, { ...opts, allowEmpty: true });
+    // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
+    const fGrid = cfg.flights_format === "html"
+      ? parseHtmlTable(await client.page(fill(flightsSearch, dw)))
+      : gridFrom(await client.download(fill(flightsSearch, dw), String(cfg.flights_export_path ?? exportPath)));
+    const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
     matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   }
   const picks = readReport(gridFrom(await client.download(fill(picksSearch, pw), exportPath)), scope, opts);

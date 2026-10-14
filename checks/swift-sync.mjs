@@ -4,7 +4,7 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -29,6 +29,7 @@ ok("outside /admin/ is blocked", /outside the admin area/.test(await A("https://
 ok("a page not on the report list is blocked", /approved reports/.test(await A(BASE + "booking_edit.php")));
 ok("edit / cancel / password pages are blocked even if listed", (await Promise.all(["booking_edit.php", "cancel_booking.php", "change_password.php"].map((p) => throws(() => assertAllowed(BASE + p, BASE, H, [...S, p], "GET"))))).every((m) => /could change bookings/.test(m)));
 ok("DELETE/PUT are blocked", /Blocked a DELETE/.test(await A(BASE + "bookinglist.php", "DELETE")));
+ok("the real report pages (Booking Manager, Return Report) pass the address guard", (await Promise.all(["bookinglist-parkandride.php?req=news", "arrival_report_parkandride.php?req=news"].map((p) => throws(() => assertAllowed("https://www.luton.swiftairportparking.co.uk/admin/" + p, "https://www.luton.swiftairportparking.co.uk/admin/", H, ["bookinglist-parkandride.php", "arrival_report_parkandride.php"], "GET"))))).every((m) => m === ""));
 ok("a host not on the approved list is refused as the base", /approved list/.test(await throws(() => assertAllowed("https://x.test/admin/index.php", "https://x.test/admin/", H, S, "GET"))));
 
 // ── the pretend site ──
@@ -108,6 +109,17 @@ ok("exactly one full page of rows is treated as possibly incomplete", /may be in
   ok("Booking Manager headings read: ref, name, reg split from vehicle, dd-mm-yyyy dates, status", a.rows.length === 2 && a.rows[0].reg === "DF24WFC" && a.rows[0].meet.key === "2026-10-14" && a.rows[0].ret.time === "09:15" && a.rows[1].cancelled === true, a.rows);
   const b = readReport(g2, [{ column: "Supplier Name", values: ["HES"] }, { column: "Booking Type", values: ["MG"] }]);
   ok("scope can require supplier AND booking type", b.rows.length === 1 && b.rows[0].ref === "CCCC33" && b.excludedScope === 2, b); }
+
+// Return Report (14 Oct photo): no meet/return columns, flights in input boxes, and every booking is TakeOff's
+{ const html = `<table><tr><th>Time</th><th>Agent</th><th>Ref#</th><th>Client</th><th>Telephone</th><th>Day</th><th>Car Make</th><th>Car Reg</th><th>Flight No.</th><th>Flight Time</th><th>Booking Status</th></tr>
+  <tr><td>00:30</td><td>APL</td><td>APL-087811</td><td>Mr. Sample One</td><td>07000 000001</td><td>06-10</td><td>MG</td><td>LC23 TPP</td><td><input type="text" value="EZY2594"></td><td><input value=""></td><td>Booked</td></tr>
+  <tr><td>00:30</td><td>HES</td><td>LDQKMY</td><td>MR SAMPLE TWO</td><td></td><td>01-10</td><td>BMW</td><td>X333JWS</td><td><input type="text" value="U22382"></td><td></td><td>Collected</td></tr>
+  <tr><td>00:30</td><td>HES</td><td>LDRKDQ</td><td>MR SAMPLE THREE</td><td></td><td>01-10</td><td>VOLVO</td><td>A11YJT</td><td><input type="text" value=""></td><td></td><td>Booked</td></tr></table>`;
+  const g = parseHtmlTable(html); const f = readReport(g, { all: true }, { flights: true, allowEmpty: true });
+  ok("Return Report table: flights read from the input boxes, no meet/return needed", f.rows.length === 3 && f.rows[0].flightIn === "EZY2594" && f.rows[1].flightIn === "U22382" && f.rows[2].flightIn === "" && f.rows[0].reg === "LC23 TPP", f.rows);
+  ok("a page with no table is rejected", /No table/.test(await throws(() => parseHtmlTable("<html>nothing</html>"))));
+  ok("{all:true} scope keeps every booking (owner confirmed all are TakeOff's)", readReport(grid(row("Booked", "T1", "A One", "AB12 CDE", "2026-10-14 08:00", "2026-10-16 10:00", "", "Anyone")), { all: true }).rows.length === 1);
+  ok("scope still can't be left out", /scope isn't configured/.test(await throws(() => readReport(grid(), undefined))) && /scope isn't configured/.test(await throws(() => readReport(grid(), {})))); }
 
 // ── planner ──
 const WIN = { from: "2026-10-12", to: "2026-10-15" };

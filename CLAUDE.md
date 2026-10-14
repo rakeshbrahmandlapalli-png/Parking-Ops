@@ -99,8 +99,10 @@ The user wants looks kept **separate** (a change to one must not change another)
   supplier scope configured, schedule off.** The live function (v2) is the old one
   and `auto_import` has no row for any company. Never ask for or accept the Swift
   password in chat (Supabase secrets `TAKEOFF_BOOKING_LOGIN` / `_PASSWORD` only).
-  Not yet verified because there is no login here: the report pages, the export
-  columns/format, which column names TakeOff's supplier, pagination. Do not turn the
+  Known from the user's photos (14 Oct): every booking on that site is TakeOff's; pages
+  `bookinglist-parkandride.php` and `arrival_report_parkandride.php`; flights come from the Return
+  Report's HTML table. Not yet verified (no login here): the search query strings, the Excel
+  export link/format, pagination, the sign-in response. Do not turn the
   schedule on, or import live, without the user's go-ahead after the first reviewed run.
 - Unused: `companies.swipe_only` / `set_swipe_only()` (setup 64, superseded by
   per-person choice).
