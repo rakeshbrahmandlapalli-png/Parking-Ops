@@ -30,7 +30,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights } from "./reader.mjs";
-import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, windowFor, siteDate, scriptOf } from "./swift.mjs";
+import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -108,7 +108,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
   const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff: (company.drops_day_end ?? "06:00").slice(0, 5), cancelledRows: cancelledRows as never });
-  return { p, hash: await planHash(p), excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
+  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret"), picks: reportStats(picks.rows, "meet") }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
     let block = 0;
     try {
       const c = await collect(co as Co, cfg);
-      if (action === "preview") return reply(200, { ok: true, preview: { ...previewView(c.p, c.hash), excluded_scope: c.excluded_scope } });
+      if (action === "preview") return reply(200, { ok: true, preview: { ...previewView(c.p, c.hash), report: c.report, excluded_scope: c.excluded_scope } });
 
       if (String(body.expect_hash ?? "") !== c.hash) return reply(200, { ok: false, error: "The bookings changed since the preview. Check them again before importing." });
       if (c.p.counts.invalid > 0) return reply(200, { ok: false, error: "Some records are invalid or ambiguous. Nothing was imported." });
@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
       }
       let days: unknown[] = [];
       if (c.p.batches.length) {
-        const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, manual: true, provider: "swift" } });
+        const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, manual: true, provider: "swift" }, p_user: me.user_id });
         if (res.error) throw new Error("Nothing was imported (" + res.error.message + ").");
         days = res.data as unknown[];
       }

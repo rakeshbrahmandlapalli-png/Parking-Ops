@@ -4072,6 +4072,12 @@
     if (P) {
       var c = P.counts || {};
       h += '<p class="hint" data-autopreviewsum>' + esc((c["new"] || 0) + " new · " + (c.changed || 0) + " changed · " + (c.unchanged || 0) + " unchanged · " + (c.review || 0) + " for review" + (c.invalid ? " · " + c.invalid + " can't be read" : "")) + "</p>";
+      if (P.report) {
+        ["picks", "drops"].forEach(function (k) {
+          var R = P.report[k]; if (!R) return;
+          h += '<p class="hint" data-autoreport>' + esc("On the site, " + k + ": " + R.rows + " · " + Object.keys(R.by_day).sort().map(function (d) { return d.slice(8) + "th " + R.by_day[d]; }).join(" · ") + " · " + Object.keys(R.by_status).map(function (x) { return x + " " + R.by_status[x]; }).join(", ")) + "</p>";
+        });
+      }
       var rows = (P.items || []).map(function (i) {
         return "<div>" + esc(i.kind.toUpperCase() + " " + i.day + " · " + i.ref + " " + (i.reg || "") + " · " + i.status + (i.changes && i.changes.length ? " (" + i.changes.map(function (x) { return x.field + ": " + (x.from || "–") + " → " + x.to; }).join(", ") + ")" : "")) + "</div>";
       }).concat((P.invalid || []).map(function (i) { return '<div class="bad">' + esc((i.ref || "no ref") + " · " + i.reason) + "</div>"; }));
