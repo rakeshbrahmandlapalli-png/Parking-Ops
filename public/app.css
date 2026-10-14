@@ -539,3 +539,7 @@ body:has(.deskbtn) main{padding-bottom:calc(150px + env(safe-area-inset-bottom))
 .kbox.on{background:#137A45;border-color:#137A45;}
 .kbox.on::after{content:"";position:absolute;left:6px;top:1px;width:6px;height:12px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg);}
 html body.keymode .code.kgrey,html body.keymode select.code.pick.kgrey{background:#e8eaed!important;color:#9aa0a6!important;border-color:#dadce0!important;}
+
+/* A dashboard queue opened on the board */
+.queuebar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; margin: 6px 0; background: rgba(0,0,0,.06); border-radius: 6px; font-size: 14px; }
+.queuebar button { font: inherit; padding: 4px 10px; cursor: pointer; }

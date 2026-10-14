@@ -111,6 +111,7 @@ function rpc(db, fn, a) {
     case "set_swipe_only": db.company.swipe_only = !!a.p_on; return !!a.p_on;
     case "admin_clients": return [{ id: "c1", name: "TAKEOFF", slug: "takeoff", yards: ["NB", "S"], brand: { colour: "#F59E0B", host: "takeoff-ops.vercel.app" }, staff: 14, has_owner: true, sheets_7d: 18, cars_7d: 2074, last_activity: now() }];
     case "admin_usage": return { db_bytes: 25709715, store_bytes: 0, store_files: 0, clients: [{ id: "c1", name: "TAKEOFF", cars_30d: 2074, sheets_30d: 18, pt_sets_30d: 134, pt_photos_30d: 4277, fr24_calls_30d: 209, fr24_calls_today: 46, timetable_runs_30d: 148, timetable_last_ok: now(), timetable_last_error: "", activity_30d: 5805 }] };
+    case "set_handover_note": { db.handover = { note: a.p_note, at: now(), by: "RAKESH" }; return db.handover; }
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
     case "my_permissions": return db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]));
     case "tap_drop": {
@@ -1642,6 +1643,7 @@ function dashData() {
     removed: [{ id: "r1", kind: "picks", reg: "NOSHOW1", name: "MR AWAY", removed_reason: "No show", removed_at: ago(7), by_name: "SUGU" }],
     complaints: [{ at: ago(8), reg: "MAD001", customer: "MR CROSS", staff_name: "TERRY" }],
     early: 2, changed: 3,
+    handover: { note: "Gate 2 key is in the safe", at: new Date(Date.now() - 3600000).toISOString(), by: "SUGU" },
     onsite: (() => { const lp = new Date().toLocaleString("sv-SE", { timeZone: "Europe/London" }); const base = new Date(lp.slice(0, 10) + "T12:00:00Z"); if (lp.slice(11, 16) <= "06:00") base.setUTCDate(base.getUTCDate() - 1); return [38, 45, 30, 12].map((n, i) => ({ day: new Date(base.getTime() + i * 864e5).toISOString().slice(0, 10), here: n, in: 4 + i, out: 6 + i })); })(),
     parked: { total: 30, late: 2, late_cars: [{ reg: "LATE1", name: "Old Car", return_at: new Date(Date.now() - 2.5 * 86400000).toISOString(), yard: "NB" }, { reg: "LATE2", name: "New Car", return_at: new Date(Date.now() - 3600000).toISOString(), yard: "" }], days: [{ day: new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 8 }, { day: new Date(Date.now() + 2 * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 20 }],
       yards: [{ yard: "", n: 12, days: [{ day: null, n: 2 }, { day: new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 10 }] }, { yard: db0Yard || "NB", n: 18, days: [{ day: new Date(Date.now() + 2 * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 18 }] }] }
@@ -1651,17 +1653,21 @@ function dashData() {
 function dashExit() {
   const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
   return { fee: 10, paid: 18, cash: 60, card: 120, cash_n: 6, card_n: 12, no_photo: 1, exempt: 5, unpaid: 2,
+    paid_cars: [{ id: "x1", reg: "PAID001", name: "MR PAID", ref: "FHR-9", exit_method: "card", exit_amount: 10, exit_at: ago(1), photo: true, by_name: "SUGU" }, { id: "x2", reg: "PAID002", name: "MRS PAID", ref: "", exit_method: "cash", exit_amount: 10, exit_at: ago(2), photo: false, by_name: "TERRY" }],
     cars: [{ id: "e1", reg: "NOEXIT1", name: "MR LEFT", ref: "FHR-1", cleared_at: ago(1), exit_method: "" }, { id: "e2", reg: "NOEXIT2", name: "MRS LEFT", ref: "FHR-2", cleared_at: ago(2), exit_method: "" },
       { id: "e3", reg: "NOPHOTO", name: "MR CASH", ref: "FHR-3", cleared_at: ago(3), exit_method: "cash", exit_at: ago(3), by_name: "SUGU" }] };
 }
 function dashSheets(db) {
   const inH = (h) => new Date(Date.now() + h * 3600000).toISOString();
   db.sheets.find((x) => x.id === "p0").day = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  db.bookings.push({ id: "pn1", sheet_id: "p0", kind: "picks", ref: "NB1", reg: "DESK001", num: 9, name: "DESK MR", drop_at: iso(TONIGHT, "10:00"), return_at: iso(TOMORROW, "10:00"), intake: "", pick_called: "New Booking", doc_path: "", note: "" },
+    { id: "pn2", sheet_id: "p0", kind: "picks", ref: "NB2", reg: "DESK002", num: 10, name: "DESK TWO", drop_at: iso(TONIGHT, "11:00"), return_at: iso(TOMORROW, "10:00"), intake: "", pick_called: "New Booking", doc_path: "x/y.jpg", note: "" });
   db.bookings = db.bookings.filter((b) => b.sheet_id !== "d0").concat([
     { id: "q1", sheet_id: "d0", kind: "drops", ref: "Q1", reg: "CALL01", num: 1, name: "CALLED MR", return_at: inH(1), called_at: inH(-0.5), note: "" },
     { id: "q2", sheet_id: "d0", kind: "drops", ref: "Q2", reg: "SENT01", num: 2, name: "SENT MR", return_at: inH(0.5), called_at: inH(-1), sent_at: inH(-0.2), note: "" },
     { id: "q3", sheet_id: "d0", kind: "drops", ref: "Q3", reg: "SOON01", num: 3, name: "SOON MR", return_at: inH(1.5), note: "" },
     { id: "q4", sheet_id: "d0", kind: "drops", ref: "Q4", reg: "LATER1", num: 4, name: "LATER MR", return_at: inH(5), note: "" },
+    { id: "q6", sheet_id: "d0", kind: "drops", ref: "Q6", reg: "OVER01", num: 6, name: "OVERSTAY MR", return_at: inH(-30), called_at: inH(-3), overstay: true, called_word: "Overstay", note: "" },
     { id: "q5", sheet_id: "d0", kind: "drops", ref: "Q5", reg: "DONE01", num: 5, name: "DONE MR", return_at: inH(-1), called_at: inH(-2), sent_at: inH(-1.5), cleared_at: inH(-1), note: "" }]);
 }
 for (const theme of ["", "stdplus"]) await scenario(async () => {
@@ -1691,9 +1697,18 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: Payments footer, paid and exempt, owed now and waived", /18 exit fees paid · 5 exempt · Owed now £40 \(1 car here\) · Waived £30/.test(await txt(".od-foot")), await txt(".od-foot"));
     check("Dashboard: on a phone the payments table becomes labelled blocks", !(await page.locator(".od-th").isVisible()) && await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible());
     const queues = await page.locator(".od-queues .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-    check("Dashboard: Live queues from tonight's DROPS", queues.length === 3 && /^Called, not sent 1 Open queue/.test(queues[0]) && /^Sent, not handed back 1 Open queue/.test(queues[1]) && /^Due in the next 2 hours, not sent 2 Open sheet/.test(queues[2]), queues);
+    check("Dashboard: Live queues from tonight's DROPS", queues.length === 3 && /^Called, not sent 1 Open queue/.test(queues[0]) && /^Sent, not handed back 1 Open queue/.test(queues[1]) && /^Due in the next 2 hours, not sent 2 Open queue/.test(queues[2]), queues);
     const checks = await page.locator(".od-checks .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-    check("Dashboard: Checks, cars with no yard, PT photos not taken, the shift summary", /^Parked with no yard 12 Yards/.test(checks[0]) && /^PT photos not taken PICKS .* 1 Open PICKS/.test(checks[1]) && /^Shift summary and activity log Open/.test(checks[2]), checks);
+    check("Dashboard: Checks, cars with no yard, PT photos not taken, the shift summary", /^Parked with no yard 12 Yards/.test(checks[0]) && /^PT photos not taken PICKS .* 1 Open PICKS/.test(checks[1]) && /^Desk bookings with no docket photo PICKS .* 1 Open PICKS/.test(checks[2]) && /^Shift summary and activity log Open/.test(checks[3]), checks);
+    const hv = await page.inputValue("#handoverText");
+    check("Dashboard: the handover note shows with who wrote it", hv === "Gate 2 key is in the safe" && /Written .* by SUGU/.test(await txt(".od-hrow small")), hv);
+    await page.fill("#handoverText", "Keys moved to cabinet 2"); await page.click("[data-savehandover]"); await sleep(500);
+    check("Dashboard: Save note sends the handover note and keeps the text", db.calls.some((c) => c.fn === "set_handover_note" && c.args.p_note === "Keys moved to cabinet 2") && await page.inputValue("#handoverText") === "Keys moved to cabinet 2");
+    await page.fill("#handoverText", "typed, not saved"); await page.click("[data-dashdates]"); await sleep(150); await page.click("[data-dashdates]"); await sleep(150);
+    check("Dashboard: a typed handover note survives the dashboard redrawing", await page.inputValue("#handoverText") === "typed, not saved");
+    await page.evaluate(() => document.querySelector('[data-dashjump="exitpaid"]').click()); await sleep(200);
+    const paidTxt = (await page.locator("#dash-exitpaid").innerText()).replace(/\s+/g, " ");
+    check("Dashboard: paid exit fees list each payment (reg, method, photo, who, amount)", /Exit fees paid \(18\)/.test(paidTxt) && /PAID001 · MR PAID CARD · photo kept · SUGU · FHR-9 £10/.test(paidTxt) && /PAID002 · MRS PAID CASH · no photo · TERRY £10/.test(paidTxt) && /Showing the latest 2 of 18/.test(paidTxt), paidTxt);
     const desk = await page.locator('[data-fold="desk"] .od-line').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Desk activity, added, removed, complaints, early returns", desk[0] === "Added at the desk 1 added · 1 NEW BOOKING 2" && desk[1] === "Removed 1 no show 1" && desk[2] === "Complaints 1" && desk[3] === "Early returns 3 return changes 2", desk);
     check("Dashboard: nothing on it is emoji or a gradient", await page.evaluate(() => !/\p{Extended_Pictographic}/u.test(document.querySelector(".od").innerText) && ![...document.querySelectorAll(".od, .od *")].some((e) => /gradient/.test(getComputedStyle(e).backgroundImage))));
@@ -1759,6 +1774,9 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: Refresh reads again and the fold stays as left", db.dashCalls.length === calls + 1 && (await page.locator('details.ops-fold[open]').count()) === 1);
     await page.click('[data-fold="onsite"] > summary'); await sleep(150);
     await page.click('.od-queues [data-dashsheet]'); await sleep(700);
+    check("Dashboard: Open queue shows only that queue (not the whole To Do board)", await page.locator('.row[data-id]').evaluateAll((els) => els.map((e) => e.dataset.id).join()) === "q1" && /Showing Called, not sent · 1/.test(await page.locator(".queuebar").innerText()));
+    await page.click("[data-queueclear]"); await sleep(300);
+    check("Dashboard: Show all brings the board back", await page.locator(".queuebar").count() === 0 && await page.locator('.row[data-id]').count() > 3);
     check("Dashboard: Open queue opens tonight's DROPS on TO DO", await page.evaluate(() => document.getElementById("main").dataset.view === "board") && await page.locator('#tabTodo.on').count() === 1 && await page.locator('.row[data-id="q1"]').count() === 1);
     await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
     await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
@@ -1775,6 +1793,36 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: smallest phone fits", await noSideScroll(page));
     check("Dashboard: no errors", page.__errors.length === 0, page.__errors);
   }
+});
+// Dashboard totals are the database's true counts, not the length of a capped list (part 85); early returns are counted per car.
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", ink: "#172536", short: "TakeOff" }; db.company.overstay_rate = 30; db.dash = dashData();
+  db.dash.totals = { added: 412, added_desk: 400, taken_n: 350, cash: 9000, card: 12000, waived_n: 7, waived: 210, removed: 325, no_show: 300, cancelled: 20, duplicate: 5, complaints: 301, owed_n: 3 };
+  const page = await phone(browser, db);
+  await open(page); await sleep(400);
+  await page.evaluate(() => (document.querySelector("#cHead:not(.hidden)") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+  await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
+  const txt = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
+  const desk = await page.locator('[data-fold="desk"] .od-line').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+  check("Totals: Desk activity uses the true counts", desk[0] === "Added at the desk 400 added · 12 NEW BOOKING 412" && /^Removed 300 no show · 20 cancelled · 5 duplicate 325$/.test(desk[1]) && desk[2] === "Complaints 301", desk);
+  const pay = await page.locator(".od-pay .od-tr:not(.od-th)").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+  check("Totals: money taken uses the true sums and count", /Collected £21000 · 350 cars Cash £9000 Card £12000/.test(pay[0]) && /Waived £210/.test(await txt(".od-foot")), pay);
+  await page.evaluate(() => document.querySelector('[data-dashjump="added"]').click()); await sleep(150);
+  check("Totals: a record list says it shows the latest rows of the true total", /Added at the desk \(412\)/.test(await txt("#dash-added")) && /Showing the latest 2 of 412/.test(await txt("#dash-added")), await txt("#dash-added"));
+  check("Totals: no errors", page.__errors.length === 0, page.__errors);
+});
+// Booking Save checks every field before it queues anything.
+await scenario(async () => {
+  const db = makeDb(); db.me = { ...db.me, role: "owner" };
+  const page = await phone(browser, db);
+  await open(page); await page.selectOption("#sheetPick", "p0"); await sleep(700);
+  await page.click('.row[data-id="p1"] .reg'); await page.waitForSelector("#panel[open]");
+  await page.fill("#pickFlightText", "LS1234"); await page.fill("#regText", "AB12-CDE"); await page.click("[data-savepanel]"); await sleep(400);
+  check("Booking Save: an invalid reg queues nothing, not even the flight", /letters and numbers/.test(await toast(page)) && !db.calls.some((c) => ["set_pick_flight", "set_reg", "set_note"].includes(c.fn)) && await page.locator("#panel[open]").count() === 1, db.calls.map((c) => c.fn));
+  await page.fill("#regText", "AB12 CDE"); await page.fill("#retT", "99:99"); await page.click("[data-savepanel]"); await sleep(400);
+  check("Booking Save: an invalid time queues nothing either", !db.calls.some((c) => ["set_pick_flight", "set_reg", "set_pick_return"].includes(c.fn)), db.calls.map((c) => c.fn));
+  await page.fill("#retT", ""); await page.evaluate(() => { document.getElementById("retT").value = "0900"; }); await page.click("[data-savepanel]"); await sleep(600);
+  check("Booking Save: fixed, the flight and the reg are saved", db.calls.some((c) => c.fn === "set_pick_flight" && c.args.p_flight === "LS1234") && db.calls.some((c) => c.fn === "set_reg" && c.args.p_reg === "AB12 CDE"), db.calls.map((c) => c.fn));
 });
 // Capacity (Settings, part 71) against Parked now: spaces free or over, per yard too
 for (const theme of ["", "stdplus"]) await scenario(async () => {
