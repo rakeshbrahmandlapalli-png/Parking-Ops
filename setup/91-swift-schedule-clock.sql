@@ -1,5 +1,5 @@
--- Parking Ops — database part 91: the clock for scheduled booking import. WRITTEN 14 Oct, NOT applied: run it only when
--- the user says to switch scheduled import on. Every 10 minutes it asks the function whether a saved time has come;
+-- Parking Ops — database part 91: the clock for scheduled booking import. APPLIED by Claude on 14 Oct at the user's request.
+-- Every 10 minutes it asks the function whether a saved time has come;
 -- the function does nothing for a company whose schedule is off or has no times, and attempts each time once.
 -- To stop it: select cron.unschedule('takeoff-bookings-schedule');
 select cron.schedule('takeoff-bookings-schedule', '*/10 * * * *', $job$
