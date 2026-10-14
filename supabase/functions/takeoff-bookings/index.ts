@@ -9,7 +9,8 @@
 //                                            previewed plan does it import (every day in one
 //                                            transaction, through import_sheet_system, so
 //                                            activity history and Undo work as for a hand import).
-//   { action: "timer" }                      refused: scheduled sync is switched off.
+//   { action: "timer" }                      from the database clock (x-timer secret, part 91): for a company whose saved
+//                                            schedule is on, at a saved time, checks and imports only if clean, else notifies.
 //
 // On the booking site it only signs in, searches and downloads (GET, plus the one
 // sign-in POST); every address is checked against the approved host and report
@@ -30,7 +31,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights, addDaysKey } from "./reader.mjs";
-import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget } from "./swift.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget, cleanTimes, dueSlot, scheduleDecision } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -140,6 +141,74 @@ async function record(companyId: string, ok: boolean, error: string, summary: un
   await admin.rpc("auto_import_record", { p_company: companyId, p_ok: ok, p_error: error, p_summary: summary ?? null });
 }
 
+// The office is told (owners, managers, office) through send-alerts, which checks the service-role key itself.
+async function notifyOffice(companyId: string, slot: string, text: string) {
+  try {
+    await fetch(SB_URL + "/functions/v1/send-alerts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", authorization: "Bearer " + Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")! },
+      body: JSON.stringify({ type: "import_held", company_id: companyId, slot, text }),
+    });
+  } catch { /* the page still shows the outcome */ }
+}
+
+// One company's scheduled run: check like the button does, import only if clean (scheduleDecision), as the person who
+// switched the schedule on. Each saved time is attempted once; the outcome is kept for the page.
+async function scheduledFor(co: Co & { suspended_at?: string | null }) {
+  if (co.slug === "airport-parking-bay" || co.suspended_at) return { company: co.slug, skipped: "not for this company" };
+  const { data: row } = await admin.rpc("auto_import_row", { p_company: co.id });
+  const cfg = ((row ?? {}) as { config?: Record<string, unknown> }).config ?? {};
+  if (!cfg.base || cfg.manual_enabled !== true) return { company: co.slug, skipped: "not set up" };
+  const slot = dueSlot(Date.now(), cleanTimes(cfg.schedule_times as string[]), String(cfg.last_slot ?? ""));
+  if (!slot) return { company: co.slug, skipped: "no time due" };
+  const by = String(cfg.scheduled_by ?? "");
+  const at = slot.slice(11);
+  const mark = (r: Record<string, unknown>) => admin.rpc("swift_schedule_mark", { p_company: co.id, p_slot: slot, p_result: r });
+  const token = await admin.rpc("swift_lock", { p_company: co.id, p_seconds: 300 });
+  if (token.error) return { company: co.slug, skipped: "busy" }; // not marked: tried again on the next tick, inside the grace time
+  let block = 0;
+  try {
+    if (!by) throw new Error("No one is recorded as having switched the schedule on.");
+    const c = await collect(co as Co, cfg);
+    const { data: known } = await admin.rpc("swift_reviews_known", { p_company: co.id });
+    const d = scheduleDecision(c.p, new Set((known ?? []) as string[]), Number(cfg.schedule_max_changes ?? 200));
+    if (!d.go) {
+      await mark({ outcome: "held", why: d.why, counts: c.p.counts });
+      await notifyOffice(co.id, slot, "The " + at + " booking import was not run: " + d.why + ". Open Booking import to check.");
+      return { company: co.slug, slot, held: d.why };
+    }
+    if (c.p.reviews.length) await admin.rpc("swift_review_upsert", { p_company: co.id, p_items: c.p.reviews });
+    let days: unknown[] = [];
+    if (c.p.batches.length) {
+      const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, scheduled: true, provider: "swift" }, p_user: by });
+      if (res.error) throw new Error("Nothing was imported (" + res.error.message + ").");
+      days = res.data as unknown[];
+    }
+    const summary = { at: new Date().toISOString(), days, counts: c.p.counts, reviews: c.p.reviews.length };
+    await admin.rpc("auto_import_record", { p_company: co.id, p_ok: true, p_error: "", p_summary: summary });
+    await mark({ outcome: "imported", counts: c.p.counts });
+    return { company: co.slug, slot, imported: c.p.counts };
+  } catch (e) {
+    const err = e as Error & { code?: string };
+    if (err.code === "login_failed") block = 60;
+    await admin.rpc("auto_import_record", { p_company: co.id, p_ok: false, p_error: err.message, p_summary: null });
+    await mark({ outcome: "failed", why: err.message });
+    await notifyOffice(co.id, slot, "The " + at + " booking import did not run: " + err.message);
+    return { company: co.slug, slot, failed: err.message };
+  } finally {
+    await admin.rpc("swift_unlock", { p_company: co.id, p_token: token.data, p_block_minutes: block });
+  }
+}
+
+async function timerRun(req: Request): Promise<Response> {
+  const { data: ok } = await admin.rpc("timer_secret_ok", { p_secret: req.headers.get("x-timer") ?? "" });
+  if (ok !== true) return reply(403, { error: "Not the timer." });
+  const { data: due } = await admin.rpc("auto_import_due");
+  const out = [];
+  for (const co of (due ?? []) as (Co & { suspended_at?: string | null })[]) out.push(await scheduledFor(co));
+  return reply(200, { ok: true, companies: out });
+}
+
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply(405, { error: "POST only." });
@@ -148,7 +217,7 @@ async function handle(req: Request): Promise<Response> {
   const action = String(body.action ?? "preview");
 
   try {
-    if (action === "timer") return reply(403, { error: "Scheduled sync is switched off. Use Get bookings now." });
+    if (action === "timer") return await timerRun(req); // does nothing for a company whose schedule is off or has no times
     if (action !== "preview" && action !== "apply") return reply(400, { error: "Unknown action." });
 
     const auth = req.headers.get("authorization") ?? "";

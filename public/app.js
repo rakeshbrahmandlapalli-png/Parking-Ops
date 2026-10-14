@@ -4140,6 +4140,33 @@
       '<label>To <input type="date" id="biTo" value="' + esc(r.to) + '" min="' + addDaysKey(t, -30) + '" max="' + addDaysKey(t, 60) + '"' + dis + "></label>" +
       (a.custom ? '<button type="button" class="link" data-birangereset' + dis + ">Today and next 2 days</button>" : '<span class="bi-hint">Today and the next 2 days. Up to 14 days at a time.</span>') + "</div>";
   }
+  // Scheduled import: everyone who can import sees whether it is on and how the last run went; owners and managers set it.
+  function biSchedHtml(a) {
+    var sc = a.schedule || {}, on = !!sc.on, times = sc.times || [], last = sc.last, D = a.schedDraft, edit = S.me.role === "owner" || S.me.role === "manager";
+    var lastTxt = !last ? "" : last.outcome === "imported" ? "Last run " + last.slot.slice(11) + ": imported."
+      : last.outcome === "held" ? "Last run " + last.slot.slice(11) + ": not imported, " + last.why + "."
+      : "Last run " + last.slot.slice(11) + ": didn't run, " + last.why;
+    var h = '<details class="bi-sched" data-bisched' + (D ? " open" : "") + '><summary><span>Scheduled import</span><span class="bi-chk' + (on ? "" : " off") + '">' + (on ? "On · " + esc(times.join(", ")) : "Off") + "</span></summary>";
+    h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision. Otherwise it waits, and the owner, managers and office are notified.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
+    if (lastTxt) h += '<p class="bi-hint" data-bischedlast>' + esc(lastTxt) + "</p>";
+    if (edit) {
+      var d = D || { on: on, times: times.slice() };
+      h += '<label class="bi-sw"><input type="checkbox" id="schedOn"' + (d.on ? " checked" : "") + '> Import automatically at these times</label><div class="bi-times">' +
+        d.times.map(function (t, i) { return '<span class="bi-time"><input type="time" data-schedtime="' + i + '" value="' + esc(t) + '" aria-label="Time ' + (i + 1) + '"><button type="button" class="link" data-schedrm="' + i + '" aria-label="Remove ' + esc(t) + '">Remove</button></span>'; }).join("") +
+        (d.times.length < 6 ? '<button type="button" class="btn ghost small" data-schedadd>Add a time</button>' : "") + "</div>" +
+        '<div><button type="button" class="btn brand small" data-schedsave' + (D ? "" : " disabled") + ">Save schedule</button></div>";
+    }
+    return h + "</div></details>";
+  }
+  function biSchedChange(a, fn) { var sc = a.schedule || {}; a.schedDraft = a.schedDraft || { on: !!sc.on, times: (sc.times || []).slice() }; fn(a.schedDraft); render(); }
+  async function biSchedSave(a) {
+    var d = a.schedDraft; if (!d) return;
+    var times = d.times.filter(Boolean);
+    if (d.on && !times.length) return toast("Add at least one time.", true);
+    var r = await sb.rpc("swift_schedule_set", { p_times: times, p_on: !!d.on });
+    if (r.error) return toast(r.error.message, true);
+    a.schedDraft = null; toast(d.on ? "Scheduled import on." : "Scheduled import off."); loadAutoImport();
+  }
   function autoPanel(a) {
     var P = a.preview, busy = a.running || a.checking, c = (P && P.counts) || {}, B = S.bi;
     var conn = biConn(a), nImp = (c["new"] || 0) + (c.changed || 0);
@@ -4151,7 +4178,7 @@
       (conn.note ? '<span class="bi-note">' + esc(conn.note) + "</span>" : "") + "</div>" +
       '<div class="bi-act"><button type="button" class="btn ghost" data-autopreview' + (busy ? " disabled" : "") + ">" + (a.checking ? "Checking…" : "Check bookings") + "</button>" +
       '<button type="button" class="btn brand" data-autorun' + (canGo ? "" : " disabled") + ">" + esc(go) + "</button></div>" +
-      biRangeHtml(a, busy) + '<div class="bi-body">';
+      biRangeHtml(a, busy) + biSchedHtml(a) + '<div class="bi-body">';
     if (a.error) h += '<div class="alert" role="alert">' + esc(a.error) + "</div>";
     if (!P) {
       if (!a.error && !busy) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
@@ -4210,7 +4237,7 @@
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to };
+    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft };
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -5300,6 +5327,9 @@
       t.closest(".bi-row").classList.toggle("open", open); if (open) S.bi.open[t.dataset.birow] = 1; else delete S.bi.open[t.dataset.birow];
       return;
     }
+    if (t.dataset.schedadd !== undefined && S.autoImport) return biSchedChange(S.autoImport, function (d) { d.times.push("12:00"); });
+    if (t.dataset.schedrm !== undefined && S.autoImport) { var i2 = Number(t.dataset.schedrm); return biSchedChange(S.autoImport, function (d) { d.times.splice(i2, 1); }); }
+    if (t.dataset.schedsave !== undefined && S.autoImport) return biSchedSave(S.autoImport);
     if (t.dataset.birangereset !== undefined) { var bb = S.autoImport; if (bb) { bb.custom = false; bb.preview = null; bb.error = ""; render(); } return; }
     if (t.dataset.autopreview !== undefined) return previewAutoImport();
     if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
@@ -5395,6 +5425,8 @@
       if (Math.round((Date.parse(nt + "T12:00:00Z") - Date.parse(nf + "T12:00:00Z")) / 86400000) + 1 > 14) { if (t.id === "biFrom") nt = addDaysKey(nf, 13); else nf = addDaysKey(nt, -13); toast("Up to 14 days at a time.", true); }
       ba.custom = true; ba.from = nf; ba.to = nt; ba.preview = null; ba.error = ""; ba.stale = false; render(); return;
     }
+    if (t.id === "schedOn" && S.autoImport) { var on1 = t.checked; return biSchedChange(S.autoImport, function (d) { d.on = on1; }); }
+    if (t.dataset.schedtime !== undefined && S.autoImport) { var v1 = t.value, i1 = Number(t.dataset.schedtime); return biSchedChange(S.autoImport, function (d) { d.times[i1] = v1; }); }
     if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;

@@ -133,6 +133,7 @@ function rpc(db, fn, a) {
     case "import_sheet": { const sh = db.sheets.find((x) => x.kind === a.p_kind && x.day === a.p_day); (db.imports = db.imports || []).push({ id: 70 + db.imports.length, kind: a.p_kind, day: a.p_day, at: now(), by: "RAKESH", added: a.p_rows.length, changed: 0, undone: false, latest: true }); return { sheet_id: sh ? sh.id : "p0", added: a.p_rows.length, updated: 0, early: 0, moved: 0, new_marked: 0, undo_id: 70 + db.imports.length - 1 }; }
     case "admin_save_client": (db.clientSaves = db.clientSaves || []).push(a.p); return { id: a.p.id, name: a.p.name, brand: a.p.brand };
     case "recent_imports": return db.imports || [];
+    case "swift_schedule_set": { if (db.me.role !== "owner" && db.me.role !== "manager") throw new Error("Only owners and managers can set the schedule."); db.autoImport = { ...db.autoImport, schedule: { on: a.p_on, times: a.p_times, by: db.me.name || "RAKESH", last: db.autoImport.schedule && db.autoImport.schedule.last } }; return { on: a.p_on, times: a.p_times }; }
     case "auto_import_status": return db.autoImport || { available: false };
     case "swift_reviews_open": return db.reviews || [];
     case "swift_review_resolve": { db.reviews = (db.reviews || []).filter((r) => r.id !== a.p_id); db.autoImport.open_reviews = db.reviews.length; return null; }
@@ -1711,6 +1712,50 @@ await scenario(async () => {
   await page.context().close();
 });
 
+// 18d6. Scheduled import: owners and managers set the times; the office only sees the state and how the last run went.
+await scenario(async () => {
+  const db = biDb("ops");
+  db.autoImport.schedule = { on: false, times: [], last: null };
+  const page = await phone(browser, db, { width: 1100 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-bisched]", { timeout: 6000 });
+  check("schedule: starts off, and nothing is sent until saved", /Off/.test(await page.locator("[data-bisched] summary").innerText()) && !(db.calls || []).some((c) => c.fn === "swift_schedule_set"));
+  await page.click("[data-bisched] summary"); await sleep(200);
+  check("schedule: Save is disabled until something changes", await page.locator("[data-schedsave]").isDisabled());
+  await page.click("[data-schedadd]"); await sleep(200);
+  await page.fill('[data-schedtime="0"]', "06:00"); await page.dispatchEvent('[data-schedtime="0"]', "change"); await sleep(200);
+  await page.click("[data-schedadd]"); await sleep(200);
+  await page.fill('[data-schedtime="1"]', "18:30"); await page.dispatchEvent('[data-schedtime="1"]', "change"); await sleep(200);
+  await page.check("#schedOn"); await sleep(200);
+  check("schedule: the times can be added and Save becomes available", await page.locator("[data-schedtime]").count() === 2 && !(await page.locator("[data-schedsave]").isDisabled()));
+  await page.click("[data-schedsave]"); await sleep(600);
+  const sv = (db.calls || []).filter((c) => c.fn === "swift_schedule_set").pop();
+  check("schedule: saving sends the times and the switch", !!sv && sv.args.p_on === true && JSON.stringify(sv.args.p_times) === JSON.stringify(["06:00", "18:30"]), sv);
+  check("schedule: the summary then reads On with the times", /On · 06:00, 18:30/.test(await page.locator("[data-bisched] summary").innerText()));
+  db.autoImport.schedule = { on: true, times: ["06:00", "18:30"], by: "RAKESH", last: { outcome: "held", slot: "2026-10-14 06:00", why: "2 bookings need a decision" } };
+  await page.click("[data-autopreview]"); await sleep(900); // a check reloads the status
+  await page.evaluate(() => document.querySelector("[data-bisched]").open = true);
+  check("schedule: a held run is explained on the page", /not imported, 2 bookings need a decision/.test(await page.locator("[data-bischedlast]").innerText()));
+  check("schedule: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
+// 18d7. The office sees the schedule state but cannot change it.
+await scenario(async () => {
+  const db = biDb("ops");
+  db.me = { ...db.me, role: "office" };
+  db.autoImport.schedule = { on: true, times: ["06:00"], by: "RAKESH", last: null };
+  const page = await phone(browser, db, { width: 1100 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-bisched]", { timeout: 6000 });
+  await page.click("[data-bisched] summary"); await sleep(200);
+  check("schedule (office): shows On with the time but has no switch or Save", /On · 06:00/.test(await page.locator("[data-bisched] summary").innerText()) && await page.locator("#schedOn").count() === 0 && await page.locator("[data-schedsave]").count() === 0);
+  check("schedule (office): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
 // 18d4. A company without the connected importer sees the manual import only, under the same heading.
 await scenario(async () => {
   const db = makeDb(); db.company = { ...db.company, name: "Airport Parking Bay", slug: "airport-parking-bay", brand: { colour: "#1560BD", ink: "#FFFFFF", short: "Parking Bay", theme: "premium" } };
@@ -2927,6 +2972,7 @@ async function shots(dir) {
   if (process.env.SHOTS_ONLY === "import") {
     for (const [width, height, name] of [[1440, 1000, "desktop"], [390, 844, "phone"]]) {
       const db = biDb(process.env.SHOTS_THEME || "ops");
+      db.autoImport.schedule = { on: true, times: ["06:00", "12:00", "18:00"], by: "RAKESH", last: { outcome: "held", slot: "2026-10-14 12:00", why: "2 bookings need a decision" } };
       const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
       const snap = async (n, full) => { await sleep(400); if (full) await page.setViewportSize({ width, height: Math.min(2400, await page.evaluate(() => document.documentElement.scrollHeight)) }); await page.screenshot({ path: path.join(dir, "import-" + name + "-" + n + ".png") }); if (full) await page.setViewportSize({ width, height }); };
       await open(page); await sleep(300);
@@ -2938,6 +2984,7 @@ async function shots(dir) {
       if (name === "phone") { await page.evaluate(() => window.scrollTo(0, 520)); await snap("2b-scrolled", false); await page.evaluate(() => window.scrollTo(0, 0)); }
       if (name === "phone") { await page.locator(".bi-row.s-review").first().locator(".bi-hd").click(); await page.locator(".bi-row.s-changed").first().locator(".bi-hd").click(); await snap("3-expanded", true); }
       await page.click('[data-bifilter="review"]'); await sleep(300); await snap("4-needs-review", false);
+      await page.evaluate(() => { const d = document.querySelector("[data-bisched]"); if (d) { d.open = true; d.scrollIntoView(); } }); await snap("6-schedule", false);
       await page.click('[data-bitab="manual"]'); await sleep(400); await snap("5-manual", true);
       await page.context().close();
     }

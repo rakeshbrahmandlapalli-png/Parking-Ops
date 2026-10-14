@@ -640,3 +640,12 @@ span.bi-undo{color:var(--ink-2);}
 .bi-range label{display:inline-flex;align-items:center;gap:8px;font-weight:700;color:var(--ink);}
 .bi-range input[type=date]{min-height:40px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;}
 .bi-range .bi-hint{margin:0;}
+.bi-sched{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;background:#fff;}
+.bi-sched summary{display:flex;gap:14px;align-items:center;justify-content:space-between;min-height:44px;padding:0 12px;cursor:pointer;font-weight:700;}
+.bi-schedbody{display:flex;flex-direction:column;gap:10px;padding:4px 12px 12px;}
+.bi-schedbody .bi-hint{margin:0;}
+.bi-sw{display:flex;gap:8px;align-items:center;font-weight:700;}
+.bi-times{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;}
+.bi-time{display:inline-flex;gap:8px;align-items:center;}
+.bi-time input[type=time]{min-height:40px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;}
+.bi-sched .btn[disabled]{opacity:.45;cursor:not-allowed;}

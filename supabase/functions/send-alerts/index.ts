@@ -17,6 +17,8 @@
 //   { type: "longwait" }  by the 5-minute timer (setup/88-long-wait-alert.sql),
 //       with the x-timer header. A DROPS car CALLED more than LONG_WAIT_MIN ago
 //       with no driver SENT (and not cleared) is pushed once to everyone.
+//   { type: "import_held" }  by takeoff-bookings (service-role key as the bearer) when a scheduled booking import
+//       is held or fails: owners, managers and the office are pushed once per saved time.
 //   { type: "usage" }  by the morning timer (setup/38-usage-warning.sql), with
 //       the x-timer header. If usage_status() finds a free-plan limit getting
 //       close (or no backup last night), the owners and managers of the
@@ -171,6 +173,19 @@ async function onLongWait(req: Request) {
   return reply(200, { waiting: (cars ?? []).length, sent });
 }
 
+// A scheduled booking import that was held or did not run: owners, managers and the office are told, once per saved
+// time. Called by takeoff-bookings with the service-role key as the bearer; nothing else may send this.
+async function onImportHeld(req: Request, msg: Record<string, unknown>) {
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!key || (req.headers.get("authorization") ?? "") !== "Bearer " + key) return reply(403, { error: "Not allowed." });
+  const company = String(msg.company_id ?? ""), slot = String(msg.slot ?? "").slice(0, 16), text = String(msg.text ?? "").slice(0, 200);
+  if (!/^[0-9a-f-]{36}$/i.test(company) || !text) return reply(400, { error: "Bad request." });
+  if (!(await once(`importheld:${company}:${slot}`))) return reply(200, { sent: 0, note: "already sent" });
+  const { data: people } = await db.from("staff").select("id").eq("company_id", company).eq("active", true).in("role", ["owner", "manager", "office"]);
+  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title: "TakeOff: bookings need a decision", body: text, url: "/", tag: "import-held" });
+  return reply(200, { sent });
+}
+
 async function onUsage(req: Request) {
   if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
   const { data: u, error } = await db.rpc("usage_status");
@@ -216,6 +231,7 @@ Deno.serve(async (req) => {
     if (msg.type === "test") return await onTest(req, msg);
     if (msg.type === "longwait") return await onLongWait(req);
     if (msg.type === "usage") return await onUsage(req);
+    if (msg.type === "import_held") return await onImportHeld(req, msg);
     return reply(400, { error: "Unknown message." });
   } catch (e) {
     console.error(e);
