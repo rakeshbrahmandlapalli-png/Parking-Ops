@@ -85,19 +85,20 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const eachDay = (w: { from: string; to: string }) => { const out: string[] = []; for (let d = w.from; d <= w.to; d = addDaysKey(d, 1)) out.push(d); return out; };
   async function readDays(search: string, w: { from: string; to: string }, field: string, keep?: (r: { ret?: { time: string } }, day: string) => boolean) {
     // deno-lint-ignore no-explicit-any
-    const rows: any[] = []; let excludedScope = 0; const site: Record<string, number> = {};
+    const rows: any[] = []; let excludedScope = 0; const site: Record<string, number> = {}; let form = "";
     for (const d of eachDay(w)) {
       const one = { from: d, to: d };
       const buf = await client.download(fill(search, one), exportPath);
       const r = readReport(gridFrom(buf), scope, { ...opts, field, window: one, allowEmpty: true });
       // The site's own count for that search against what the download holds: a short download is never imported.
       const siteRows = (buf as unknown as { siteRows: number | null }).siteRows;
-      if (siteRows != null) site[d] = siteRows;
+      if (siteRows == null) throw new Error("Couldn't read how many bookings the site lists for " + d + ", so the download can't be checked. Page text: \"" + String((buf as unknown as { siteNote?: string }).siteNote ?? "").slice(0, 120) + "\". Nothing was imported.");
+      site[d] = siteRows; if (!form) form = String((buf as unknown as { siteForm?: string }).siteForm ?? "");
       if (siteRows != null && r.rows.length < siteRows) throw new Error("The booking site lists " + siteRows + " bookings for " + d + " but its download holds only " + r.rows.length + ". Nothing was imported.");
       rows.push(...(keep ? r.rows.filter((x: never) => keep(x, d)) : r.rows)); excludedScope += r.excludedScope;
     }
     if (!rows.length) throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");
-    return { rows, excludedScope, site };
+    return { rows, excludedScope, site, form };
   }
   // Returns before the cutoff on the day after belong to the last sheet, so that day is searched too, for those only.
   const dwx = { from: dw.from, to: addDaysKey(dw.to, 1) };
@@ -132,7 +133,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
   const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff, cancelledRows: cancelledRows as never });
-  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: reportStats(picks.rows, "meet", picks.site) }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
+  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: { ...reportStats(picks.rows, "meet", picks.site), form: picks.form } }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {
