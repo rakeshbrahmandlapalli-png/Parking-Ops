@@ -1,5 +1,5 @@
 -- Parking Ops — database part 90: scheduled booking import (the clock is NOT started here; see part 91).
--- WRITTEN 14 Oct, not applied yet (waits for the user).
+-- APPLIED by Claude on 14 Oct at the user's request.
 -- An owner or manager saves up to 6 London times and switches the schedule on or off. At a time, the function
 -- checks the booking site like the button does and imports only if it is clean (no invalid record, no review case
 -- the office has not already been told about, no unusually large change); otherwise it stops and the office is
