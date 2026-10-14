@@ -724,7 +724,10 @@ await scenario(async () => {
   check("Operations: navy TO DO, grey page, numbers in a panel", chrome.tab === "rgb(24, 40, 59)" && chrome.bg === "rgb(245, 247, 250)" && chrome.tally === "6px", chrome);
   check("Operations: Standard itself keeps its own chrome", await std.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(255, 255, 255)" && getComputedStyle(document.querySelector(".tabs button.on")).backgroundColor === "rgb(255, 255, 255)"));
   await plus.setViewportSize({ width: 1280, height: 900 }); await sleep(200);
-  check("Operations: wide screen, the board uses the width (the table layout)", await plus.evaluate(() => Math.round(document.getElementById("main").getBoundingClientRect().width) === 1280 && document.body.classList.contains("ops-desk") && !!document.querySelector("#main .row.drow")));
+  check("Operations: wide screen, PICKS keeps its rows at 1120 px", await plus.evaluate(() => document.body.classList.contains("picks") && Math.round(document.getElementById("main").getBoundingClientRect().width) === 1120 && !document.querySelector("#main .drow")));
+  await pickKind(plus, "drops"); await sleep(200);
+  { const w = await plus.evaluate(() => ({ main: Math.round(document.getElementById("main").getBoundingClientRect().width), page: document.documentElement.clientWidth, desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .row.drow") }));
+  check("Operations: wide screen, the board uses the width (the table layout)", w.main === w.page && w.desk && w.drow, w); }
   check("Operations: no errors", plus.__errors.length === 0, plus.__errors);
   // As many jobs on the screen as Standard with features: the first row starts no lower.
   await plus.setViewportSize({ width: 390, height: 844 }); await sleep(150);
