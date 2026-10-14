@@ -144,6 +144,26 @@ export function checkDownload(buf, contentType) {
   return buf;
 }
 
+// The export is plain tab-separated text. Reading it directly is far lighter than SheetJS (the function has a small CPU
+// allowance, and a run now reads one export per day). Returns null when the file is not that kind of text.
+export function parseTsv(buf) {
+  if (!buf || buf.length < 2 || (buf[0] === 0x50 && buf[1] === 0x4b) || (buf[0] === 0xd0 && buf[1] === 0xcf)) return null; // zip / old binary xls
+  const t = new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "");
+  const nl = t.indexOf("\n");
+  if (t.indexOf("\t") < 0 || (nl >= 0 && t.indexOf("\t") > nl) || t.indexOf("\0") >= 0) return null;
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; continue; }
+    if (c === '"' && cell === "") q = true;
+    else if (c === "\t") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; row.push(cell); cell = ""; if (row.some((x) => x !== "")) rows.push(row); row = []; }
+    else cell += c;
+  }
+  row.push(cell); if (row.some((x) => x !== "")) rows.push(row);
+  return rows;
+}
+
 // The Return Report page only offers a PDF, but its table (with the Flight No. boxes) is
 // plain HTML: read it as a grid. Text of each cell; for a cell holding an <input>, its value.
 export function parseHtmlTable(html) {

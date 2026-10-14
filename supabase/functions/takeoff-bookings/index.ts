@@ -30,7 +30,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights, addDaysKey } from "./reader.mjs";
-import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -46,8 +46,10 @@ const reply = (status: number, body: unknown) =>
 
 
 function gridFrom(buf: Uint8Array): string[][] {
-  // The export is a tab-separated "xls"; SheetJS reads it. Dates are already
-  // text ("2026-10-05 15:00") in this export, so no serial-date handling.
+  // The export is a tab-separated "xls"; read it as text (cheap), SheetJS only for a real spreadsheet.
+  // Dates are already text ("2026-10-05 15:00") in this export, so no serial-date handling.
+  const tsv = parseTsv(buf);
+  if (tsv) return tsv;
   const wb = XLSX.read(buf, { type: "array", raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return (XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }) as unknown[][])

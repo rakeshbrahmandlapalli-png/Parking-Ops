@@ -4,7 +4,7 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { parseHtmlTable, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -273,5 +273,11 @@ const m = await err(`select swift_apply($1,$2)`, [co, JSON.stringify(bad)]);
 ok("if a later day fails nothing from that sync is kept (no partial import)", /boom/.test(m) && (await q(`select count(*)::int n from done`))[0].n === 2, m);
 ok("the service-role-only functions are not callable by the app's users", (await q(`select has_function_privilege('authenticated','swift_apply(uuid,jsonb,jsonb)','execute') a, has_function_privilege('authenticated','swift_lock(uuid,int)','execute') b, has_function_privilege('service_role','swift_apply(uuid,jsonb,jsonb)','execute') c`))[0].a === false);
 
+{
+  const enc = (t) => new TextEncoder().encode(t);
+  const g = parseTsv(enc('Sr#\tRef\tNotes\r\n1\tAB1\t"two\nlines, ""q"""\r\n2\tAB2\t\r\n\r\n'));
+  ok("the tab-separated export is read as text (quotes, line breaks, blank rows)", g && g.length === 3 && g[1][2] === 'two\nlines, "q"' && g[2][1] === "AB2" && g[2][2] === "", JSON.stringify(g));
+  ok("a real spreadsheet or a web page is not read as text", parseTsv(new Uint8Array([0x50, 0x4b, 3, 4])) === null && parseTsv(enc("<html>no tabs</html>")) === null);
+}
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
