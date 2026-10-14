@@ -29,7 +29,7 @@
 // TAKEOFF_BOOKING_PASSWORD. The service-role key is a function secret too.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
-import { matchFlights } from "./reader.mjs";
+import { matchFlights, addDaysKey } from "./reader.mjs";
 import { makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
@@ -77,19 +77,36 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
   const opts = { pageSize: Number(cfg.page_size ?? 0) || undefined };
-  const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, { ...opts, field: "ret", window: dw });
+  // The site's export comes back cut short for a multi-day search (14 Oct: 72 rows for three days that hold
+  // about 230), but a one-day search exports in full. So: one search and export per day, like the office does by hand.
+  const cutoff = (company.drops_day_end ?? "06:00").slice(0, 5);
+  const eachDay = (w: { from: string; to: string }) => { const out: string[] = []; for (let d = w.from; d <= w.to; d = addDaysKey(d, 1)) out.push(d); return out; };
+  async function readDays(search: string, w: { from: string; to: string }, field: string, keep?: (r: { ret?: { time: string } }, day: string) => boolean) {
+    // deno-lint-ignore no-explicit-any
+    const rows: any[] = []; let excludedScope = 0;
+    for (const d of eachDay(w)) {
+      const one = { from: d, to: d };
+      const r = readReport(gridFrom(await client.download(fill(search, one), exportPath)), scope, { ...opts, field, window: one, allowEmpty: true });
+      rows.push(...(keep ? r.rows.filter((x: never) => keep(x, d)) : r.rows)); excludedScope += r.excludedScope;
+    }
+    if (!rows.length) throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");
+    return { rows, excludedScope };
+  }
+  // Returns before the cutoff on the day after belong to the last sheet, so that day is searched too, for those only.
+  const dwx = { from: dw.from, to: addDaysKey(dw.to, 1) };
+  const drops = await readDays(dropsSearch, dwx, "ret", (r, d) => d !== dwx.to || (!!r.ret && !!r.ret.time && r.ret.time <= cutoff));
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
     const fFields = cfg.flights_post as Record<string, string> | undefined; // the Return Report's search is a POST form
     const fGrid = cfg.flights_format === "html"
       ? parseHtmlTable(fFields
-          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dw)])))
-          : await client.page(fill(flightsSearch, dw)))
-      : gridFrom(await client.download(fill(flightsSearch, dw), String(cfg.flights_export_path ?? exportPath)));
+          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dwx)])))
+          : await client.page(fill(flightsSearch, dwx)))
+      : gridFrom(await client.download(fill(flightsSearch, dwx), String(cfg.flights_export_path ?? exportPath)));
     const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
     matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   }
-  const picks = readReport(gridFrom(await client.download(fill(picksSearch, pw), exportPath)), scope, { ...opts, field: "meet", window: pw });
+  const picks = await readDays(picksSearch, pw, "meet");
   // Cancelled bookings need their own search (the main ones list Completed only).
   const cw = windowFor(Date.now(), Number(cfg.cancelled_days ?? 14));
   const cancelled = cancelledSearch ? readReport(gridFrom(await client.download(fill(cancelledSearch, cw), exportPath)), scope, { allowEmpty: true }) : { rows: [], excludedScope: 0 };
@@ -107,7 +124,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     ...picks.rows.filter((r: { cancelled: boolean }) => r.cancelled).map((row: unknown) => ({ kind: "picks", row })),
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
-  const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff: (company.drops_day_end ?? "06:00").slice(0, 5), cancelledRows: cancelledRows as never });
+  const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff, cancelledRows: cancelledRows as never });
   return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret"), picks: reportStats(picks.rows, "meet") }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 

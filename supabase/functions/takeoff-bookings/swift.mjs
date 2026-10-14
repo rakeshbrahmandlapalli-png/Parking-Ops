@@ -6,7 +6,7 @@
 import { parseExcelGrid, groupForImport, addDaysKey } from "./reader.mjs";
 
 export const DEFAULT_HOSTS = ["www.luton.swiftairportparking.co.uk"];
-export const MAX_REQUESTS = 8;
+export const MAX_REQUESTS = 24; // one search + one export per day read, a sign-in, a flights search, a cancelled search
 export const MAX_BYTES = 5 * 1024 * 1024;
 export const MAX_SPAN_DAYS = 14;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

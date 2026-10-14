@@ -80,7 +80,7 @@ ok("empty and oversized downloads are rejected", /empty/.test(await throws(() =>
   const c = mk(s); await c.login();
   ok("a redirect into a non-report page is blocked", /approved reports|could change/.test(await throws(() => c.download("bookinglist.php", "export_to_excel.php")))); }
 { const s = site(); const c = mk(s); await c.login();
-  let m = ""; for (let i = 0; i < 9 && !m; i++) m = await throws(() => c.download("bookinglist.php", "export_to_excel.php"));
+  let m = ""; for (let i = 0; i < 14 && !m; i++) m = await throws(() => c.download("bookinglist.php", "export_to_excel.php"));
   ok("request count is capped per run", /too many requests/.test(m), m); }
 
 // a report whose search is a POST form (the Return Report): one allowed search, nothing else
