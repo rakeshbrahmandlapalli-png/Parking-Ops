@@ -29,7 +29,7 @@ ok("outside /admin/ is blocked", /outside the admin area/.test(await A("https://
 ok("a page not on the report list is blocked", /approved reports/.test(await A(BASE + "booking_edit.php")));
 ok("edit / cancel / password pages are blocked even if listed", (await Promise.all(["booking_edit.php", "cancel_booking.php", "change_password.php"].map((p) => throws(() => assertAllowed(BASE + p, BASE, H, [...S, p], "GET"))))).every((m) => /could change bookings/.test(m)));
 ok("DELETE/PUT are blocked", /Blocked a DELETE/.test(await A(BASE + "bookinglist.php", "DELETE")));
-ok("the real report pages (Booking Manager, Return Report) pass the address guard", (await Promise.all(["bookinglist-parkandride.php?req=news", "arrival_report_parkandride.php?req=news"].map((p) => throws(() => assertAllowed("https://www.luton.swiftairportparking.co.uk/admin/" + p, "https://www.luton.swiftairportparking.co.uk/admin/", H, ["bookinglist-parkandride.php", "arrival_report_parkandride.php"], "GET"))))).every((m) => m === ""));
+ok("the real report pages (Booking Manager, Return Report) pass the address guard", (await Promise.all(["bookinglist-parkandride.php?req=news", "arrival_report_parkandride.php?req=news"].map((p) => throws(() => assertAllowed("https://www.luton.swiftairportparking.co.uk/admin/" + p, "https://www.luton.swiftairportparking.co.uk/admin/", ["www.luton.swiftairportparking.co.uk"], ["bookinglist-parkandride.php", "arrival_report_parkandride.php"], "GET"))))).every((m) => m === ""));
 ok("a host not on the approved list is refused as the base", /approved list/.test(await throws(() => assertAllowed("https://x.test/admin/index.php", "https://x.test/admin/", H, S, "GET"))));
 
 // ── the pretend site ──
