@@ -48,7 +48,7 @@ select id, 'swift', '{
   "cancelled_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&producttype=all&filter_status=2&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
   "flights_search": "arrival_report_parkandride.php",
   "flights_format": "html",
-  "flights_post": {"action_Search": "action_Search", "search": "", "productype": "all", "supplier": "all", "airports": "all", "filter_from": "{FROM}", "filter_to": "{TO}", "submit": "Search"},
+  "flights_post": {"action_Search": "action_Search", "search": "", "producttype": "all", "supplier": "all", "airports": "all", "filter_from": "{FROM}", "filter_to": "{TO}", "submit": "Search"},
   "scope": {"all": true},
   "drops_days": 2, "picks_days": 3, "cancelled_days": 14
 }'::jsonb

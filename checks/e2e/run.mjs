@@ -1834,7 +1834,7 @@ function biDb(theme, over = {}) {
       { ref: "DEMO-1047", kind: "cancelled", detail: { kind: "picks", name: "C Demo", reg: "CD34EFG", return: "", on_sheet: TOMORROW } },
     ],
     invalid: [], unchanged: ["DEMO-1001", "DEMO-1002", "DEMO-1003", "DEMO-1004"].map((r, i) => ({ kind: i % 2 ? "picks" : "drops", day: TONIGHT, ref: r, reg: "ZZ0" + i + "AAA" })),
-    report: { picks: site(TOMORROW, 5), drops: site(TONIGHT, 6) },
+    report: { picks: site(TOMORROW, 5), drops: site(TONIGHT, 6), flights: { rows: 7, matched: 5, cars: 6, by_day: { [TONIGHT]: 7 } } },
     ...over,
   };
   db.imports = [
@@ -1877,6 +1877,7 @@ for (const theme of ["ops", "stdplus", ""]) await scenario(async () => {
   check("import page (" + L + "): diagnostics start collapsed, with the report result", !(await diag.evaluate((d) => d.open)) && /Report checks passed/.test(await diag.locator("summary").innerText()) && !(await page.locator(".bi-diagbody").isVisible()));
   await diag.locator("summary").click(); await sleep(200);
   check("import page (" + L + "): opened diagnostics hold the raw report and search form", /On the booking site, picks: 5/.test(await page.locator(".bi-diagbody").innerText()) && /Search form: producttype=all/.test(await page.locator(".bi-diagbody").innerText()));
+  check("import page (" + L + "): diagnostics show how many drops got their return flight", /Return flights: 5 of 6 drops matched · Return Report 7/.test(await page.locator(".bi-diagbody").innerText()));
   await page.click('[data-bifilter="changed"]'); await sleep(200);
   check("import page (" + L + "): the Changed filter shows 3", await page.locator(".bi-row").count() === 3);
   await page.click('[data-bifilter="review"]'); await sleep(200);

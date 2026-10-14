@@ -42,8 +42,8 @@ export function rangeFor(nowMs, from, to) {
   return { from, to };
 }
 // Requests one run may make for that many days: a search and an export per day for picks and for drops (drops read one day further),
-// a sign-in, the flights page and the cancelled search, with a little spare.
-export function requestBudget(days) { return Math.max(MAX_REQUESTS, 4 * Math.max(1, days) + 12); }
+// the flights page per drops day, a sign-in and the cancelled search, with a little spare.
+export function requestBudget(days) { return Math.max(MAX_REQUESTS, 5 * Math.max(1, days) + 12); }
 
 // ── the guarded client ──────────────────────────────────────────────────────
 // cfg: { base, hosts?, login_path, login_fields, scripts: ["bookinglist-parkandride.php", ...] }
@@ -70,7 +70,8 @@ export function makeClient(cfg, io) {
   const loginScript = scriptOf(new URL(cfg.login_path || "index.php?req=login", cfg.base));
   const scripts = Array.from(new Set([loginScript, ...(cfg.scripts || [])]));
   const jar = {}; let count = 0, loginPosted = false, searchPosts = 0;
-  const postScripts = cfg.post_scripts || []; // report pages whose search form is a POST (Return Report), one search per run each
+  const postScripts = cfg.post_scripts || []; // report pages whose search form is a POST (Return Report), one search per day read
+  const maxPosts = Math.max(2, Number(cfg.max_search_posts) || 0);
   const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const cookieHeader = () => Object.entries(jar).map(([k, v]) => k + "=" + v).join("; ");
   const store = (res) => {
@@ -85,7 +86,7 @@ export function makeClient(cfg, io) {
       if (m === "POST") {
         const sc = scriptOf(u);
         if (sc === loginScript) { if (loginPosted) throw new Error("Blocked a second sign-in attempt."); loginPosted = true; }
-        else if (postScripts.includes(sc)) { if (++searchPosts > 2) throw new Error("Blocked: too many searches in one run."); }
+        else if (postScripts.includes(sc)) { if (++searchPosts > maxPosts) throw new Error("Blocked: too many searches in one run."); }
         else throw new Error("Blocked a form submission to " + sc + ".");
       }
       if (++count > (cfg.max_requests || MAX_REQUESTS)) throw new Error("Stopped: too many requests in one run.");
@@ -355,6 +356,15 @@ export async function planHash(p) {
 
 // What the app shows: counts and short lists, no phone numbers.
 // How many rows each report held, per day and per status, so the office can compare with the booking site.
+// The Return Report's search fields for one day. The site's product filter is "producttype"
+// (14 Oct); a saved "productype" is sent under both names so the site never falls back to its default product.
+export function flightFields(fields, day, siteDay) {
+  const out = {};
+  Object.entries(fields || {}).forEach(([k, v]) => { out[k] = String(v).replace(/\{FROM\}|\{TO\}/g, siteDay(day)); });
+  if ("productype" in out && !("producttype" in out)) out.producttype = out.productype;
+  return out;
+}
+
 export function reportStats(rows, field, site) {
   const by_day = {}, by_status = {};
   rows.forEach((r) => {
