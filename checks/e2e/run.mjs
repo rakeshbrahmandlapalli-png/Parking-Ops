@@ -76,6 +76,40 @@ function makeDb(opts = {}) {
   return db;
 }
 const now = () => new Date().toISOString();
+// Operations on a wide screen (board as a table, Flights as tables): a night with
+// every kind of car on it: long references, missing details, each button state,
+// delays, overnight times, each flight problem. Sample data only.
+// A London wall-clock time as a moment (the board shows London time).
+const lonIso = (key, hhmm) => { const g = new Date(key + "T" + hhmm + ":00Z"), p = lon(g); return new Date(2 * g.getTime() - Date.parse(p.year + "-" + p.month + "-" + p.day + "T" + p.hour.replace("24", "00") + ":" + hhmm.slice(3) + ":00Z")).toISOString(); };
+function deskDb(theme = "ops") {
+  const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme };
+  db.company.yards = ["S", "CP", "NY", "T"]; db.company.yard_colours = { CP: "#E8590C", NY: "#2F9E44", S: "#1C7ED6", T: "#7048E8" };
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString(), N = TOMORROW;
+  const cars = [
+    { reg: "AB12CDE", make: "KIA NIRO", name: "TAYLOR MRS", ref: "TKO-2026-1042", flight: "U22001", r: "11:45", sched_time: "11:45", est_time: "11:47", flight_status: "expected", yard: "CP" },
+    { reg: "CD34EFG", make: "LAND ROVER DISCOVERY SPORT HSE DYNAMIC", name: "PATEL MR", ref: "TKO-2026-1043", flight: "FR2002", r: "12:05", sched_time: "12:05", est_time: "12:03", flight_status: "scheduled", yard: "NY", called_at: ago(14), called_by: "s2" },
+    { reg: "EF56GHI", make: "NISSAN QASHQAI", name: "JONES MS", ref: "TKO-2026-1044", flight: "U22003", r: "12:15", sched_time: "12:15", est_time: "12:47", flight_status: "expected", yard: "S" },
+    { reg: "GH78JKL", make: "MERCEDES-BENZ A-CLASS", name: "SMITH DR", ref: "TKO-2026-1045", flight: "W94004", r: "12:20", sched_time: "12:20", est_time: "DELAY", flight_status: "delayed", yard: "T" },
+    { reg: "IJ90MNO", make: "", name: "BROWN", ref: "AGENT-REF-PARK-AND-RIDE-0000001046-LONG", flight: "", r: "12:35", yard: "NY" },
+    { reg: "KL12PQR", make: "PEUGEOT 208", name: "GREEN MR", ref: "TKO-2026-1047", flight: "FR2006", r: "12:40", sched_time: "12:40", est_time: "12:41", flight_status: "landed", yard: "T", sent_at: ago(6), sent_by: "s2", called_at: ago(30), called_by: "s1" },
+    { reg: "MN34STU", make: "TOYOTA COROLLA", name: "WILSON MRS", ref: "TKO-2026-1048", flight: "TBC", r: "13:05", yard: "S" },
+    { reg: "OP56VWX", make: "BMW 3 SERIES", name: "CLARK MR", ref: "TKO-2026-1049", flight: "U22007", r: "13:20", flight_note: "Not in the timetable · check the flight number", yard: "CP" },
+    { reg: "QR78YZA", make: "FORD FOCUS", name: "WALKER MS", ref: "TKO-2026-1050", flight: "NO FLIGHT", flight_status: "noflight", est_time: "14:30", r: "14:10", yard: "CP" },
+    { reg: "ST90BCD", make: "AUDI Q5", name: "HALL MR", ref: "TKO-2026-1051", flight: "FR3003", r: "15:25", sched_time: "15:25", flight_status: "cancelled", flight_note: "Cancelled · timetable, checked 10:20", yard: "T" },
+    { reg: "UV12WXY", make: "VOLKSWAGEN GOLF", name: "KING MRS", ref: "TKO-2026-1052", flight: "EZY8812", r: "16:00", sched_time: "16:00", est_time: "16:05", flight_status: "airborne", yard: "S", note: "Child seat in boot" },
+    { reg: "WX34ZAB", make: "SKODA OCTAVIA", name: "LEWIS MR", ref: "TKO-2026-1053", flight: "W43301", r: "17:10", flight_note: "Lands 03:10, over 6 h from the booked time · check the flight number", yard: "NY", note: "! Customer complained about a scratch" },
+    { reg: "YZ56CDE", make: "HONDA JAZZ", name: "YOUNG MS", ref: "TKO-2026-1054", flight: "U22931", r: "19:45", yard: "S", cleared_at: ago(40), cleared_by: "s2", sent_at: ago(70), sent_by: "s2", clear_word: "Collected" },
+    { reg: "BA98FED", make: "TESLA MODEL 3", name: "MORGAN MR", ref: "TKO-2026-1055", flight: "U22219", r: "23:55", sched_time: "23:55", flight_status: "scheduled", yard: null },
+    { reg: "DC76HGF", make: "VAUXHALL CORSA", name: "EVANS MRS", ref: "TKO-2026-1056", flight: "FR8841", d: N, r: "00:40", sched_time: "00:40", est_time: "01:25", flight_status: "expected", yard: "CP" },
+    { reg: "FE54JIH", make: "MINI COOPER", name: "HUGHES MR", ref: "TKO-2026-1057", flight: "W45523", d: N, r: "02:10", sched_time: "02:10", flight_status: "scheduled", yard: "NY", called_word: "Overstay", called_at: ago(90), overstay: true },
+  ];
+  db.bookings = db.bookings.filter((b) => b.sheet_id !== "d0").concat(cars.map((c, i) => {
+    const { r, d, ...rest } = c;
+    return { id: "w" + (i + 1), sheet_id: "d0", company_id: "c1", kind: "drops", num: i + 1, phone: "07700900" + String(100 + i), note: "", ...rest, return_at: lonIso(d || TONIGHT, r) };
+  }));
+  db.flightRuns = [{ at: ago(35), source: "schedule", trigger: "timer", result: {} }, { at: ago(12), source: "live", trigger: "timer", result: {} }];
+  return db;
+}
 // The key check (Menu → Key check): TakeOff's yards and a night of cars.
 function keysDb(theme = "ops") {
   const db = makeDb(); db.company.yards = ["Y", "S", "CP", "NY", "T"];
@@ -690,7 +724,7 @@ await scenario(async () => {
   check("Operations: navy TO DO, grey page, numbers in a panel", chrome.tab === "rgb(24, 40, 59)" && chrome.bg === "rgb(245, 247, 250)" && chrome.tally === "6px", chrome);
   check("Operations: Standard itself keeps its own chrome", await std.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(255, 255, 255)" && getComputedStyle(document.querySelector(".tabs button.on")).backgroundColor === "rgb(255, 255, 255)"));
   await plus.setViewportSize({ width: 1280, height: 900 }); await sleep(200);
-  check("Operations: wide screen, board centred at 1120 px", await plus.evaluate(() => Math.round(document.getElementById("main").getBoundingClientRect().width) === 1120));
+  check("Operations: wide screen, the board uses the width (the table layout)", await plus.evaluate(() => Math.round(document.getElementById("main").getBoundingClientRect().width) === 1280 && document.body.classList.contains("ops-desk") && !!document.querySelector("#main .row.drow")));
   check("Operations: no errors", plus.__errors.length === 0, plus.__errors);
   // As many jobs on the screen as Standard with features: the first row starts no lower.
   await plus.setViewportSize({ width: 390, height: 844 }); await sleep(150);
@@ -784,6 +818,96 @@ await scenario(async () => {
   check("Standard with features: car panel titled by the reg, no sections", await feat.evaluate(() => /^EK14JPV/.test(document.getElementById("panelTitle").textContent) && !document.querySelector("#panel .ops-psec") && !document.getElementById("panel").classList.contains("ops-car")));
   await feat.keyboard.press("Escape");
   await std.context().close(); await plus.context().close(); await feat.context().close();
+});
+// Operations on a wide screen: the DROPS board as a table and Flights as tables;
+// a phone and every other look keep their rows.
+await scenario(async () => {
+  const db = deskDb(), page = await phone(browser, db, { width: 1440 }); await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page); await sleep(400);
+  const lay = await page.evaluate(() => { const nav = document.getElementById("bnav"), bar = document.querySelector(".top .bar");
+    return { desk: document.body.classList.contains("ops-desk"), navUnder: nav.previousElementSibling === bar && nav.getBoundingClientRect().top >= bar.getBoundingClientRect().bottom - 1, pos: getComputedStyle(nav).position,
+      tabs: [...nav.querySelectorAll("button")].filter((b) => b.offsetParent).map((b) => b.textContent.trim()), on: [...nav.querySelectorAll("button[aria-current=page]")].map((b) => b.textContent.trim()),
+      head: document.getElementById("opsHead").innerText.replace(/\s+/g, " "), cols: [...document.querySelectorAll("#colHead.dhead > span")].map((x) => x.textContent), side: document.documentElement.scrollWidth <= innerWidth + 1 }; });
+  check("Ops wide: the bottom bar is the tabs under the top bar", lay.desk && lay.navUnder && lay.pos !== "fixed", lay);
+  check("Ops wide: tabs map to existing pages (owner sees Dashboard and Settings), Board marked", lay.tabs.join("|") === "Board|Flights|Stats|Summary|Dashboard|Settings|Menu" && lay.on.join() === "Board", lay.tabs);
+  const night = new Date(TONIGHT + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }), wd = (k) => new Date(k + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+  check("Ops wide: title, the sheet, its full date and the shift's hours", lay.head === "Operations board DROPS · " + night + " · 06:00 " + wd(TONIGHT) + " to 05:59 " + wd(TOMORROW) + " Current shift", lay.head);
+  check("Ops wide: column heads", lay.cols.join("|") === "Return|Registration · vehicle|Flight|Customer · ref|Yard|Status|Actions", lay.cols);
+  check("Ops wide: no sideways scrolling", lay.side);
+  await page.click("#tabAll"); await sleep(300);
+  const cell = (id, c) => page.evaluate(([id, c]) => { const e = document.querySelector('.row[data-id="' + id + '"] .' + c); return e ? e.innerText.replace(/\s+/g, " ").trim() : null; }, [id, c]);
+  check("Ops wide: booked return, timetable and estimate kept apart", (await cell("w2", "dc-t")) === "12:05" && (await cell("w2", "dc-f")) === "FR2002 Sch 12:05 · Est 12:03", [await cell("w2", "dc-t"), await cell("w2", "dc-f")]);
+  check("Ops wide: no flight number: the collection time staff typed, named", (await cell("w9", "dc-t")) === "14:10 Collect 14:30" && (await cell("w9", "dc-f")) === "No flight", [await cell("w9", "dc-t"), await cell("w9", "dc-f")]);
+  check("Ops wide: overnight car keeps its own time (00:40), estimate after midnight", (await cell("w15", "dc-t")) === "00:40" && /Delayed \+45 min/.test(await cell("w15", "dc-s")), await cell("w15", "dc-s"));
+  check("Ops wide: customer and long reference in their column", (await cell("w5", "dc-c")) === "BROWN AGENT-REF-PARK-AND-RIDE-0000001046-LONG" && (await cell("w5", "dc-r")) === "IJ90MNO #5 No vehicle details", [await cell("w5", "dc-c"), await cell("w5", "dc-r")]);
+  check("Ops wide: status in words (called and waiting, sent, cleared, overstay, not called)", /^Called \d\d:\d\d waiting 1[45] min$/.test(await cell("w2", "dc-s")) && /^Sent \d\d:\d\d Landed$/.test(await cell("w6", "dc-s")) && /^Cleared \d\d:\d\d$/.test(await cell("w13", "dc-s")) && /^Overstay/.test(await cell("w16", "dc-s")) && (await cell("w14", "dc-s")) === "Not called",
+    [await cell("w2", "dc-s"), await cell("w6", "dc-s"), await cell("w13", "dc-s"), await cell("w16", "dc-s")]);
+  check("Ops wide: flight problems on the row", (await cell("w4", "dc-s")) === "Not called Delayed" && (await cell("w10", "dc-s")) === "Not called Flight cancelled" && /CHECK FLIGHT NO\./.test(await cell("w7", "dc-s")) && /CHECK MANUALLY/.test(await cell("w8", "dc-s")), [await cell("w4", "dc-s"), await cell("w7", "dc-s")]);
+  const yc = await page.evaluate(() => getComputedStyle(document.querySelector('.row[data-id="w2"] .dc-y .code')).backgroundColor);
+  check("Ops wide: the yard tag in the company's own colour", yc === "rgb(47, 158, 68)", yc);
+  const btn = await page.evaluate(() => { const r = document.querySelector('.row[data-id="w6"]'); return [...r.querySelectorAll(".acts button")].map((b) => b.className + (b.disabled ? " dis" : "")); });
+  check("Ops wide: SENT, CALLED, CLEAR with their pressed states", btn.length === 3 && /\bs on\b/.test(btn[0]) && /\bc on\b/.test(btn[1]) && !/on/.test(btn[2]), btn);
+  await page.click('.row[data-id="w1"] .acts [data-act="called"]'); await sleep(300);
+  check("Ops wide: CALLED works as before", db.calls.some((c) => c.fn === "tap_drop" && c.args.p_booking === "w1" && c.args.p_action === "called" && c.args.p_on === true));
+  const k = await page.evaluate(() => ({ t: document.getElementById("keyBtn").innerText.trim(), title: document.getElementById("keyBtn").title }));
+  check("Ops wide: K says Key check, with what it does", k.t === "Key check" && /key is found in the cabinet/.test(k.title), k);
+  await page.click("#keyBtn"); await sleep(250);
+  check("Ops wide: Key check on: a tick box on each row, the count on the button", await page.evaluate(() => document.querySelectorAll("#main .drow .kbox").length > 10 && /^Key check\s+\d+\/\d+$/.test(document.getElementById("keyBtn").innerText.trim())));
+  await page.click("#keyBtn"); await sleep(250);
+  await page.fill("#q", "ZZ99ZZZ"); await sleep(400);
+  check("Ops wide: a search with no match says so", await page.evaluate(() => /Not (found|on this sheet)/.test(document.querySelector("#main .msg").textContent)));
+  await page.fill("#q", ""); await sleep(300);
+  await page.click('.row[data-id="w2"] .dc-c'); await sleep(400);
+  check("Ops wide: a row opens Booking details", await page.evaluate(() => document.getElementById("panel").open && /CD34EFG/.test(document.querySelector("#panel .sub").textContent)));
+  await page.keyboard.press("Escape"); await sleep(250);
+  // tablet: the customer under the car, still one line of columns, no sideways scroll
+  await page.setViewportSize({ width: 1024, height: 800 }); await sleep(300);
+  const tab = await page.evaluate(() => { const r = document.querySelector('.row[data-id="w2"]'), a = r.querySelector(".dc-r").getBoundingClientRect(), c = r.querySelector(".dc-c").getBoundingClientRect();
+    return { under: c.top >= a.bottom - 2 && Math.abs(c.left - a.left) < 2, side: document.documentElement.scrollWidth <= innerWidth + 1, acts: r.querySelectorAll(".acts button").length, head4: getComputedStyle(document.querySelector("#colHead.dhead > span:nth-child(4)")).display }; });
+  check("Ops tablet: customer under the car, all three buttons, no sideways scroll", tab.under && tab.acts === 3 && tab.side && tab.head4 === "none", tab);
+  // phone: the rows and the bottom bar as before
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
+  const ph = await page.evaluate(() => ({ desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .drow"), row: !!document.querySelector('#main .row[data-id="w2"] .acts'), nav: getComputedStyle(document.getElementById("bnav")).position, after: document.getElementById("bnav").previousElementSibling.id, dash: document.getElementById("bnDash").offsetParent === null, key: document.getElementById("keyBtn").innerText.trim(), head: document.getElementById("opsHead").offsetParent === null }));
+  check("Ops phone after a wide screen: rows, K and the bottom bar back as they were", !ph.desk && !ph.drow && ph.row && ph.nav === "fixed" && ph.after === "main" && ph.dash && ph.key === "K" && ph.head, ph);
+  // Flights on a wide screen
+  await page.setViewportSize({ width: 1440, height: 1000 }); await sleep(300);
+  await page.click('#bnav [data-bn="flBtn"]'); await sleep(500);
+  const fl = await page.evaluate(() => ({ strip: [...document.querySelectorAll("#main .fd-strip > div")].map((d) => d.innerText.replace(/\s+/g, " ")).join(" | "), check: document.querySelector("#main .fd-check p").textContent,
+    att: [...document.querySelectorAll("#main .fd-a[data-id]")].map((r) => r.innerText.replace(/\s+/g, " ")), st: document.querySelectorAll("#main .fd-s[data-id]").length, tabs: [...document.querySelectorAll("[data-flfilter]")].map((b) => b.textContent).join("|"), on: document.querySelector('#bnav [data-bn="flBtn"]').getAttribute("aria-current") }));
+  check("Flights wide: numbers say what they count", fl.strip === "With a flight number 14 bookings | Different flights 13 flights | No flight number 1 bookings | Need checking 3 bookings | Delayed 4 bookings | Landed 1 bookings | Cancelled 1 bookings", fl.strip);
+  check("Flights wide: each check with its own time", /^Timetable checked today \d\d:\d\d · Live positions checked today \d\d:\d\d$/.test(fl.check) && fl.on === "page", fl);
+  check("Flights wide: missing, invalid, failed lookup and far-off time told apart", fl.att.length === 4 && /IJ90MNO.*No flight number recorded Missing Add flight/.test(fl.att[0]) && /TBC Not a valid flight number Invalid Edit flight/.test(fl.att[1]) && /U22007 Not found in the timetable Lookup failed Edit flight/.test(fl.att[2]) && /over 6 h from the booked time Check time/.test(fl.att[3]), fl.att);
+  check("Flights wide: filters with real counts", fl.tabs === "All 16|Needs attention 4|Scheduled 4|Delayed 4|Landed 1|Cancelled 1|Not checked 1" && fl.st === 12, fl);
+  const st = await page.evaluate(() => [...document.querySelectorAll("#main .fd-s[data-id]")].map((r) => r.innerText.replace(/\s+/g, " ")));
+  check("Flights wide: scheduled and estimated apart, no timetable time made up from the booking", st.some((x) => /^12:20 GH78JKL .* W94004 12:20 Delayed Delayed View$/.test(x)) && st.some((x) => /^14:10 QR78YZA .* — — Collect 14:30 No flight number View$/.test(x)) && st.some((x) => /^19:45 YZ56CDE .* U22931 — — Not checked yet View$/.test(x)), st);
+  await page.click('[data-flfilter="delayed"]'); await sleep(250);
+  check("Flights wide: Delayed shows only delayed", await page.evaluate(() => document.querySelectorAll("#main .fd-s[data-id]").length === 4 && !document.querySelector("#main .fd-a")));
+  await page.click('[data-flfilter="all"]'); await sleep(250);
+  await page.fill("#flQ", "FR2002"); await sleep(200);
+  check("Flights wide: search narrows the tables and keeps the box", await page.evaluate(() => document.querySelectorAll("#main .fd-s[data-id]").length === 1 && document.activeElement.id === "flQ"));
+  await page.fill("#flQ", ""); await sleep(200);
+  await page.click('.fd-a[data-id="w5"] [data-addflight]'); await sleep(300);
+  check("Flights wide: Add flight opens the flight number form", await page.evaluate(() => document.getElementById("panel").open && !!document.getElementById("quickFlight")));
+  await page.keyboard.press("Escape"); await sleep(250);
+  await page.click('#bnav [data-bn="menuBtn"]'); await sleep(300);
+  check("Ops wide: Menu opens under the tabs", await page.evaluate(() => Math.round(document.getElementById("menu").getBoundingClientRect().top) === Math.round(document.getElementById("bnav").getBoundingClientRect().bottom)));
+  await page.keyboard.press("Escape");
+  check("Ops wide: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+  // A driver: no Dashboard or Settings tab; view-only: buttons off.
+  const drv = deskDb(); drv.me = { ...drv.me, role: "bongo" }; drv.perms = { sent: true, called: true, note: true, intake: true };
+  const p2 = await phone(browser, drv, { width: 1440 }); await open(p2); await sleep(300);
+  check("Ops wide: a driver gets no Dashboard or Settings tab", await p2.evaluate(() => document.getElementById("bnDash").offsetParent === null && document.getElementById("bnSet").offsetParent === null && !!document.querySelector("#main .drow")));
+  await p2.context().close();
+  const vw = deskDb(); vw.me = { ...vw.me, role: "view" }; vw.perms = {};
+  const p3 = await phone(browser, vw, { width: 1440 }); await open(p3); await sleep(300);
+  check("Ops wide: view-only: SENT / CALLED / CLEAR disabled, no Key check", await p3.evaluate(() => [...document.querySelectorAll("#main .drow .acts button")].every((b) => b.disabled) && document.getElementById("keyBtn").offsetParent === null));
+  await p3.context().close();
+  // Standard with features on a wide screen: unchanged.
+  const p4 = await phone(browser, deskDb("stdplus"), { width: 1440 }); await open(p4); await sleep(300);
+  check("Standard with features on a wide screen: its own rows and bottom bar", await p4.evaluate(() => !document.body.classList.contains("ops-desk") && !document.querySelector("#main .drow") && getComputedStyle(document.getElementById("bnav")).position === "fixed" && document.getElementById("bnav").previousElementSibling.id === "main"));
+  await p4.click('#bnav [data-bn="flBtn"]').catch(() => {}); await sleep(300);
+  await p4.context().close();
 });
 await scenario(async () => {
   const page = await phone(browser, makeDb(), { width: 360 }); await open(page);
@@ -2909,6 +3033,31 @@ async function shots(dir) {
       if (name === "phone") { await page.locator(".bi-row.s-review").first().locator(".bi-hd").click(); await page.locator(".bi-row.s-changed").first().locator(".bi-hd").click(); await snap("3-expanded", true); }
       await page.click('[data-bifilter="review"]'); await sleep(300); await snap("4-needs-review", false);
       await page.click('[data-bitab="manual"]'); await sleep(400); await snap("5-manual", true);
+      await page.context().close();
+    }
+    return;
+  }
+  // SHOTS_ONLY=desk: the Operations board and Flights on a desktop, a tablet and a phone (sample data only).
+  if (process.env.SHOTS_ONLY === "desk") {
+    for (const [width, height, name] of [[1440, 1000, "desktop"], [1024, 900, "tablet"], [390, 844, "phone"]]) {
+      const db = deskDb(process.env.SHOTS_THEME || "ops");
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await open(page); await sleep(500);
+      await page.screenshot({ path: path.join(dir, "board-" + name + ".png") });
+      await page.click("#tabAll"); await sleep(300);
+      await page.setViewportSize({ width, height: Math.min(2600, await page.evaluate(() => document.documentElement.scrollHeight)) }); await sleep(300);
+      await page.screenshot({ path: path.join(dir, "board-" + name + "-all.png") }); await page.setViewportSize({ width, height });
+      await page.click('#bnav [data-bn="flBtn"]'); await sleep(600);
+      await page.setViewportSize({ width, height: Math.min(2600, await page.evaluate(() => document.documentElement.scrollHeight)) }); await sleep(300);
+      await page.screenshot({ path: path.join(dir, "flights-" + name + ".png") });
+      if (name === "desktop") {
+        await page.setViewportSize({ width, height });
+        await page.fill("#flQ", "zz99"); await sleep(200); await page.screenshot({ path: path.join(dir, "flights-desktop-nomatch.png") }); await page.fill("#flQ", "");
+        await page.click("#bnBoard"); await sleep(300); await page.fill("#q", "ZZ99ZZZ"); await sleep(400); await page.screenshot({ path: path.join(dir, "board-desktop-nomatch.png") }); await page.fill("#q", ""); await sleep(300);
+        await page.click('.row[data-id="w2"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, "car-desktop.png") }); await page.keyboard.press("Escape"); await sleep(300);
+        await page.click('#bnav [data-bn="menuBtn"]'); await sleep(400); await page.screenshot({ path: path.join(dir, "menu-desktop.png") }); await page.keyboard.press("Escape"); await sleep(300);
+        await page.click('#kindBar [data-kind="picks"]'); await sleep(600); await page.screenshot({ path: path.join(dir, "picks-desktop.png") });
+      }
       await page.context().close();
     }
     return;

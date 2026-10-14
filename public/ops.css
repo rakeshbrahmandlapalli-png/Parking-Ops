@@ -283,3 +283,158 @@ html.ops #boardHead .tabs .keybtn.on{background:#137A45;border-color:#137A45;col
 /* Dashboard: the page header above already names it, so its own title goes. */
 html.ops .od-head h1{display:none;}
 html.ops .od-head{justify-content:flex-end;}
+
+/* ── Wide screen (900 px and up, body.ops-desk set by the app): the bottom bar
+   becomes tabs under the top bar; the DROPS board is a table (time, car, flight,
+   customer, yard, status, buttons) and Flights are tables, across the width.
+   900–1199 px (a tablet on its side, a small laptop) folds the customer under
+   the car. Below 900 px nothing here applies: the phone layout above stays. ── */
+html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{display:none!important;}
+@media(min-width:900px){
+ html.ops body.ops-desk{--dw:1440px;--dg:24px;padding-bottom:0;}
+ html.ops body.ops-desk .bar{max-width:var(--dw);padding:8px var(--dg);}
+ html.ops body.ops-desk .tobrand{padding:9px 12px;font-size:16px;}
+ html.ops body.ops-desk .kindbar button{min-height:34px;padding:0 16px;font-size:13.5px;}
+ html.ops body.ops-desk #sheetPick{font-size:14px;}
+ html.ops body.ops-desk .who{max-width:260px;font-size:12.5px;}
+ /* the tabs */
+ html.ops body.ops-desk .bnav:not(.hidden){position:static;z-index:auto;display:flex;gap:2px;max-width:var(--dw);margin:0 auto;padding:0 calc(var(--dg) - 12px);background:#fff;border:0;box-shadow:0 0 0 100vmax #fff;clip-path:inset(0 -100vmax);}
+ html.ops body.ops-desk .top{border-bottom:0;}
+ html.ops body.ops-desk .bnav:not(.hidden){position:relative;border-bottom:1px solid #e4e9ef;border-image:linear-gradient(#e4e9ef,#e4e9ef) 0 0 1 0 / 0 0 1px 0 / 0 100vmax;}
+ html.ops body.ops-desk .bnav button{flex:none;flex-direction:row;gap:0;min-height:44px;padding:0 14px;color:var(--op-mut);font-size:14px;font-weight:600;}
+ html.ops body.ops-desk .bnav button svg{display:none;}
+ html.ops body.ops-desk .bnav button:hover{color:var(--op-ink);}
+ html.ops body.ops-desk .bnav button.on{color:var(--op-ink);}
+ html.ops body.ops-desk .bnav button.on::after{left:10px;right:10px;bottom:0;width:auto;height:3px;margin:0;border-radius:2px 2px 0 0;}
+ html.ops body.ops-desk .bnav [data-bn="menuBtn"]{margin-left:auto;}
+ html.ops body.ops-desk .bnav button:focus-visible{outline:2px solid var(--op-ink);outline-offset:-4px;}
+ html.ops body.ops-desk .deskbtn{bottom:24px!important;}
+ /* board head: the title and the sheet, then search, TO DO / ALL / Key check and the counts on one line */
+ html.ops body.ops-desk #boardHead:not(.hidden){max-width:var(--dw);align-items:center;gap:8px;padding:18px var(--dg) 0;}
+ html.ops body.ops-desk.picks #boardHead:not(.hidden){max-width:1120px;padding-left:16px;padding-right:16px;}
+ html.ops body.ops-desk #opsHead{order:0;flex:0 0 100%;}
+ html.ops .opshead h1{margin:0;font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.5px;color:var(--op-ink);}
+ html.ops .ops-scope{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:4px 0 6px;font-size:14px;color:var(--op-mut);}
+ html.ops .ops-scope b{font-weight:700;letter-spacing:.5px;color:var(--op-ink);}
+ html.ops .ops-scope .ops-badge{margin-left:4px;}
+ html.ops body.ops-desk #boardHead .qwrap{order:1;flex:0 1 380px;margin:0;padding:0;border:0;background:none;}
+ html.ops body.ops-desk .qclear{top:50%;}
+ html.ops body.ops-desk #q{height:40px;font-size:14px;}
+ html.ops body.ops-desk #boardHead .tabs{order:2;flex:none;padding:0;border:0;background:none;}
+ html.ops body.ops-desk #boardHead .tabs button{height:40px;padding:0 14px;font-size:12.5px;}
+ html.ops body.ops-desk #boardHead .tabs .keybtn b{font-weight:650;}
+ html.ops body.ops-desk #tallyFold{display:none!important;}
+ html.ops body.ops-desk #tally,html.ops body.ops-desk.tfolded #tally{order:3;flex:1 1 auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px;margin:0;border:0;background:none;}
+ html.ops body.ops-desk.tfolded #catTally:not(.hidden){display:flex;}
+ html.ops body.ops-desk #catTally{order:4;flex:0 0 100%;}
+ html.ops body.ops-desk #tally .tyards{display:contents;}
+ html.ops body.ops-desk #tally button{flex:none;display:inline-flex;align-items:baseline;gap:6px;padding:7px 10px;border-radius:6px;background:none;}
+ html.ops body.ops-desk #tally button:hover{background:#eef1f5;}
+ html.ops body.ops-desk #tally button span{font-size:11px;letter-spacing:.4px;}
+ html.ops body.ops-desk #tally button span::before{content:"";display:none;width:9px;height:9px;margin-right:6px;border-radius:2px;vertical-align:0;}
+ html.ops body.ops-desk #tally button b{display:inline;font-size:16px;}
+ html.ops body.ops-desk #tally button.on{background:var(--op-ink);}
+ html.ops body.ops-desk #tally button.warn:not(.on){background:#fff8e6;}
+ html.ops body.ops-desk #colHead{order:9;margin-top:10px;}
+ html.ops body.ops-desk #boardHead:has(#tallyFold.hidden) .tabs{border-right:0;}
+ /* the DROPS table: the column head and every row on the same columns */
+ html.ops body.ops-desk{--dcols:84px minmax(150px,1.05fr) minmax(150px,1.1fr) minmax(150px,1.2fr) 92px minmax(140px,1fr) 300px;--dareas:"t r f c y s a" "t n n n n n a";}
+ html.ops body.ops-desk.on-board:not(.picks) main{max-width:var(--dw);padding:0 var(--dg) 40px;}
+ html.ops body.ops-desk #colHead.dhead{display:grid;grid-template-columns:var(--dcols);gap:0;padding:0;border:1px solid var(--op-line);border-bottom:0;border-radius:6px 6px 0 0;background:#eef2f6;font-size:11px;font-weight:650;letter-spacing:.6px;text-transform:uppercase;color:#48596c;}
+ html.ops body.ops-desk #colHead.dhead span{padding:10px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+ html.ops body.ops-desk main .sec{padding:8px 12px 7px;font-size:11.5px;letter-spacing:.8px;}
+ html.ops .drow{display:grid;grid-template-columns:var(--dcols);grid-template-areas:var(--dareas);align-items:stretch;gap:0;min-height:58px;padding:0;font-size:14px;contain-intrinsic-size:auto 58px;}
+ html.ops .drow .dc{min-width:0;padding:8px 12px;}
+ html.ops .drow [data-open]{cursor:pointer;}
+ html.ops .drow .dc-t{grid-area:t;display:flex;flex-direction:column;justify-content:center;}
+ html.ops .drow .dc-t b{font-size:19px;font-weight:700;letter-spacing:-.2px;color:var(--op-ink);}
+ html.ops .drow .dc-t small{margin-top:2px;font-size:11.5px;color:var(--op-mut);}
+ html.ops .drow .dc-r{grid-area:r;}html.ops .drow .dc-f{grid-area:f;}html.ops .drow .dc-c{grid-area:c;}html.ops .drow .dc-s{grid-area:s;}
+ html.ops .drow .dc-y{grid-area:y;display:flex;align-items:center;}
+ html.ops .drow .dc-n{grid-area:n;padding-top:0;}
+ html.ops .drow .dc-n .l3{margin:0 6px 6px 0;}
+ html.ops .drow .l1{display:flex;align-items:center;gap:6px;min-width:0;font-size:14.5px;font-weight:600;color:var(--op-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+ html.ops .drow .dc-c .l1{display:block;}
+ html.ops .drow .reg{font-size:16.5px;font-weight:700;letter-spacing:.3px;color:var(--op-ink);}
+ html.ops .drow .sub{margin-top:2px;font-size:12.5px;color:var(--op-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+ html.ops .drow .dc-s .sub{display:flex;flex-wrap:wrap;gap:3px 6px;white-space:normal;}
+ html.ops .drow .mut{color:#8692a2;font-weight:500;}
+ html.ops .drow .tag{font-size:10.5px;font-weight:700;color:#1558d6;}
+ html.ops .drow .tag.ck,html.ops .drow .tag.cx{padding:1px 5px;border-radius:4px;background:#b06000;color:#fff;}
+ html.ops .drow .tag.ov{color:#b06000;}
+ html.ops .drow .tag.due{padding:1px 5px;border-radius:4px;background:#b42318;color:#fff;}
+ html.ops .drow .tag.pd{padding:1px 5px;border-radius:4px;background:#e6f4ea;color:#137333;}
+ html.ops .drow .st-n{font-weight:500;color:var(--op-mut);}
+ html.ops .drow .st-c{color:#0b3d78;}html.ops .drow .st-s{color:#1e6b3a;}html.ops .drow .st-o{color:#b06000;}html.ops .drow .st-x{color:#3c4043;}
+ html.ops .drow .fx{font-weight:650;color:var(--op-ink);}
+ html.ops .drow .fx.bad{color:#b42318;}html.ops .drow .fx.warn{color:#9a5b00;}html.ops .drow .fx.ok{color:#1e6b3a;}
+ html.ops .drow .code{padding:3px 8px;font-size:12px;}
+ html.ops .drow select.code.pick{min-height:30px;padding:0 6px;font-size:12px;}
+ html.ops .drow .kbox{width:22px;height:22px;}
+ html.ops .drow .addflight{line-height:24px;}
+ html.ops .row.done.drow .sub,html.ops .row.done.drow .dc-t b{color:#80868b;}
+ html.ops .drow .acts{grid-area:a;width:auto;flex:none;align-items:center;gap:6px;padding:8px 12px;}
+ html.ops .drow .acts button{min-height:42px;border-radius:6px;font-size:11.5px;letter-spacing:.3px;}
+ html.ops .drow .acts button.lng{font-size:10px;}
+ html.ops .drow .acts button small{font-size:11px;}
+ html.ops .drow .acts button:not(:disabled):hover{border-color:var(--op-ink);}
+ html.ops .drow .acts button:focus-visible,html.ops .drow .reg:focus-visible{outline:2px solid var(--op-ink);outline-offset:1px;}
+ html.ops .drow .acts.steps{flex-direction:row;justify-content:flex-start;flex-wrap:wrap;}
+ html.ops .ops-bfoot{margin:0;padding:10px 12px 12px;border:1px solid var(--op-line);border-top:1px solid #e4e9ef;border-radius:0 0 6px 6px;background:#fff;font-size:12px;color:var(--op-mut);}
+ /* Flights: as wide as the board */
+ html.ops body.ops-desk:has(main[data-view="flights"]) .viewhead{max-width:var(--dw);padding:20px var(--dg) 0;}
+ html.ops body.ops-desk main[data-view="flights"]{max-width:var(--dw);padding:6px var(--dg) 40px;}
+ html.ops .fd-check{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin:4px 0 14px;padding:12px 0;border-top:1px solid #e4e9ef;border-bottom:1px solid #e4e9ef;}
+ html.ops .fd-check p{margin:0;font-size:13px;color:var(--op-mut);}
+ html.ops .fd-check .bad{color:#b42318;}
+ html.ops .fd-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+ html.ops .fd-strip{grid-auto-columns:minmax(0,1fr);}
+ html.ops .fd-strip > div{padding:12px 14px;}
+ html.ops .fd-strip strong{margin-top:6px;font-size:22px;}
+ html.ops .fd-strip small{display:block;margin-top:2px;font-size:11px;color:var(--op-mut);}
+ html.ops .fd-strip .warn strong{color:#9a5b00;}html.ops .fd-strip .bad strong{color:#b42318;}
+ html.ops .fd-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px;}
+ html.ops .fd-tabs{display:flex;flex-wrap:wrap;padding:2px;border:1px solid var(--op-field);border-radius:6px;background:#fff;}
+ html.ops .fd-tabs button{min-height:34px;padding:0 12px;border:0;border-radius:4px;background:none;color:var(--op-ink);font-size:13px;font-weight:600;}
+ html.ops .fd-tabs button span{margin-left:4px;color:var(--op-mut);font-weight:600;}
+ html.ops .fd-tabs button.on{background:var(--op-ink);color:#fff;}
+ html.ops .fd-tabs button.on span{color:#c4cfdd;}
+ html.ops .fd-tabs button:focus-visible{outline:2px solid var(--op-ink);outline-offset:1px;}
+ html.ops .fd-unit{font-size:12px;color:var(--op-mut);}
+ html.ops #flQ{flex:0 1 320px;min-width:200px;height:40px;margin-left:auto;padding:0 12px;border:1px solid var(--op-field);border-radius:6px;font-size:14px;color:var(--op-ink);}
+ html.ops #flQ:focus{outline:0;border-color:var(--op-ink);box-shadow:0 0 0 1px var(--op-ink);}
+ html.ops .fd-card > header{justify-content:flex-start;align-items:center;padding:12px 14px;}
+ html.ops .fd-card > header small{margin-right:auto;}
+ html.ops .fd-card > header .btn{min-height:34px;}
+ html.ops .fd-tr{display:grid;align-items:center;gap:0 12px;min-height:48px;padding:6px 14px;border-top:1px solid #edf0f4;font-size:14px;color:var(--op-ink);}
+ html.ops .fd-card > header + .fd-tr{border-top:0;}
+ html.ops .fd-tr > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ html.ops .fd-tr [data-open]{cursor:pointer;}
+ html.ops .fd-tr.th{min-height:36px;background:#f8fafc;font-size:11px;font-weight:650;letter-spacing:.6px;text-transform:uppercase;color:#48596c;}
+ html.ops .fd-a{grid-template-columns:72px minmax(170px,1.2fr) 110px minmax(200px,2fr) 120px 124px;}
+ html.ops .fd-s{grid-template-columns:72px minmax(170px,1.2fr) 110px 96px 120px minmax(150px,1fr) 90px;}
+ html.ops .fd-car b{font-weight:650;}
+ html.ops .fd-car small{margin-left:10px;font-size:12.5px;color:var(--op-mut);}
+ html.ops .fd-tr .btn.small{width:100%;min-height:34px;padding:0 10px;font-size:12.5px;}
+ html.ops .fd-tr .ops-badge{max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;}
+}
+/* 900–1199 px: the customer goes under the car, the buttons get narrower */
+@media(min-width:900px) and (max-width:1199px){
+ html.ops body.ops-desk{--dw:100%;--dg:16px;--dcols:68px minmax(160px,1.3fr) minmax(140px,1fr) 80px minmax(120px,1fr) 222px;--dareas:"t r f y s a" "t c f y s a" "t n n n n a";}
+ html.ops body.ops-desk #colHead.dhead span:nth-child(4){display:none;}
+ html.ops body.ops-desk #colHead.dhead span:nth-child(2)::after{content:" · customer";}
+ html.ops .drow .dc-r{padding-bottom:0;}
+ html.ops .drow .dc-c{display:flex;gap:8px;padding-top:2px;}
+ html.ops .drow .dc-c .l1,html.ops .drow .dc-c .sub{margin:0;font-size:12.5px;font-weight:500;color:var(--op-mut);}
+ html.ops .drow .dc-c .l1{flex:none;max-width:55%;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+ html.ops .drow .dc-c .sub{flex:1 1 auto;min-width:0;}
+ html.ops body.ops-desk #colHead.dhead span{padding:10px 8px;}
+ html.ops .drow .dc-t b{font-size:17px;}
+ html.ops .drow .acts{gap:4px;padding:8px;}
+ html.ops .drow .acts button{font-size:10.5px;}
+ html.ops body.ops-desk #boardHead .qwrap{flex-basis:260px;}
+ html.ops .fd-a{grid-template-columns:60px minmax(150px,1.2fr) 90px minmax(160px,2fr) 110px 110px;}
+ html.ops .fd-s{grid-template-columns:60px minmax(150px,1.3fr) 90px 84px 100px minmax(120px,1fr) 76px;}
+ html.ops .fd-car small{display:block;margin:2px 0 0;}
+ html.ops .fd-car small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+}

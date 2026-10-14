@@ -658,6 +658,12 @@
     show("psBtn", !S.platform && can("picksinfo"));
     // The bottom bar (card looks, and Standard with features) mirrors the top bar's buttons.
     show("bnav", (isCards() || isStdPlus()) && !S.platform);
+    // Operations on a wide screen: the bottom bar becomes the tabs under the top
+    // bar, with Office and Settings for those who have them in the menu.
+    var desk = opsDesk();
+    document.body.classList.toggle("ops-desk", desk);
+    placeDeskNav(desk);
+    if ($("bnDash")) { show("bnDash", desk && can("settings")); show("bnSet", desk && can("settings")); }
     Array.prototype.forEach.call(document.querySelectorAll("#bnav [data-bn]"), function (b) {
       var src = $(b.dataset.bn); b.classList.toggle("hidden", !!src && src.classList.contains("hidden"));
     });
@@ -816,6 +822,13 @@
     var m = isOps() && $("menu").open;
     Array.prototype.forEach.call(document.querySelectorAll("#bnav [data-bn]"), function (b) { b.classList.toggle("on", isOps() && (m ? b.dataset.bn === "menuBtn" : BN_VIEW[b.dataset.bn] === S.view)); });
     if (m) $("bnBoard").classList.remove("on");
+    [["bnDash", "dashboard"], ["bnSet", "settings"]].forEach(function (x) { if ($(x[0])) $(x[0]).classList.toggle("on", isOps() && !m && S.view === x[1]); });
+    Array.prototype.forEach.call(document.querySelectorAll("#bnav button"), function (b) { if (b.classList.contains("on") && opsDesk()) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+  }
+  function placeDeskNav(desk) {
+    var nav = $("bnav"), bar = document.querySelector(".top .bar");
+    if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
+    else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
   function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
@@ -946,7 +959,10 @@
     if (document.activeElement !== $("q")) $("q").value = S.q;
     $("q").placeholder = pro ? "Search reg or name" : "Search reg, name, number or note";
     show("qClear", !!S.q);
-    $("colHead").innerHTML = '<span class="hl">' + (picks ? "CAR · CUSTOMER" : "CAR · FLIGHT") + '</span><span class="hr">' +
+    var desk = opsDesk();
+    if ($("opsHead")) { show("opsHead", desk); if (desk) $("opsHead").innerHTML = opsHeadHtml(sheet()); }
+    $("colHead").classList.toggle("dhead", desk && !picks);
+    if (desk && !picks) $("colHead").innerHTML = opsColHead(); else $("colHead").innerHTML = '<span class="hl">' + (picks ? "CAR · CUSTOMER" : "CAR · FLIGHT") + '</span><span class="hr">' +
       (picks ? "<span>COLL</span><span>" + (picksYard() ? "YARD" : "NO SHOW") + "</span><span>RTC</span><span>PT</span>" : swipeOnly() ? "<span>DONE</span>" : "<span>SENT</span><span>CALLED</span><span>CLEAR</span>") + "</span>";
   }
 
@@ -993,9 +1009,9 @@
 
   function renderBoard() {
     var n = backupNudge(), d = deskBtn() + keyStrip(); sheetChunks = null;
-    var sh = renderSheet(), o = otherDaysHtml();
-    boardChunks = [["nudge", n], ["desk", d]].concat(sheetChunks || [["sheet", sh]]).concat([["other", o]]);
-    return n + d + sh + o;
+    var sh = renderSheet(), o = otherDaysHtml(), f = opsBoardFoot();
+    boardChunks = [["nudge", n], ["desk", d]].concat(sheetChunks || [["sheet", sh]]).concat([["foot", f], ["other", o]]);
+    return n + d + sh + f + o;
   }
   // PICKS: a booking made at the desk, added in one go with a photo of the
   // docket (database part 69). Anyone who takes cars in can add one.
@@ -1371,6 +1387,7 @@
     else if (over) cls = " ovst";
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
+    if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
     // An early return shows no booked time here (it was for another day): the EARLY tag says when.
     var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "—");
     var eta = canc ? "" : r.est_time;
@@ -3179,6 +3196,182 @@
     function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + '" style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
     return (head ? line(head, "th") : "") + rows.map(function (r) { return line(r); }).join("") + (total ? line(total, "tot") : "");
   }
+  // ── Operations on a wide screen (900 px and up, ops.css "wide screen") ──
+  // The DROPS board as a table (time, car, flight, customer, yard, status,
+  // buttons) and Flights as tables. Phones and narrow windows keep the rows
+  // above exactly as they are; going across 900 px redraws.
+  var OPS_DESK_MQ = window.matchMedia ? window.matchMedia("(min-width: 900px)") : null;
+  function opsDesk() { return isOps() && !!OPS_DESK_MQ && OPS_DESK_MQ.matches; }
+  function longDate(key) { return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }); }
+  function weekdayOf(key) { return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }); }
+  function minsOf(t) { return /^\d{2}:\d{2}$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : null; }
+  // Minutes from the timetable time to the latest estimate (across midnight too); 0 when either is missing.
+  function lateMins(r) { var s = minsOf(r.sched_time), e = minsOf(r.est_time); return s === null || e === null ? 0 : (e - s + 1440 + 720) % 1440 - 720; }
+  // Which shift the open sheet is, worked out from now (never assumed).
+  function opsShiftWord(sh) {
+    if (sh.kind === "drops") return { "CURRENT NIGHT SHIFT": "Current shift", "NEXT SHIFT": "Next shift", "COMING UP": "Coming up", "PAST SHIFT": "Past shift" }[shiftTag(sh)] || "";
+    var today = londonParts(new Date()).key;
+    return sh.day === today ? "Today" : sh.day === addDaysKey(today, 1) ? "Tomorrow" : sh.day === addDaysKey(today, -1) ? "Yesterday" : sh.day > today ? "Coming up" : "Past day";
+  }
+  // "DROPS · Wednesday 14 October · 06:00 Wed to 05:59 Thu · Current shift": the
+  // sheet, its full date and the hours it covers (the company's day end), London time.
+  function opsScope(sh) {
+    if (!sh || !sh.day) return "";
+    var bits = [longDate(sh.day)];
+    if (sh.kind === "drops") {
+      var end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5), last = (minsOf(end) + 1439) % 1440;
+      var lastDay = end === "00:00" ? sh.day : addDaysKey(sh.day, 1);
+      bits.push(end + " " + weekdayOf(sh.day) + " to " + pad(Math.floor(last / 60)) + ":" + pad(last % 60) + " " + weekdayOf(lastDay));
+    } else bits.push("Meet day");
+    var tag = opsShiftWord(sh);
+    return '<p class="ops-scope"><b>' + (sh.kind === "drops" ? "DROPS" : "PICKS") + "</b> · " + esc(bits.join(" · ")) + (tag ? ' <em class="ops-badge">' + esc(tag) + "</em>" : "") + "</p>";
+  }
+  // A check's time with its own date unless it was today.
+  function whenLabel(ts) { return londonParts(new Date(ts)).key === londonParts(new Date()).key ? "today " + hhmm(ts) : dayShort(ts) + " " + hhmm(ts); }
+  function opsHeadHtml(sh) { return '<h1>Operations board</h1>' + opsScope(sh); }
+  function opsColHead() {
+    return ["Return", "Registration · vehicle", "Flight", "Customer · ref", "Yard", "Status", swipeOnly() ? "Done" : "Actions"].map(function (x) { return "<span>" + x + "</span>"; }).join("");
+  }
+  // What's happening to the car, in words, from the same times the buttons show.
+  function opsDropState(r, overWord, cmpl) {
+    if (r.cleared_at) return ['<b class="st-x">' + (cmpl ? "Complaint" : "Cleared") + ' <span class="num">' + esc(hhmm(r.cleared_at)) + "</span></b>"];
+    if (r.sent_at) return ['<b class="st-s">Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span></b>"];
+    if (overWord || inOverstayBlock(r)) return ['<b class="st-o">Overstay' + (r.called_at ? ' <span class="num">' + esc(hhmm(r.called_at)) + "</span>" : "") + "</b>"];
+    if (r.called_at) { var w = Math.max(0, Math.floor(minsSince(r.called_at))); return ['<b class="st-c">Called <span class="num">' + esc(hhmm(r.called_at)) + "</span></b>", '<span class="num">waiting ' + w + " min</span>"]; }
+    return ['<span class="st-n">Not called</span>'];
+  }
+  // The flight's own state, from the flight check only.
+  function opsFlightState(r, canc) {
+    if (canc) return '<span class="fx bad">Flight cancelled</span>';
+    var late = lateMins(r);
+    if (r.est_time === "DELAY" || r.flight_status === "delayed" || (r.flight_status === "expected" && late > 0)) return '<span class="fx bad">Delayed' + (late > 0 ? " +" + late + " min" : "") + "</span>";
+    if (r.flight_status === "expected") return '<span class="fx warn">Running late</span>';
+    if (r.flight_status === "landed") return '<span class="fx ok">Landed</span>';
+    if (r.flight_status === "airborne") return '<span class="fx">In the air</span>';
+    return "";
+  }
+  function checkWord(r) {
+    return /^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY" : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.";
+  }
+  function opsDeskRow(r, cls, overWord, cmpl, canc, over) {
+    var noFl = r.flight === "NO FLIGHT" || r.flight_status === "noflight";
+    // Return: the time they booked to be back. An early return was booked for
+    // another day (its EARLY line says when); with no flight number, the
+    // collection time staff typed in is under it, named as such.
+    var t = r.early ? '<b class="num">' + esc(r.sched_time || "—") + '</b><small>Early return</small>'
+      : '<b class="num">' + esc(r.return_at ? hhmm(r.return_at) : "—") + "</b>" + (noFl && r.est_time ? '<small>Collect <span class="num">' + esc(r.est_time) + "</span></small>" : "");
+    var mk = String(r.make || "").trim();
+    var fl = noFl ? '<span class="mut">No flight</span>' : r.flight ? '<b class="num">' + esc(r.flight) + "</b>"
+      : can("flights") ? '<button type="button" class="addflight" data-addflight>+ FLIGHT</button>' : '<span class="mut">No flight number</span>';
+    var times = [];
+    if (!noFl && r.sched_time) times.push('Sch <span class="num">' + esc(r.sched_time) + "</span>");
+    if (!noFl && !canc && r.est_time && r.est_time !== "DELAY") times.push((r.flight_status === "landed" ? "Landed " : "Est ") + '<span class="num">' + esc(r.est_time) + "</span>");
+    var state = opsDropState(r, overWord, cmpl);
+    var extra = [opsFlightState(r, canc), flightToCheck(r) ? '<span class="tag ck">' + checkWord(r) + "</span>" : "", over && !overWord && !inOverstayBlock(r) ? '<span class="tag ov">OVERSTAY</span>' : "",
+      chargeTag(r).replace(/^ · /, ""), exitTag(r)].filter(Boolean);
+    var notes = earlyLine(r) + noteLine(r);
+    return '<div class="row drow' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="dc dc-t" data-open>' + t + "</div>" +
+      '<div class="dc dc-r"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + keyBox(r) + catTag(r) + wasTag(r) + "</div>" +
+        '<div class="sub" data-open title="' + esc(mk) + '">' + (mk ? esc(niceMake(mk)) : '<span class="mut">No vehicle details</span>') + "</div></div>" +
+      '<div class="dc dc-f" data-open><div class="l1">' + fl + '</div><div class="sub">' + (times.join(" · ") || (r.flight && !noFl ? '<span class="mut">No times yet</span>' : "")) + "</div></div>" +
+      '<div class="dc dc-c" data-open><div class="l1" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="sub num" title="' + esc(r.ref) + '">' + esc(r.ref || "") + "</div></div>" +
+      '<div class="dc dc-y">' + (yardChip(r) || '<span class="mut">—</span>') + "</div>" +
+      '<div class="dc dc-s" data-open><div class="l1">' + state[0] + "</div>" + (state[1] || extra.length ? '<div class="sub">' + [state[1]].concat(extra).filter(Boolean).join(" ") + "</div>" : "") + "</div>" +
+      (notes ? '<div class="dc dc-n" data-open>' + notes + "</div>" : "") +
+      (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+  // Under the board: what the numbers mean.
+  function opsBoardFoot() {
+    var sh = sheet(); if (!opsDesk() || !sh || sh.kind !== "drops" || !S.rows.length) return "";
+    var done = S.rows.filter(function (r) { return !outstanding(r); }).length;
+    return '<p class="ops-bfoot"><span class="num">' + S.rows.filter(waiting).length + "</span> not sent yet · <span class=\"num\">" + done + "</span> done (sent and clear) · " + S.rows.length + " cars · All times Europe/London</p>";
+  }
+
+  // Flights on a wide screen: what needs a person first, then each flight's
+  // times and state. Every number says what it counts (bookings or flights).
+  var FL_FILTERS = [["all", "All"], ["attention", "Needs attention"], ["scheduled", "Scheduled"], ["delayed", "Delayed"], ["landed", "Landed"], ["cancelled", "Cancelled"], ["unchecked", "Not checked"]];
+  function flKind(r) {
+    var st = r.flight_status || "";
+    if (r.flight === "NO FLIGHT" || st === "noflight") return "noflight";
+    if (st === "cancelled") return "cancelled";
+    if (st === "landed") return "landed";
+    if (st === "delayed" || r.est_time === "DELAY" || (st === "expected" && lateMins(r) > 0)) return "delayed";
+    if (st === "scheduled" || st === "expected" || st === "airborne") return "scheduled";
+    return "unchecked";
+  }
+  // Why a booking needs a look, only from what the app knows.
+  function flIssue(r) {
+    if (!r.flight) return ["No flight number recorded", "Missing", "warn"];
+    if (/^Not in the timetable/.test(r.flight_note)) return ["Not found in the timetable", "Lookup failed", "bad"];
+    if (/over 6 h from the booked time/.test(r.flight_note)) return [r.flight_note.replace(/ · check the flight number$/, ""), "Check time", "warn"];
+    if (!/^([A-Z0-9]{2}\d{1,5}|[A-Z]{3}\d{1,4})$/.test(r.flight)) return ["Not a valid flight number", "Invalid", "bad"];
+    return [r.flight_note ? r.flight_note.replace(/ · check the flight number$/, "") : "Needs checking", "Check", "warn"];
+  }
+  function flMatch(r) {
+    var q = String(S.flQ || "").toUpperCase().replace(/\s+/g, "");
+    return !q || [r.reg, r.flight, r.ref, r.name].join("").toUpperCase().replace(/\s+/g, "").indexOf(q) !== -1;
+  }
+  function flCar(r) { return '<b class="num">' + esc(r.reg || "NO REG") + '</b> <small class="num" title="' + esc(r.ref) + '">' + esc(r.ref || "") + "</small>"; }
+  function flTablesHtml() {
+    var all = S.rows.filter(function (r) { return r.kind === "drops"; }).sort(function (a, b) { return orderAt(a) < orderAt(b) ? -1 : 1; });
+    var att = all.filter(function (r) { return !r.cleared_at && (!r.flight || flightToCheck(r)); }), rest = all.filter(function (r) { return r.flight && !flightToCheck(r); });
+    var f = S.flFilter || "all", h = "";
+    if (f === "all" || f === "attention") {
+      var rows = att.filter(flMatch);
+      h += '<section class="ops-card fd-card"><header><strong>Needs attention</strong><small>' + att.length + (att.length === 1 ? " booking" : " bookings") + "</small>" +
+        (missingFlights().length && can("flights") ? '<button type="button" class="btn ghost small" data-fillflights>Add flight numbers</button>' : "") + "</header>" +
+        '<div class="fd-tr fd-a th"><span>Return</span><span>Vehicle · ref</span><span>Flight</span><span>Issue</span><span>Status</span><span>Action</span></div>' +
+        (rows.length ? rows.map(function (r) {
+          var is = flIssue(r), act = !r.flight && can("flights") ? '<button type="button" class="btn ghost small" data-addflight>Add flight</button>'
+            : '<button type="button" class="btn ghost small" data-open>' + (can("flights") ? "Edit flight" : "View") + "</button>";
+          return '<div class="fd-tr fd-a" data-id="' + r.id + '"><span class="num" data-open>' + esc(hhmm(r.return_at) || "—") + '</span><span class="fd-car" data-open>' + flCar(r) + "</span>" +
+            '<span class="num" data-open>' + esc(r.flight || "—") + '</span><span data-open>' + esc(is[0]) + '</span><span><em class="ops-badge ' + is[2] + '">' + esc(is[1]) + "</em></span><span>" + act + "</span></div>";
+        }).join("") : '<p class="ops-foot">' + (att.length ? "No match for the search." : "Every booking has a flight number the check can use.") + "</p>") + "</section>";
+    }
+    if (f !== "attention") {
+      var list = rest.filter(function (r) { return (f === "all" || flKind(r) === f) && flMatch(r); }), tt = (S.runs || []).filter(function (x) { return x.source === "schedule"; })[0];
+      h += '<section class="ops-card fd-card"><header><strong>Flight status</strong><small>' + (tt ? "Timetable checked " + esc(whenLabel(tt.at)) : "Timetable not checked yet") + "</small></header>" +
+        '<div class="fd-tr fd-s th"><span>Return</span><span>Vehicle · ref</span><span>Flight</span><span>Scheduled</span><span>Estimated</span><span>Status</span><span>Action</span></div>' +
+        (list.length ? list.map(function (r) {
+          var k = flKind(r), late = lateMins(r), st = r.flight_status || "";
+          var word = k === "noflight" ? "No flight number" : k === "delayed" ? "Delayed" + (late > 0 ? " +" + late + " min" : "") : k === "unchecked" ? "Not checked yet" : k === "cancelled" ? "Cancelled" : FLIGHT_WORD[st] || sentence(st);
+          var tone = k === "landed" ? "ok" : k === "cancelled" ? "bad" : k === "delayed" ? "warn" : "";
+          var est = k === "noflight" ? (r.est_time ? 'Collect <span class="num">' + esc(r.est_time) + "</span>" : "—") : r.est_time === "DELAY" ? "Delayed" : r.est_time ? (k === "landed" ? "Landed " : "") + '<span class="num">' + esc(r.est_time) + "</span>" : "—";
+          return '<div class="fd-tr fd-s fs-' + esc(k) + '" data-id="' + r.id + '"><span class="num" data-open>' + esc(hhmm(r.return_at) || "—") + '</span><span class="fd-car" data-open>' + flCar(r) + "</span>" +
+            '<span class="num" data-open>' + esc(k === "noflight" ? "—" : r.flight) + '</span><span class="num" data-open>' + esc(k === "noflight" ? "—" : r.sched_time || "—") + "</span><span data-open>" + est + "</span>" +
+            '<span><em class="ops-badge ' + tone + '"' + (r.flight_note ? ' title="' + esc(r.flight_note) + '"' : "") + ">" + esc(word) + "</em></span>" +
+            '<span><button type="button" class="btn ghost small" data-open>View</button></span></div>';
+        }).join("") : '<p class="ops-foot">' + (rest.length ? "No flights match." : "No flight numbers on this sheet yet.") + "</p>") + "</section>";
+    }
+    return h;
+  }
+  function opsFlightsDesk(sh) {
+    var all = S.rows.filter(function (r) { return r.kind === "drops"; });
+    var withFl = all.filter(function (r) { return r.flight && r.flight !== "NO FLIGHT"; }), uniq = {};
+    // Different flights: the real flight numbers only (TBC and the like aren't one).
+    withFl.forEach(function (r) { if (/^([A-Z0-9]{2}\d{1,5}|[A-Z]{3}\d{1,4})$/.test(r.flight)) uniq[r.flight] = 1; });
+    var att = all.filter(function (r) { return !r.cleared_at && (!r.flight || flightToCheck(r)); }), rest = all.filter(function (r) { return r.flight && !flightToCheck(r); });
+    var count = function (k) { return k === "all" ? att.length + rest.length : k === "attention" ? att.length : rest.filter(function (r) { return flKind(r) === k; }).length; };
+    function run(src) { return (S.runs || []).filter(function (x) { return x.source === src; })[0]; }
+    function last(src, word) {
+      var x = run(src); if (!x) return word + " not checked yet";
+      return word + " checked " + esc(whenLabel(x.at)) + (x.result && x.result.error ? ' · <span class="bad">' + esc(x.result.error) + "</span>" : "");
+    }
+    var cell = function (label, n, unit, tone) { return '<div' + (tone && n ? ' class="' + tone + '"' : "") + "><span>" + esc(label) + '</span><strong class="num">' + n + "</strong><small>" + unit + "</small></div>"; };
+    var missing = all.filter(function (r) { return !r.flight && !r.cleared_at; }).length;
+    return opsScope(sh) +
+      '<div class="fd-check"><p>' + last("schedule", "Timetable") + " · " + last("live", "Live positions") + "</p>" +
+      (canCheckFlights() ? '<div class="fd-btns">' + checksLeftHtml() + '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button></div>' : "") + "</div>" +
+      '<div class="ops-strip fd-strip">' + cell("With a flight number", withFl.length, "bookings") + cell("Different flights", Object.keys(uniq).length, "flights") +
+        cell("No flight number", missing, "bookings", "warn") + cell("Need checking", att.length - missing, "bookings", "warn") +
+        cell("Delayed", count("delayed"), "bookings", "warn") + cell("Landed", count("landed"), "bookings") + cell("Cancelled", count("cancelled"), "bookings", "bad") + "</div>" +
+      '<div class="fd-tools"><div class="fd-tabs" role="group" aria-label="Show">' + FL_FILTERS.map(function (x) {
+        var on = (S.flFilter || "all") === x[0];
+        return '<button type="button" data-flfilter="' + x[0] + '" aria-pressed="' + on + '"' + (on ? ' class="on"' : "") + ">" + x[1] + ' <span class="num">' + count(x[0]) + "</span></button>";
+      }).join("") + '</div><span class="fd-unit">Counts are bookings</span><input type="search" id="flQ" placeholder="Registration, flight or reference" aria-label="Search flights" autocomplete="off" value="' + esc(S.flQ || "") + '"></div>' +
+      '<div id="flTables">' + flTablesHtml() + "</div>";
+  }
   // ── Key check (K beside TO DO / ALL on a DROPS board) ──
   // The office pulls every key out of the cabinet. With K on, each drop gets a
   // tick box and its yard tag goes grey; ticking the car (key found) brings the
@@ -3212,6 +3405,11 @@
     var t = keysFor(sh.id), cars = S.rows.filter(function (r) { return !r.cleared_at; }), n = cars.filter(function (r) { return t[r.id]; }).length;
     $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
     $("keyBtn").innerHTML = "<b>K</b>" + (grey ? '<span class="num">' + n + "/" + cars.length + "</span>" : "");
+    // Operations: K says what it is (a check that every car's key is in the cabinet).
+    if (isOps()) {
+      $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet" + (grey ? " (" + n + " of " + cars.length + " cars on site ticked)" : "");
+      if (opsDesk()) $("keyBtn").innerHTML = "<b>Key check</b>" + (grey ? ' <span class="num">' + n + "/" + cars.length + "</span>" : "");
+    }
   }
   // K on with keys ticked: a line above the list to end the check.
   function keyStrip() { return keyOn() && keyAny() ? '<div class="kstrip"><span>Key check</span><button type="button" data-keyreset>Untick all</button></div>' : ""; }
@@ -3403,6 +3601,7 @@
       var res = run0.result || {};
       return esc(dayShort(run0.at) + " " + hhmm(run0.at)) + (res.error ? ' · <span class="bad">' + esc(res.error) + "</span>" : "");
     }
+    if (opsDesk()) return opsFlightsDesk(sh);
     if (isOps()) return opsFlights(sh, all, rows, manual, n);
     var h = '<div class="pad"><h2 class="title">' + esc(sheetLabel(sh)) + "</h2>" +
       '<div class="stats"><div class="stat"><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat"><span>Landed</span><strong class="num">' + n("landed") +
@@ -4454,6 +4653,8 @@
       var ink = lightColour(c) ? "#1F1A00" : "#FFFFFF", line = hexMix(c, "#000000", 0.15);
       css += "html body .code." + y + ",html body select.code.pick." + y + ",html body .acts .pyard.on.y-" + y + ",html body .pseg.yard button.on.y-" + y +
         "{background:" + c + ";border-color:" + line + ";color:" + ink + ";}";
+      // Operations on a wide screen: a dot of the yard's colour by its count.
+      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
     });
     var el = document.getElementById("yardColours");
     if (!el) { el = document.createElement("style"); el.id = "yardColours"; document.head.appendChild(el); }
@@ -5217,6 +5418,7 @@
     if (t.dataset.keytick) return tickKey(t.dataset.keytick);
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.keyreset !== undefined) return resetKeys();
+    if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
@@ -5611,15 +5813,21 @@
     if (out && isOps()) { var el = document.elementFromPoint(e.clientX, e.clientY), b = el && el.closest("#bnav button, .bar button, .bar select"); if (b && b.dataset.bn !== "menuBtn") b.tagName === "SELECT" ? b.focus() : b.click(); }
   });
   $("menu").addEventListener("close", markBnav);
+  // Operations: crossing 900 px wide swaps the board and Flights between their phone and wide-screen layouts.
+  if (OPS_DESK_MQ) { var onDesk = function () { if (S.me && isOps()) { render(); if ($("menu").open) opsMenuPlace(); } }; if (OPS_DESK_MQ.addEventListener) OPS_DESK_MQ.addEventListener("change", onDesk); else if (OPS_DESK_MQ.addListener) OPS_DESK_MQ.addListener(onDesk); }
   function opsMenuPlace() {
     if (!isOps()) return;
     var top = document.querySelector(".bar").getBoundingClientRect().bottom, nav = $("bnav").classList.contains("hidden") ? 0 : $("bnav").getBoundingClientRect().height;
+    // Wide screen: the tabs are under the top bar, so the menu starts below them and runs to the bottom.
+    if (opsDesk() && !$("bnav").classList.contains("hidden")) { top = $("bnav").getBoundingClientRect().bottom; nav = 0; }
     document.documentElement.style.setProperty("--ops-menu-top", Math.max(0, Math.round(top)) + "px");
     document.documentElement.style.setProperty("--ops-menu-bottom", Math.round(nav) + "px");
   }
   $("shiftPick").addEventListener("click", function (e) { if (outside("shiftPick", e)) $("shiftPick").close(); });
   // Activity search (Premium looks): only the list redraws, so the keyboard stays up.
   document.addEventListener("input", function (e) {
+    // Flights search (Operations, wide screen): only the tables redraw.
+    if (e.target.id === "flQ") { S.flQ = e.target.value; if ($("flTables")) $("flTables").innerHTML = flTablesHtml(); return; }
     if (e.target.id !== "actQ" || !S.activity) return;
     S.actQ = e.target.value; if ($("actList")) $("actList").innerHTML = activityListHtml();
   });
