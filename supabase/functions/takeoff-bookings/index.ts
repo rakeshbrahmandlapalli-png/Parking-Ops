@@ -134,7 +134,7 @@ async function record(companyId: string, ok: boolean, error: string, summary: un
   await admin.rpc("auto_import_record", { p_company: companyId, p_ok: ok, p_error: error, p_summary: summary ?? null });
 }
 
-Deno.serve(async (req) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply(405, { error: "POST only." });
   let body: Record<string, unknown> = {};
@@ -193,4 +193,28 @@ Deno.serve(async (req) => {
   } catch (err) {
     return reply(500, { error: (err as Error).message || String(err) });
   }
+}
+
+// A run reads about twenty pages from the booking site, which can take longer than the gateway waits for a first
+// answer (then the app only sees "couldn't reach"). So the answer starts at once, a blank is sent every few seconds
+// while the work goes on, and the JSON follows (leading blanks are valid JSON). Errors come back inside the body.
+Deno.serve((req) => {
+  if (req.method !== "POST") return handle(req);
+  const enc = new TextEncoder(), t0 = Date.now();
+  let beat: number | undefined;
+  const stream = new ReadableStream({
+    start(ctl) {
+      beat = setInterval(() => { try { ctl.enqueue(enc.encode(" ")); } catch { /* closed */ } }, 5000);
+      handle(req).then(async (r) => {
+        const text = await r.text();
+        let out = text;
+        try { const j = JSON.parse(text); if (j && typeof j === "object" && !Array.isArray(j)) { if (r.status >= 400 && !j.error) j.error = "Failed (" + r.status + ")."; if (j.error && j.ok === undefined) j.ok = false; j.ms = Date.now() - t0; out = JSON.stringify(j); } } catch { /* leave as is */ }
+        clearInterval(beat); ctl.enqueue(enc.encode(out)); ctl.close();
+      }).catch((e) => {
+        clearInterval(beat); ctl.enqueue(enc.encode(JSON.stringify({ ok: false, error: (e as Error).message || String(e) }))); ctl.close();
+      });
+    },
+    cancel() { clearInterval(beat); },
+  });
+  return new Response(stream, { status: 200, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 });
