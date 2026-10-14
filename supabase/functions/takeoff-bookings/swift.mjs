@@ -137,6 +137,18 @@ export function makeClient(cfg, io) {
       out.siteRows = m ? Number(m[1].replace(/,/g, "")) : null;
       const at = plain.search(/results?\b/i);
       out.siteNote = (at >= 0 ? plain.slice(Math.max(0, at - 60), at + 40) : plain.slice(0, 100)).trim();
+      // What the page's own search form holds (names and the chosen values), so a search built by address can be compared with a manual one.
+      const ctl = [];
+      for (const sm of st.matchAll(/<select[^>]*\bname=["']?([\w.\[\]-]+)["']?[^>]*>([\s\S]*?)<\/select>/gi)) {
+        const opts = [...sm[2].matchAll(/<option([^>]*)>([^<]*)/gi)];
+        const sel = opts.find((o) => /\bselected\b/i.test(o[1])) || opts[0];
+        if (sel) { const v = (sel[1].match(/value=["']?([^"'\s>]*)/i) || [])[1]; ctl.push(sm[1] + "=" + (v ?? "") + " (" + sel[2].trim() + ") of " + opts.map((o) => ((o[1].match(/value=["']?([^"'\s>]*)/i) || [])[1] ?? "") + ":" + o[2].trim()).join("/")); }
+      }
+      for (const im of st.matchAll(/<input([^>]*)>/gi)) {
+        const n = (im[1].match(/\bname=["']?([\w.\[\]-]+)/i) || [])[1], t = (im[1].match(/\btype=["']?(\w+)/i) || [])[1] || "text";
+        if (n && !/^(password|hidden)$/i.test(t) || (n && /hidden/i.test(t))) ctl.push(n + "=" + ((im[1].match(/\bvalue=["']([^"']*)/i) || [])[1] ?? ""));
+      }
+      out.siteForm = ctl.join("; ").slice(0, 1500);
       return out;
     },
   };

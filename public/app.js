@@ -4075,7 +4075,7 @@
       if (P.report) {
         ["picks", "drops"].forEach(function (k) {
           var R = P.report[k]; if (!R) return;
-          h += '<p class="hint" data-autoreport>' + esc("On the site, " + k + ": " + R.rows + " · " + Object.keys(R.by_day).sort().map(function (d) { return d.slice(8) + "th " + R.by_day[d] + (R.site && R.site[d] != null ? " of " + R.site[d] : ""); }).join(" · ") + " · " + Object.keys(R.by_status).map(function (x) { return x + " " + R.by_status[x]; }).join(", ")) + "</p>";
+          h += '<p class="hint" data-autoreport>' + esc("On the site, " + k + ": " + R.rows + " · " + Object.keys(R.by_day).sort().map(function (d) { return d.slice(8) + "th " + R.by_day[d] + (R.site && R.site[d] != null ? " of " + R.site[d] : ""); }).join(" · ") + " · " + Object.keys(R.by_status).map(function (x) { return x + " " + R.by_status[x]; }).join(", ")) + "</p>" + (R.form ? '<p class="hint">' + esc("Search form: " + R.form) + "</p>" : "");
         });
       }
       var rows = (P.items || []).map(function (i) {
