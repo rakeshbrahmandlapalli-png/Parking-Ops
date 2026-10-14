@@ -1941,6 +1941,36 @@ await scenario(async () => {
   await page.context().close();
 });
 
+// 18d5. Choosing dates: nothing is sent until the dates are changed; then the check and the import read exactly those days.
+await scenario(async () => {
+  const db = biDb("ops");
+  const page = await phone(browser, db, { width: 1100 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(500);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  const today = await page.evaluate(() => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }));
+  const plus = (k, n) => { const d = new Date(k + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  check("import dates: the boxes start at today and the next 2 days", (await page.inputValue("#biFrom")) === today && (await page.inputValue("#biTo")) === plus(today, 2));
+  await page.click("[data-autopreview]"); await sleep(800);
+  check("import dates: a default check sends no dates", db.autoRuns.length === 1 && db.autoRuns[0].from === undefined && db.autoRuns[0].to === undefined, db.autoRuns);
+  await page.fill("#biFrom", plus(today, 3)); await page.dispatchEvent("#biFrom", "change"); await sleep(300);
+  check("import dates: moving From past To drags To along, and the old check is cleared", (await page.inputValue("#biTo")) === plus(today, 3) && await page.locator("[data-autopreviewsum]").count() === 0);
+  await page.fill("#biTo", plus(today, 9)); await page.dispatchEvent("#biTo", "change"); await sleep(300);
+  await page.click("[data-autopreview]"); await sleep(800);
+  const last = db.autoRuns[db.autoRuns.length - 1];
+  check("import dates: a chosen range is sent with the check", last.action === "preview" && last.from === plus(today, 3) && last.to === plus(today, 9), last);
+  await page.click("[data-autorun]"); await sleep(1200);
+  const ap = db.autoRuns[db.autoRuns.length - 1];
+  check("import dates: the import reads the same range", ap.action === "apply" && ap.from === plus(today, 3) && ap.to === plus(today, 9) && !!ap.expect_hash, ap);
+  await page.fill("#biFrom", plus(today, 1)); await page.dispatchEvent("#biFrom", "change"); await sleep(300);
+  await page.fill("#biTo", plus(today, 30)); await page.dispatchEvent("#biTo", "change"); await sleep(300);
+  check("import dates: more than 14 days is pulled back to 14", (await page.inputValue("#biTo")) === plus(today, 30) && (await page.inputValue("#biFrom")) === plus(today, 17));
+  await page.click("[data-birangereset]"); await sleep(300);
+  check("import dates: reset goes back to today and the next 2 days", (await page.inputValue("#biFrom")) === today && (await page.inputValue("#biTo")) === plus(today, 2) && await page.locator("[data-birangereset]").count() === 0);
+  check("import dates: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+});
+
 // 18d4. A company without the connected importer sees the manual import only, under the same heading.
 await scenario(async () => {
   const db = makeDb(); db.company = { ...db.company, name: "Airport Parking Bay", slug: "airport-parking-bay", brand: { colour: "#1560BD", ink: "#FFFFFF", short: "Parking Bay", theme: "premium" } };

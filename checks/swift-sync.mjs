@@ -4,7 +4,7 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate, rangeFor, requestBudget, MAX_REQUESTS } from "../supabase/functions/takeoff-bookings/swift.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -15,6 +15,12 @@ ok("London day just after midnight BST (24 Oct 23:30Z is 25 Oct 00:30)", londonD
 ok("+1 across the clocks going back (25 Oct) is 26 Oct, not skipped or repeated", londonDay(Date.parse("2026-10-24T12:00:00Z"), 2) === "2026-10-26");
 ok("clocks going forward: 27 Mar 23:30Z is still 27 Mar; +1 is 28 Mar", londonDay(Date.parse("2027-03-27T23:30:00Z")) === "2027-03-27" && londonDay(Date.parse("2027-03-27T23:30:00Z"), 1) === "2027-03-28");
 ok("site date box format", siteDate("2026-10-05") === "05-October-2026");
+{
+  const now = Date.parse("2026-10-14T12:00:00Z"), bad = (a, b) => { try { rangeFor(now, a, b); return false; } catch { return true; } };
+  ok("a typed range of 14 days is accepted", rangeFor(now, "2026-10-20", "2026-11-02").to === "2026-11-02");
+  ok("a typed range of 15 days, backwards, bad or far-off dates is refused", bad("2026-10-20", "2026-11-03") && bad("2026-10-20", "2026-10-19") && bad("20/10/2026", "2026-10-21") && bad("2026-02-30", "2026-03-01") && bad("2026-09-01", "2026-09-05") && bad("2026-12-20", "2026-12-21"));
+  ok("the request budget grows with the days but never drops below the default", requestBudget(1) === MAX_REQUESTS && requestBudget(14) === 68);
+}
 ok("window is bounded to 14 days", windowFor(Date.parse("2026-10-14T12:00:00Z"), 99).to === "2026-10-27" && windowFor(Date.parse("2026-10-14T12:00:00Z"), 2).to === "2026-10-15");
 
 // ── address guard ──

@@ -4382,6 +4382,15 @@
     ["picks", "drops"].forEach(function (k) { var X = P.report && P.report[k]; if (!X) return; seen++; if (!X.site || !Object.keys(X.site).length) ok = false; });
     return seen && ok;
   }
+  function biToday() { return new Date().toLocaleDateString("en-CA", { timeZone: TZ }); }
+  // The dates the check reads: today and the next two days unless the office picks its own (up to 14 days).
+  function biRange(a) { return a.custom ? { from: a.from, to: a.to } : { from: biToday(), to: addDaysKey(biToday(), 2) }; }
+  function biRangeHtml(a, busy) {
+    var r = biRange(a), t = biToday(), dis = busy ? " disabled" : "";
+    return '<div class="bi-range" data-birange><label>From <input type="date" id="biFrom" value="' + esc(r.from) + '" min="' + addDaysKey(t, -30) + '" max="' + addDaysKey(t, 60) + '"' + dis + "></label>" +
+      '<label>To <input type="date" id="biTo" value="' + esc(r.to) + '" min="' + addDaysKey(t, -30) + '" max="' + addDaysKey(t, 60) + '"' + dis + "></label>" +
+      (a.custom ? '<button type="button" class="link" data-birangereset' + dis + ">Today and next 2 days</button>" : '<span class="bi-hint">Today and the next 2 days. Up to 14 days at a time.</span>') + "</div>";
+  }
   function autoPanel(a) {
     var P = a.preview, busy = a.running || a.checking, c = (P && P.counts) || {}, B = S.bi;
     var conn = biConn(a), nImp = (c["new"] || 0) + (c.changed || 0);
@@ -4393,7 +4402,7 @@
       (conn.note ? '<span class="bi-note">' + esc(conn.note) + "</span>" : "") + "</div>" +
       '<div class="bi-act"><button type="button" class="btn ghost" data-autopreview' + (busy ? " disabled" : "") + ">" + (a.checking ? "Checking…" : "Check bookings") + "</button>" +
       '<button type="button" class="btn brand" data-autorun' + (canGo ? "" : " disabled") + ">" + esc(go) + "</button></div>" +
-      '<div class="bi-body">';
+      biRangeHtml(a, busy) + '<div class="bi-body">';
     if (a.error) h += '<div class="alert" role="alert">' + esc(a.error) + "</div>";
     if (!P) {
       if (!a.error && !busy) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
@@ -4452,7 +4461,7 @@
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews };
+    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to };
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -4463,7 +4472,7 @@
     var a = S.autoImport; if (!a || a.checking || a.running) return;
     a.checking = true; a.error = ""; a.preview = null; render();
     var r;
-    try { r = await sb.functions.invoke("takeoff-bookings", { body: { action: "preview" } }); } catch (e) { r = { error: e }; }
+    try { r = await sb.functions.invoke("takeoff-bookings", { body: Object.assign({ action: "preview" }, a.custom ? biRange(a) : {}) }); } catch (e) { r = { error: e }; }
     a.checking = false;
     var out = r && r.data;
     if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
@@ -4477,7 +4486,7 @@
     a.running = true; a.error = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
-    try { r = await sb.functions.invoke("takeoff-bookings", { body: { action: "apply", expect_hash: a.preview.hash } }); } catch (e) { r = { error: e }; }
+    try { r = await sb.functions.invoke("takeoff-bookings", { body: Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.custom ? biRange(a) : {}) }); } catch (e) { r = { error: e }; }
     a.running = false;
     var out = r && r.data;
     if ((r && r.error) || !out || out.ok === false) {
@@ -5569,6 +5578,7 @@
       t.closest(".bi-row").classList.toggle("open", open); if (open) S.bi.open[t.dataset.birow] = 1; else delete S.bi.open[t.dataset.birow];
       return;
     }
+    if (t.dataset.birangereset !== undefined) { var bb = S.autoImport; if (bb) { bb.custom = false; bb.preview = null; bb.error = ""; render(); } return; }
     if (t.dataset.autopreview !== undefined) return previewAutoImport();
     if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
     if (t.dataset.autorun !== undefined) return runAutoImport(t);
@@ -5655,6 +5665,14 @@
   document.addEventListener("change", async function (e) {
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
     var t = e.target;
+    if ((t.id === "biFrom" || t.id === "biTo") && S.autoImport) {
+      var ba = S.autoImport, br = biRange(ba), nf = t.id === "biFrom" ? t.value : br.from, nt = t.id === "biTo" ? t.value : br.to;
+      if (!nf || !nt) return;
+      if (t.id === "biFrom" && nf > nt) nt = nf;
+      if (t.id === "biTo" && nt < nf) nf = nt;
+      if (Math.round((Date.parse(nt + "T12:00:00Z") - Date.parse(nf + "T12:00:00Z")) / 86400000) + 1 > 14) { if (t.id === "biFrom") nt = addDaysKey(nf, 13); else nf = addDaysKey(nt, -13); toast("Up to 14 days at a time.", true); }
+      ba.custom = true; ba.from = nf; ba.to = nt; ba.preview = null; ba.error = ""; ba.stale = false; render(); return;
+    }
     if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
