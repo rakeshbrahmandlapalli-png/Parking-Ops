@@ -99,6 +99,16 @@ ok("changed report structure (no Reference/Name/dates) is rejected", /Couldn't f
 ok("a report missing the return column is rejected", /missing columns \(ret\)/.test(await throws(() => readReport([["Booking Status", "Reference", "Full Name", "Car Reg", "Booking From", "Supplier"], ["Booked", "T1", "A", "AB12CDE", "2026-10-14 08:00", "TakeOff"]], SCOPE))));
 ok("exactly one full page of rows is treated as possibly incomplete", /may be incomplete/.test(await throws(() => readReport(grid(...Array.from({ length: 3 }, (_, i) => row("Booked", "P" + i, "N" + i, "AB12 CD" + i, "2026-10-14 08:00", "2026-10-16 10:00"))), SCOPE, { pageSize: 3 }))));
 
+// the real Booking Manager's headings (from the 14 Oct screenshot), made-up rows
+{ const H2 = ["Ref#", "Supplier Name", "Booking Type", "Payment Status", "Full Name", "Booked", "Meet", "Return", "Vehicle", "Total Days", "V/Code", "V/Value", "Booking Status"];
+  const g2 = [H2, ["AAAA11", "HES", "PR", "Payment Success", "MR A GABRIEL", "13-10-2026 00:16", "14-10-2026 18:50", "19-10-2026 09:15", "TOYOTA COROLLA ICON HEV CVT DF24WFC", "6", "", "0.00", "Booked"],
+    ["BBBB22", "L4P", "MG", "Payment Success", "Mx Sample", "22-09-2026 10:07", "14-10-2026 21:00", "17-10-2026 08:00", "SF09UGZ", "3", "", "0.00", "Booked"],
+    ["CCCC33", "HES", "MG", "Payment Success", "MISS D SAMPLE", "27-09-2026 21:16", "14-10-2026 17:00", "19-10-2026 03:00", "LEXUS CT YY64DWU", "6", "", "0.00", "Cancelled"]];
+  const a = readReport(g2, { column: "Supplier Name", values: ["HES"] });
+  ok("Booking Manager headings read: ref, name, reg split from vehicle, dd-mm-yyyy dates, status", a.rows.length === 2 && a.rows[0].reg === "DF24WFC" && a.rows[0].meet.key === "2026-10-14" && a.rows[0].ret.time === "09:15" && a.rows[1].cancelled === true, a.rows);
+  const b = readReport(g2, [{ column: "Supplier Name", values: ["HES"] }, { column: "Booking Type", values: ["MG"] }]);
+  ok("scope can require supplier AND booking type", b.rows.length === 1 && b.rows[0].ref === "CCCC33" && b.excludedScope === 2, b); }
+
 // ── planner ──
 const WIN = { from: "2026-10-12", to: "2026-10-15" };
 const parse = (rows) => readReport(grid(...rows), SCOPE).rows;

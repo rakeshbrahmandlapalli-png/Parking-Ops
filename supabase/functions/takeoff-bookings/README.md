@@ -12,11 +12,17 @@ inside `/admin/`, one of the listed report scripts, no edit/cancel/status/passwo
 redirects followed by hand (max 3) and re-checked, at most 8 requests a run, cookies only
 for that host. A failed sign-in pauses the sync for an hour.
 
-## What is NOT verified yet (no login was available to the build)
-- the exact report pages and search addresses behind Booking List, Meet Report, Return Report
-- the export's columns and format (the reader expects Reference, Name, Car Reg, Booking From/To, flight columns)
-- which report column holds the supplier/service, and the value that means TakeOff
+## Seen in the user's photos of Booking Manager (14 Oct), not from a login here
+- Columns: Ref#, Supplier Name, Booking Type, Payment Status, Full Name, Booked, Meet, Return, Vehicle, Total Days, V/Code, V/Value, Booking Status. Dates read as `14-10-2026 21:00`.
+- Filters: a "Meet" / "Return" choice with from/to dates (Meet for PICKS, Return for DROPS), Excel and PDF export icons.
+- Vehicle holds make, model and plate together (the reader splits the plate off the end). No phone or flight column; flights come from the Return Report.
+- Supplier Name values seen: HES (Booking Type PR), APL (MG), L4P (MG). Which of these is TakeOff is **not known**.
+- Booking Status values seen: Booked, Collected.
+`
+## Still not verified
+- the report page addresses behind the Booking Manager search and its export, and the export's real file format
 - whether the export is paginated, and the sign-in success response
+- which Supplier Name / Booking Type means TakeOff (`scope` may be a list, e.g. `[{"column":"Supplier Name","values":["…"]},{"column":"Booking Type","values":["MG"]}]`)
 Run **Check bookings** once and read the answer before anything else; an unreadable or
 unexpected report stops with a plain message and nothing is imported.
 
@@ -39,7 +45,7 @@ select id, 'swift', '{
   "drops_search": "<Booking List address with {FROM} and {TO}>",
   "picks_search": "<Booking List / Meet Report address with {FROM} and {TO}>",
   "flights_search": "<Return Report address with {FROM} and {TO}>",
-  "scope": {"column": "<supplier column heading>", "values": ["<TakeOff's name in that column>"]},
+  "scope": {"column": "Supplier Name", "values": ["<TakeOff's supplier name>"]},
   "drops_days": 2, "picks_days": 3
 }'::jsonb
 from companies where slug = 'takeoff'

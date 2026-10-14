@@ -127,23 +127,26 @@ const REQUIRED = ["ref", "name", "meet", "ret"];
 // grid -> rows (cancelled ones kept, marked), after scope + structure checks.
 // scope: { column: "Supplier", values: ["TakeOff"] }  (case-insensitive, trimmed)
 export function readReport(grid, scope, opts = {}) {
-  if (!scope || !scope.column || !Array.isArray(scope.values) || !scope.values.length)
+  // scope: one {column, values} or a list of them; a booking must match every one
+  // (e.g. Supplier Name AND Booking Type).
+  const conds = (Array.isArray(scope) ? scope : scope ? [scope] : []);
+  if (!conds.length || conds.some((c) => !c || !c.column || !Array.isArray(c.values) || !c.values.length))
     throw new Error("Supplier scope isn't configured, so no bookings were read. Nothing was imported.");
-  let g = grid, excludedScope = 0;
-  const want = scope.values.map((v) => String(v).trim().toLowerCase());
-  let hr = -1, sc = -1;
+  let excludedScope = 0, hr = -1;
+  const idx = [];
   for (let r = 0; r < Math.min(grid.length, 20) && hr < 0; r++) {
-    const c = grid[r].findIndex((x) => String(x).trim().toLowerCase() === String(scope.column).trim().toLowerCase());
-    if (c >= 0) { hr = r; sc = c; }
+    const cols = conds.map((c) => grid[r].findIndex((x) => String(x).trim().toLowerCase() === String(c.column).trim().toLowerCase()));
+    if (cols.every((c) => c >= 0)) { hr = r; idx.push(...cols); }
   }
-  if (hr < 0) throw new Error("The report has no '" + scope.column + "' column, so TakeOff's bookings can't be told apart. Nothing was imported.");
+  if (hr < 0) throw new Error("The report has no " + conds.map((c) => "'" + c.column + "'").join(" / ") + " column, so TakeOff's bookings can't be told apart. Nothing was imported.");
+  const want = conds.map((c) => c.values.map((v) => String(v).trim().toLowerCase()));
   const body = grid.slice(hr + 1).filter((row) => {
     if (!row.some((x) => String(x).trim())) return false;
-    const ok = want.includes(String(row[sc]).trim().toLowerCase());
+    const ok = idx.every((c, i) => want[i].includes(String(row[c]).trim().toLowerCase()));
     if (!ok) excludedScope++;
     return ok;
   });
-  g = grid.slice(0, hr + 1).concat(body);
+  const g = grid.slice(0, hr + 1).concat(body);
   const parsed = parseExcelGrid(g, { keepCancelled: true });
   const missing = REQUIRED.filter((k) => !parsed.columns.includes(k));
   if (missing.length) throw new Error("The report is missing columns (" + missing.join(", ") + "); it may have changed. Nothing was imported.");
