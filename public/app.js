@@ -162,6 +162,7 @@
     } catch (err) { $("pinErr").textContent = err.message || String(err); $("pin").value = ""; }
     finally { $("pinGo").disabled = false; }
   });
+  document.addEventListener("input", function (e) { if (e.target && e.target.id === "handoverText") S.handoverDraft = e.target.value; });
   $("pin").addEventListener("input", function () { if (/^\d{4}$/.test(this.value)) $("pinForm").requestSubmit(); });
   // The Home Screen app on an iPhone keeps its own storage, so a link opened in
   // Safari never reaches it. Accepts the whole link, a message containing it, or
@@ -357,7 +358,7 @@
     if (o.archive) S.archiveSheet = o.archive;
     else if (S.archiveSheet && S.archiveSheet.id !== id) S.archiveSheet = null;   // leaving an archived sheet
     S.switching = null; loadSeq++;
-    S.sheetId = id; S.q = o.q || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
+    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
     if (o.filter) S.filter = o.filter;
     S.view = stay ? S.view : "board"; if (stay) S.activity = null;
     S.rowsSheet = null;                                      // fresh sheet: filters reset in takeRows
@@ -835,6 +836,16 @@
   function inOverstayBlock(r) { return r.called_word === "Overstay" || (r.overstay && !r.called_at); }
   // The TO DO number: work nobody has picked up yet. A car already SENT is in hand.
   function waiting(r) { return outstanding(r) && (r.kind === "picks" || (!r.sent_at && !inOverstayBlock(r))); }
+  // A dashboard queue opened on the board (S.boardQueue): just that queue's cars.
+  var QUEUES = {
+    called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
+    sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
+    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }]
+  };
+  function queueBar() {
+    var q = QUEUES[S.boardQueue]; if (!q) return "";
+    return '<div class="queuebar"><span>Showing <b>' + esc(q[0]) + '</b> · ' + S.rows.filter(q[1]).length + '</span><button type="button" data-queueclear>Show all</button></div>';
+  }
 
   // Running order: when the car is really needed. A flight two hours late is
   // needed two hours later, so a live or expected time beats the timetable.
@@ -883,6 +894,7 @@
     return S.rows.filter(function (r) {
       // A search looks at the whole sheet: a car already done must still be findable from TO DO.
       if (q) return [r.reg, r.num, r.flight, r.name, r.phone, r.note, r.ref, r.make].join("").toUpperCase().replace(/\s+/g, "").indexOf(q) !== -1;
+      if (QUEUES[S.boardQueue]) return QUEUES[S.boardQueue][1](r);
       if (S.filter === "todo" && !outstanding(r)) return false;
       if (S.catFilter && !inCat(r, S.catFilter)) return false;
       if (S.yardFilter) {
@@ -1130,11 +1142,12 @@
         .filter(function (g) { return g.rows.length; });
     }
     if (!S.rows.length) return '<div class="msg">No cars on this sheet.</div>';
-    if (!rows.length) return '<div class="msg">' + (S.filter === "todo" && !S.q && !S.yardFilter ? "Nothing outstanding." : S.q ? (S.other && S.other.length ? "Not on this sheet. Found on another day below." : searchWords().tight.length >= 3 && S.other ? "Not found on any sheet." : "Not on this sheet.") : "Nothing matches.") + "</div>";
+    if (!rows.length) return queueBar() + '<div class="msg">' + (QUEUES[S.boardQueue] ? "Nothing in this queue now." : S.filter === "todo" && !S.q && !S.yardFilter ? "Nothing outstanding." : S.q ? (S.other && S.other.length ? "Not on this sheet. Found on another day below." : searchWords().tight.length >= 3 && S.other ? "Not found on any sheet." : "Not on this sheet.") : "Nothing matches.") + "</div>";
     var draw = sh.kind === "picks" ? pickRow : dropRow;
     var cardsLook = isCards() && !isBoard();   // Premium Board heads its sections like the old board
-    var chunks = [];
-    var out = groups.map(function (g) {
+    var chunks = [], qb = queueBar();
+    if (qb) chunks.push(["queue", qb]);
+    var out = qb + groups.map(function (g) {
       var head = "";
       if (g.title) {
         var note = g.note;
@@ -2789,26 +2802,34 @@
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
     if (t.dataset.savepanel !== undefined) {
       var saved = false;
+      // Check everything first: nothing is queued while any field is invalid.
       var pf = $("pickFlightText") ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
       if (pf && pf.length > 10) return toast("That does not look like a flight number.", true);
-      if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
+      var g = null;
       if ($("regText")) {
-        var g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
-        if (g !== r.reg) {
-          if (!/^[A-Z0-9 ]{0,12}$/.test(g)) return toast("Check the reg: letters and numbers only.", true);
-          run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true;
-        }
+        g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
+        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return toast("Check the reg: letters and numbers only.", true);
       }
+      var rl = null;
       if ($("retD")) {
         var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
         if (rt === null) return toast("Type the time like 13:20 (or 1320).", true);
         if ($("retD").value !== old.key || (rt || "") !== old.time) {
           if (!$("retD").value || !rt) return toast("Enter when the car is back: the date and the time.", true);
-          var rl = $("retD").value + " " + rt;
-          if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
-          else run("set_return", { p_booking: r.id, p_return_local: rl }, r);
-          saved = true;
+          rl = $("retD").value + " " + rt;
         }
+      }
+      var f = null, ct, st;
+      if ($("flightText")) {
+        f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
+        if (ct === null || st === null) return toast("Type the time like 13:20 (or 1320).", true);
+      }
+      if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
+      if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
+      if (rl) {
+        if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
+        else run("set_return", { p_booking: r.id, p_return_local: rl }, r);
+        saved = true;
       }
       // The note first: turning a car into NO FLIGHT moves on to the
       // collection-time screen, and a note typed alongside must not be lost.
@@ -2816,9 +2837,7 @@
         var text = $("noteText").value.trim();
         if (text !== r.note) { run("set_note", { p_booking: r.id, p_note: text }, r, function (x) { x.note = text; }); saved = true; }
       }
-      if ($("flightText")) {
-        var f = normFlight($("flightText").value), ct = readTime("collectText"), st = readTime("schedText");
-        if (ct === null || st === null) return toast("Type the time like 13:20 (or 1320).", true);
+      if (f !== null) {
         if (f === "NO FLIGHT" && r.flight !== "NO FLIGHT") { panelRow = null; quick = { id: r.id, chain: false, suggest: [], noFlight: true }; drawQuickFlight(); return; }
         // The old flight's time left in the box doesn't carry over to a new flight number.
         if (f !== r.flight && st === (r.sched_time || "")) st = undefined;
@@ -3677,7 +3696,12 @@
     var D = S.dash, sum = function (a, k) { return a.reduce(function (t, x) { return t + (+x[k] || 0); }, 0); };
     var added = D.added || [], paid = D.paid || [], removed = D.removed || [], complaints = D.complaints || [];
     var taken = paid.filter(function (x) { return x.charge_method !== "waived"; }), waived = paid.filter(function (x) { return x.charge_method === "waived"; });
-    var cash = sum(taken.filter(function (x) { return x.charge_method === "cash"; }), "charge_amount"), card = sum(taken.filter(function (x) { return x.charge_method === "card"; }), "charge_amount");
+    // True totals for the period come from the database (part 85); the lists below stop at 300 rows.
+    var tt = D.totals || {}, tn = function (k, fb) { return tt[k] != null ? +tt[k] : fb; };
+    var cash = tn("cash", sum(taken.filter(function (x) { return x.charge_method === "cash"; }), "charge_amount")), card = tn("card", sum(taken.filter(function (x) { return x.charge_method === "card"; }), "charge_amount"));
+    var N = { added: tn("added", added.length), addedDesk: tn("added_desk", added.filter(function (a) { return a.action === "ADDED"; }).length), taken: tn("taken_n", taken.length), waived: tn("waived_n", waived.length), waivedSum: tn("waived", sum(waived, "charge_amount")),
+      removed: tn("removed", removed.length), complaints: tn("complaints", complaints.length), owed: tn("owed_n", (D.owed || []).length) };
+    N.removedBy = { "No show": tn("no_show", removed.filter(function (r) { return r.removed_reason === "No show"; }).length), Cancelled: tn("cancelled", removed.filter(function (r) { return r.removed_reason === "Cancelled"; }).length), Duplicate: tn("duplicate", removed.filter(function (r) { return r.removed_reason === "Duplicate"; }).length) };
     var owed = (D.owed || []).map(function (r) { var o = owedNow(r); return Object.assign({}, r, { due: o.amount, days: o.days }); }).filter(function (r) { return r.due > 0; });
     var here = owed.filter(function (r) { return !r.cleared_at; }), left = owed.filter(function (r) { return r.cleared_at; });
     var when = function (ts) { return esc(dayShort(ts)) + " " + esc(hhmm(ts)); };
@@ -3688,19 +3712,20 @@
     var cap = +S.company.capacity || 0;
     h += '<div class="stats dstats">' +
       tile("Parked now", +PK.total || 0, (cap ? capLine(+PK.total || 0, cap) + " · " : "") + (+PK.late ? PK.late + " past their return · " : "") + "right now, whatever the period", "wide" + (cap && +PK.total > cap ? " warn" : "")) +
-      tile("Added at the desk", added.length, added.filter(function (a) { return a.action === "ADDED"; }).length + " added · " + added.filter(function (a) { return a.action !== "ADDED"; }).length + " NEW BOOKING") +
+      tile("Added at the desk", N.added, N.addedDesk + " added · " + (N.added - N.addedDesk) + " NEW BOOKING") +
       tile("Money taken", money(cash + card), "cash " + money(cash) + " · card " + money(card)) +
       tile("Owed now", money(sum(here, "due")), here.length + (here.length === 1 ? " car" : " cars") + " here") +
       tile("Left unpaid", money(sum(left, "due")), left.length + (left.length === 1 ? " car" : " cars"), left.length ? "warn" : "") +
-      tile("Waived", money(sum(waived, "charge_amount")), waived.length + (waived.length === 1 ? " car" : " cars")) +
-      tile("Removed", removed.length, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = removed.filter(function (x) { return x.removed_reason === k; }).length; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")) +
-      tile("Complaints", complaints.length, "") +
+      tile("Waived", money(N.waivedSum), N.waived + (N.waived === 1 ? " car" : " cars")) +
+      tile("Removed", N.removed, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = N.removedBy[k]; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")) +
+      tile("Complaints", N.complaints, "") +
       tile("Early returns", +D.early || 0, (+D.changed || 0) + " return changes") + "</div>";
     var records = {};
-    var list = function (title, rows, line) {
-      var body = rows.length ? rows.map(line).join("") : '<div class="empty">None.</div>';
-      records[title] = { count: rows.length, body: body };
-      return '<div class="section-label">' + title + " (" + rows.length + ')</div><div class="box dlist">' + body + "</div>";
+    var list = function (title, rows, line, total) {
+      var n = total != null && total > rows.length ? total : rows.length;
+      var body = rows.length ? rows.map(line).join("") + (n > rows.length ? '<div class="note">Showing the latest ' + rows.length + " of " + n + ".</div>" : "") : '<div class="empty">None.</div>';
+      records[title] = { count: n, body: body };
+      return '<div class="section-label">' + title + " (" + n + ')</div><div class="box dlist">' + body + "</div>";
     };
     // Parked now, by yard (database part 70): each yard's count, then its next return days.
     var yards = PK.yards || [];
@@ -3725,23 +3750,23 @@
     h += list("Added at the desk", added, function (a) {
       return '<div class="rowline"><span class="num note">' + when(a.at) + '</span><div class="grow"><strong>' + esc(a.reg || "NO REG") + "</strong>" + (a.customer ? " · " + esc(a.customer) : "") +
         '<div class="note">' + (a.action === "ADDED" ? "Added to " + esc(String(a.kind || "").toUpperCase() || "the sheet") : "Marked NEW BOOKING") + " · " + esc(a.staff_name || "—") + "</div></div></div>";
-    });
+    }, N.added);
     h += list("Money taken", taken, function (x) {
       return '<div class="rowline"><span class="num note">' + when(x.charge_at) + '</span><div class="grow"><strong>' + esc(x.reg) + "</strong> · " + esc(x.name) + '<div class="note">' + esc(String(x.charge_method).toUpperCase()) + (x.charge_reason ? " · " + esc(x.charge_reason) : "") + " · " + esc(x.by_name || "—") + '</div></div><strong class="num">' + money(x.charge_amount) + "</strong></div>";
-    });
+    }, N.taken);
     h += list("Owed now", here, function (r) {
       return '<div class="rowline"><div class="grow"><strong>' + esc(r.reg) + "</strong> · " + esc(r.name) + '<div class="note">Due back ' + when(r.orig_return_at || r.return_at) + (r.charge_reason ? " · " + esc(r.charge_reason) : r.days ? " · " + r.days + (r.days === 1 ? " day" : " days") + " over" : "") + '</div></div><strong class="num">' + money(r.due) + "</strong></div>";
     });
     if (waived.length) h += list("Waived", waived, function (x) {
       return '<div class="rowline"><span class="num note">' + when(x.charge_at) + '</span><div class="grow"><strong>' + esc(x.reg) + "</strong> · " + esc(x.name) + '<div class="note">' + esc(x.by_name || "—") + '</div></div><strong class="num">' + money(x.charge_amount) + "</strong></div>";
-    });
+    }, N.waived);
     h += list("Removed", removed, function (x) {
       return '<div class="rowline"><span class="num note">' + when(x.removed_at) + '</span><div class="grow"><strong>' + esc(x.reg || "NO REG") + "</strong> · " + esc(x.name) + '<div class="note">' + esc(x.removed_reason) + " · " + esc(String(x.kind || "").toUpperCase()) + " · " + esc(x.by_name || "—") + "</div></div></div>";
-    });
+    }, N.removed);
     if (complaints.length) h += list("Complaints", complaints, function (a) {
       return '<div class="rowline"><span class="num note">' + when(a.at) + '</span><div class="grow"><strong>' + esc(a.reg) + "</strong>" + (a.customer ? " · " + esc(a.customer) : "") + '<div class="note">' + esc(a.staff_name || "—") + "</div></div></div>";
-    });
-    if (isStdPlus()) return renderOpsDashboard({ D: D, PK: PK, records: records, yards: yards, added: added, taken: taken, cash: cash, card: card, here: here, left: left, waived: waived, removed: removed, complaints: complaints, sum: sum, dayName: dayName, today: todayKey });
+    }, N.complaints);
+    if (isStdPlus()) return renderOpsDashboard({ N: N, D: D, PK: PK, records: records, yards: yards, added: added, taken: taken, cash: cash, card: card, here: here, left: left, waived: waived, removed: removed, complaints: complaints, sum: sum, dayName: dayName, today: todayKey });
     return h + '<div class="row-actions"><button type="button" class="btn ghost small" data-dashreload>Refresh</button></div></div>';
   }
 
@@ -3760,6 +3785,24 @@
     if (request !== dashLiveRequest) return;
     S.dashLive = { drops: d, dropsRows: got[0], picks: p, picksRows: got[1] };
     if (S.view === "dashboard") render();
+  }
+  // The handover note: written by the owner or a manager, read by the next shift.
+  function handoverHtml(H) {
+    if (!H) return "";
+    var d = S.handoverDraft != null ? S.handoverDraft : (H.note || "");
+    return '<div class="od-handover"><label for="handoverText">Handover note</label><textarea id="handoverText" rows="3" maxlength="2000" placeholder="What the next shift needs to know">' + esc(d) + '</textarea>' +
+      '<div class="od-hrow"><small>' + (H.at ? "Written " + esc(dayShort(H.at) + " " + hhmm(H.at)) + (H.by ? " by " + esc(H.by) : "") : "No note yet") + '</small><button type="button" class="od-save" data-savehandover>Save note</button></div></div>';
+  }
+  async function saveHandover(btn) {
+    var ta = $("handoverText"); if (!ta) return;
+    var text = ta.value.trim();
+    btn.disabled = true;
+    var r = await sb.rpc("set_handover_note", { p_note: text });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    S.handoverDraft = null;
+    if (S.dash) S.dash.handover = r.data || { note: text };
+    toast(text ? "Handover note saved" : "Handover note cleared"); render();
   }
   function renderOpsDashboard(x) {
     var cap = +S.company.capacity || 0, PK = x.PK, D = x.D, total = +PK.total || 0, late = +PK.late || 0;
@@ -3810,17 +3853,17 @@
       cell("Collected", "<b>" + money((+E.cash || 0) + (+E.card || 0)) + "</b> · " + cars(+E.paid || 0), "od-coll") + cell("Cash", money(E.cash)) + cell("Card", money(E.card)) +
       cell("To check", exitReview ? '<b class="warn">' + cars(exitReview) + "</b>" : dash, "od-rev") + "</div>";
     rows += '<div class="od-tr"><span class="od-c od-name"><b>Overstay and charges</b><small>Money taken at the desk</small></span>' +
-      cell("Collected", "<b>" + money(x.cash + x.card) + "</b> · " + cars(taken.length), "od-coll") + cell("Cash", money(x.cash)) + cell("Card", money(x.card)) +
+      cell("Collected", "<b>" + money(x.cash + x.card) + "</b> · " + cars(x.N.taken), "od-coll") + cell("Cash", money(x.cash)) + cell("Card", money(x.card)) +
       cell("Left unpaid", x.left.length ? '<b class="bad">' + money(unpaidSum) + "</b> · " + cars(x.left.length) : dash, "od-rev") + "</div>";
     var foot = [];
-    if (showExit) foot.push((+E.paid || 0) + " exit fees paid", (+E.exempt || 0) + " exempt");
-    foot.push("Owed now " + money(x.sum(x.here, "due")) + " (" + cars(x.here.length) + " here)", "Waived " + money(x.sum(x.waived, "charge_amount")));
+    if (showExit) foot.push((E.paid_cars ? '<button type="button" class="od-link" data-dashjump="exitpaid">' : "<span>") + (+E.paid || 0) + " exit " + (+E.paid === 1 ? "fee" : "fees") + " paid" + (E.paid_cars ? "</button>" : "</span>"), (+E.exempt || 0) + " exempt");
+    foot.push("Owed now " + money(x.sum(x.here, "due")) + " (" + cars(x.here.length) + " here)", "Waived " + money(x.N.waivedSum));
     h += '<section class="od-card od-pay" aria-label="Payments"><div class="od-cardhead"><h2>Payments</h2><small>Last ' + period + '</small></div><div class="od-table"><div class="od-tr od-th"><span>Payment</span><span>Collected</span><span>Cash</span><span>Card</span><span>To check</span></div>' + rows + '</div><div class="od-foot"><span>' + foot.join(" · ") + '</span><button type="button" class="od-more" data-dashjump="records">Payment records <span aria-hidden="true">→</span></button></div></section>';
 
     // Live queues (tonight's DROPS) and Checks.
-    var dr = L.dropsRows, soon = new Date(Date.now() + 2 * 3600000).toISOString();
-    var qline = function (label, n, sheetId, act) {
-      return '<button type="button" class="od-line od-tap"' + (sheetId ? ' data-dashsheet="' + esc(sheetId) + '"' : " disabled") + '><span class="od-label">' + label + '</span><b class="num">' + n + "</b>" + (sheetId ? goTag("", act) : "") + "</button>";
+    var dr = L.dropsRows;
+    var qline = function (label, n, sheetId, act, queue) {
+      return '<button type="button" class="od-line od-tap"' + (sheetId ? ' data-dashsheet="' + esc(sheetId) + '"' + (queue ? ' data-dashqueue="' + queue + '"' : "") : " disabled") + '><span class="od-label">' + label + '</span><b class="num">' + n + "</b>" + (sheetId ? goTag("", act) : "") + "</button>";
     };
     h += '<div class="od-row"><section class="od-card od-queues" aria-label="Live queues"><div class="od-cardhead"><h2>Live queues</h2><small>' + (L.drops ? esc(sheetLabel(L.drops)) : "Tonight's DROPS") + "</small></div><div class=\"od-list\">";
     if (S.dashLive === null) h += '<p class="od-none">Loading…</p>';
@@ -3828,23 +3871,26 @@
     else if (!dr) h += '<p class="od-none">Couldn\'t load tonight\'s DROPS.</p>';
     else {
       var drops = dr.filter(function (r) { return r.kind === "drops"; });
-      h += qline("Called, not sent", drops.filter(function (r) { return r.called_at && !r.sent_at && !r.cleared_at; }).length, L.drops.id, "Open queue") +
-        qline("Sent, not handed back", drops.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, L.drops.id, "Open queue") +
-        qline("Due in the next 2 hours, not sent", drops.filter(function (r) { return waiting(r) && orderAt(r) <= soon; }).length, L.drops.id, "Open sheet");
+      h += ["called", "sent", "soon"].map(function (k) { return qline(QUEUES[k][0], drops.filter(QUEUES[k][1]).length, L.drops.id, "Open queue", k); }).join("");
     }
     h += "</div></section>";
     var noYard = (x.yards || []).filter(function (y) { return !y.yard; }).reduce(function (n, y) { return n + (+y.n || 0); }, 0);
     var pr = L.picksRows, checks = "";
     checks += '<button type="button" class="od-line od-tap" data-dashjump="yards"' + ((x.yards || []).length ? "" : " disabled") + '><span class="od-label">Parked with no yard</span><b class="num' + (noYard ? " warn" : "") + '">' + noYard + "</b>" + goTag("", "Yards") + "</button>";
     if (L.picks && pr) checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">PT photos not taken<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num">' + pr.filter(function (r) { return r.intake === "Collected" && !r.pt_at; }).length + "</b>" + goTag("", "Open PICKS") + "</button>";
+    if (L.picks && pr) {
+      var noDocket = pr.filter(function (r) { return r.pick_called === "New Booking" && !r.doc_path; }).length;
+      checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">Desk bookings with no docket photo<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num' + (noDocket ? " warn" : "") + '">' + noDocket + "</b>" + goTag("", "Open PICKS") + "</button>";
+    }
     checks += '<button type="button" class="od-line od-tap" data-view="summary"><span class="od-label">Shift summary and activity log</span>' + goTag("", "Open") + "</button>";
-    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks and handover</h2></div><div class="od-list">' + checks + "</div></section></div>";
+    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks and handover</h2></div><div class="od-list">' + checks + "</div>" + handoverHtml(D.handover) + "</section></div>";
 
     // Desk activity and cars on site (each folds away), parked by yard, then the records.
-    h += '<div class="od-row">' + foldOpen("desk", "Desk activity", "Last " + period, x.added.length + " added · " + x.removed.length + " removed · " + x.complaints.length + (x.complaints.length === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
-      [["added", "Added at the desk", x.added.length, x.added.filter(function (a) { return a.action === "ADDED"; }).length + " added · " + x.added.filter(function (a) { return a.action !== "ADDED"; }).length + " NEW BOOKING"],
-        ["removed", "Removed", x.removed.length, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = x.removed.filter(function (r) { return r.removed_reason === k; }).length; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")],
-        ["complaints", "Complaints", x.complaints.length, ""],
+    var NN = x.N;
+    h += '<div class="od-row">' + foldOpen("desk", "Desk activity", "Last " + period, NN.added + " added · " + NN.removed + " removed · " + NN.complaints + (NN.complaints === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
+      [["added", "Added at the desk", NN.added, NN.addedDesk + " added · " + (NN.added - NN.addedDesk) + " NEW BOOKING"],
+        ["removed", "Removed", NN.removed, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = NN.removedBy[k]; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")],
+        ["complaints", "Complaints", NN.complaints, ""],
         ["", "Early returns", +D.early || 0, (+D.changed || 0) + " return changes"]].map(function (a) {
         return "<" + (a[0] ? 'button type="button" class="od-line od-tap" data-dashjump="' + a[0] + '"' : 'div class="od-line"') + '><span class="od-label">' + a[1] + (a[3] ? "<small>" + a[3] + "</small>" : "") + '</span><b class="num">' + a[2] + "</b>" + (a[0] ? "</button>" : "</div>");
       }).join("") + "</div>" + FOLD_END +
@@ -3863,12 +3909,19 @@
         return '<div class="rowline"><span class="num note">' + esc(dayShort(c.exit_at || c.cleared_at)) + " " + esc(hhmm(c.exit_at || c.cleared_at)) + '</span><div class="grow"><strong>' + esc(c.reg || "NO REG") + "</strong>" + (c.name ? " · " + esc(c.name) : "") + '<div class="note">' + (c.exit_method ? esc(c.exit_method.toUpperCase()) + ", no photo · " + esc(c.by_name || "—") : "Handed back, no exit fee recorded" + (c.ref ? " · " + esc(c.ref) : "")) + "</div></div></div>";
       }).join("") + (exitReview > ec.length ? '<div class="note">Showing the first ' + ec.length + " of " + exitReview + ".</div>" : "") : '<div class="empty">None.</div>' };
     }
+    if (showExit && E.paid_cars) {
+      var pc = E.paid_cars || [], pn = +E.paid || 0;
+      rec["Exit fees paid"] = { count: pn, body: pc.length ? pc.map(function (c) {
+        return '<div class="rowline"><span class="num note">' + esc(dayShort(c.exit_at)) + " " + esc(hhmm(c.exit_at)) + '</span><div class="grow"><strong>' + esc(c.reg || "NO REG") + "</strong>" + (c.name ? " · " + esc(c.name) : "") +
+          '<div class="note">' + esc(String(c.exit_method || "").toUpperCase()) + (c.photo ? " · photo kept" : " · no photo") + " · " + esc(c.by_name || "—") + (c.ref ? " · " + esc(c.ref) : "") + '</div></div><strong class="num">' + money(c.exit_amount) + "</strong></div>";
+      }).join("") + (pn > pc.length ? '<div class="note">Showing the latest ' + pc.length + " of " + pn + ".</div>" : "") : '<div class="empty">None.</div>' };
+    }
     var detail = function (id, title) {
       var r = rec[title] || { count: 0, body: '<div class="empty">None.</div>' };
       return '<details id="dash-' + id + '" class="ops-record"><summary>' + title + " <small>(" + r.count + ")</small></summary>" + (r.body.indexOf('<div class="dlist">') === 0 ? r.body : '<div class="dlist">' + r.body + "</div>") + "</details>";
     };
     h += '<section class="od-card od-records ops-details" id="dash-records" tabindex="-1"><div class="od-cardhead"><h2>Records</h2><small>Last ' + period + "</small></div>" +
-      detail("late", "Past their return") + detail("unpaid", "Left with no payment recorded") + (showExit ? detail("exit", "Exit fees to check") : "") + detail("money", "Money taken") + detail("owed", "Owed now") + detail("waived", "Waived") + detail("added", "Added at the desk") + detail("removed", "Removed") + detail("complaints", "Complaints") + "</section>";
+      detail("late", "Past their return") + detail("unpaid", "Left with no payment recorded") + (showExit ? detail("exit", "Exit fees to check") + (E.paid_cars ? detail("exitpaid", "Exit fees paid") : "") : "") + detail("money", "Money taken") + detail("owed", "Owed now") + detail("waived", "Waived") + detail("added", "Added at the desk") + detail("removed", "Removed") + detail("complaints", "Complaints") + "</section>";
     return h + "</div>";
   }
 
@@ -5066,7 +5119,7 @@
     if (t.dataset.discordsave !== undefined) return saveDiscord(t, false);
     if (t.dataset.discordclear !== undefined) { if (confirm("Stop posting " + brandName() + " alerts to Discord?")) saveDiscord(t, true); return; }
     if (t.dataset.resetsettings !== undefined) { S.settingsDraft = Object.assign({}, TIMING_DEFAULT); render(); return; }
-    if (t.dataset.filter) { S.filter = t.dataset.filter; render(); return; }
+    if (t.dataset.filter) { S.filter = t.dataset.filter; S.boardQueue = ""; render(); return; }
     if (t.closest("#tallyFold")) return toggleTallyFold();
     if (t.dataset.actf) { S.actFilter = t.dataset.actf; return render(); }
     if (t.dataset.cat) { S.catFilter = S.catFilter === t.dataset.cat ? "" : t.dataset.cat; render(); return; }
@@ -5109,7 +5162,9 @@
     }
     if (t.dataset.dashp) { S.dashDays = t.dataset.dashp; S.dash = null; render(); return; }
     if (t.dataset.dashreload !== undefined) { S.dash = null; S.dashLive = undefined; render(); return; }
-    if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", force: true });
+    if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", queue: t.dataset.dashqueue || "", force: true });
+    if (t.dataset.savehandover !== undefined) return saveHandover(t);
+    if (t.dataset.queueclear !== undefined) { S.boardQueue = ""; render(); return; }
     if (t.dataset.reset) {
       var p = S.staff[t.dataset.reset];
       if (!confirm("Give " + p.name + " a new link and PIN? Their old link stops working.")) return;

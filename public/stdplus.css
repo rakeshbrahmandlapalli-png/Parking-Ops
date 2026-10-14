@@ -283,3 +283,11 @@ html.stdplus .ops-fold[open]>summary .ops-foldsum{display:none;}
 html.stdplus .ops-chev{flex:none;width:7px;height:7px;border-right:2px solid #526174;border-bottom:2px solid #526174;transform:rotate(-45deg);transition:transform .15s;margin-left:2px;}
 html.stdplus .ops-fold[open]>summary .ops-chev{transform:rotate(45deg);}
 html.stdplus .ops-fold:not([open])>summary{border-bottom:0;}
+
+/* Dashboard: handover note, payment-record link */
+.od-handover { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line, #d9dde3); }
+.od-handover label { display: block; font-weight: 600; margin-bottom: 6px; }
+.od-handover textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border: 1px solid var(--line, #c9ced6); border-radius: 6px; resize: vertical; }
+.od-hrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.od-save, .od-link { font: inherit; cursor: pointer; }
+.od-link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; }
