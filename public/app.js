@@ -961,8 +961,8 @@
     show("qClear", !!S.q);
     var desk = opsDesk();
     if ($("opsHead")) { show("opsHead", desk); if (desk) $("opsHead").innerHTML = opsHeadHtml(sheet()); }
-    $("colHead").classList.toggle("dhead", desk && !picks);
-    if (desk && !picks) $("colHead").innerHTML = opsColHead(); else $("colHead").innerHTML = '<span class="hl">' + (picks ? "CAR · CUSTOMER" : "CAR · FLIGHT") + '</span><span class="hr">' +
+    $("colHead").classList.toggle("dhead", desk);
+    if (desk) $("colHead").innerHTML = picks ? opsPickColHead() : opsColHead(); else $("colHead").innerHTML = '<span class="hl">' + (picks ? "CAR · CUSTOMER" : "CAR · FLIGHT") + '</span><span class="hr">' +
       (picks ? "<span>COLL</span><span>" + (picksYard() ? "YARD" : "NO SHOW") + "</span><span>RTC</span><span>PT</span>" : swipeOnly() ? "<span>DONE</span>" : "<span>SENT</span><span>CALLED</span><span>CLEAR</span>") + "</span>";
   }
 
@@ -1493,7 +1493,7 @@
   function pickRow(r) {
     var bang = /^!/.test(r.note);
     var cls = r.intake === "Collected" ? " coll" : r.intake === "No Show" ? " nosh" : r.intake === "RTC" ? " rtc" : bang ? " cmpl" : "";
-    function b(v, c, label, perm) { return actBtn(r, 'data-pick="' + v + '"', c, label, r.intake === v, r.intake_at, can("intake") && (!perm || can(perm)), r.intake_by); }
+    if (opsDesk()) return opsDeskPickRow(r, cls);
     return '<div class="row' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="rt" data-open><b class="num">' + esc(hhmm(r.drop_at) || "—") + "</b><small>Drop-off</small></div>" +
       (isBoard() ? pickLinesBoard(r) :
@@ -1502,8 +1502,13 @@
       // Just the make on the row; the full car and booking ref are in the car's panel.
       '<div class="l2 num" data-open><span class="l2a">' + (makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "") + '<span class="dp">' + (makeOnly(r.make) ? " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + "</span>" + pickFlight(r) + (S.ptUnsaved[r.id] && r.pt_at ? ' · <span class="tag due">PT NOT SAVED</span>' : "") + (r.pick_called ? ' · <span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span> " + esc(hhmm(r.pick_called_at)) : "") + "</span></div>" +
       noteLine(r) + "</div>") +
-      '<div class="acts">' + b("Collected", "k", "COLL") + (picksYard() ? pickYardBtn(r) : b("No Show", "n", "NO SHOW")) + b("RTC", "r", "RTC", "rtc") +
-      actBtn(r, "data-pt", "p", "PT", !!r.pt_at, r.pt_at, can("intake"), r.pt_by) + "</div></div>";
+      pickActs(r) + "</div>";
+  }
+  // COLL, NO SHOW (or the car's location), RTC and PT: the same buttons on every layout.
+  function pickActs(r) {
+    function b(v, c, label, perm) { return actBtn(r, 'data-pick="' + v + '"', c, label, r.intake === v, r.intake_at, can("intake") && (!perm || can(perm)), r.intake_by); }
+    return '<div class="acts">' + b("Collected", "k", "COLL") + (picksYard() ? pickYardBtn(r) : b("No Show", "n", "NO SHOW")) + b("RTC", "r", "RTC", "rtc") +
+      actBtn(r, "data-pt", "p", "PT", !!r.pt_at, r.pt_at, can("intake"), r.pt_by) + "</div>";
   }
 
   // The return flight the customer gave at drop-off (typed in the car), after the drop time.
@@ -3281,9 +3286,38 @@
       (notes ? '<div class="dc dc-n" data-open>' + notes + "</div>" : "") +
       (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
   }
+  // PICKS on a wide screen: when the car arrives, the car, the customer, when
+  // and how they come back, and what's been done with it. Where it's parked is
+  // the location button among COLL / RTC / PT, as on the phone.
+  function opsPickColHead() {
+    return ["Arrival", "Registration · vehicle", "Customer · ref", "Return", "Return flight", "Status", "Actions"].map(function (x) { return "<span>" + x + "</span>"; }).join("");
+  }
+  function opsDeskPickRow(r, cls) {
+    var mk = String(r.make || "").trim(), by = function (id) { var n = nice(staffName(id).trim().split(/\s+/)[0]); return n ? " · " + esc(n) : ""; };
+    var state = !r.intake ? '<span class="st-n">Not in yet</span>' : r.intake === "Collected" ? '<b class="st-s">Taken in <span class="num">' + esc(hhmm(r.intake_at)) + "</span></b>"
+      : r.intake === "No Show" ? '<b class="st-x">No show</b>' : r.intake === "RTC" ? '<b class="st-o">RTC</b>' : "<b>" + esc(r.intake) + "</b>";
+    var extra = [r.intake === "Collected" ? (r.pt_at ? '<span class="fx ok">PT done <span class="num">' + esc(hhmm(r.pt_at)) + "</span>" + by(r.pt_by) + "</span>" : '<span class="fx warn">PT photos to take</span>') : "",
+      S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "",
+      r.pick_called ? '<span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span>" : "",
+      r.doc_path ? '<span class="fx">Docket photo</span>' : ""].filter(Boolean);
+    var back = r.return_at ? '<b class="num">' + esc(dayShort(r.return_at)) + '</b><div class="sub num">' + esc(hhmm(r.return_at)) + " " + catTag(r) + "</div>" : '<span class="mut">No return date</span>';
+    return '<div class="row drow prow' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="dc dc-t" data-open><b class="num">' + esc(hhmm(r.drop_at) || "—") + "</b></div>" +
+      '<div class="dc dc-r"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + "</div>" +
+        '<div class="sub" data-open title="' + esc(mk) + '">' + (mk ? esc(niceMake(mk)) : '<span class="mut">No vehicle details</span>') + "</div></div>" +
+      '<div class="dc dc-c" data-open><div class="l1" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="sub num" title="' + esc(r.ref) + '">' + esc(r.ref || "") + "</div></div>" +
+      '<div class="dc dc-b" data-open>' + back + "</div>" +
+      '<div class="dc dc-f" data-open>' + (r.flight ? '<b class="num">' + esc(r.flight) + "</b>" : '<span class="mut">Not given</span>') + "</div>" +
+      '<div class="dc dc-s" data-open><div class="l1">' + state + "</div>" + (extra.length ? '<div class="sub">' + extra.join(" ") + "</div>" : "") + "</div>" +
+      (r.note ? '<div class="dc dc-n" data-open>' + noteLine(r) + "</div>" : "") + pickActs(r) + "</div>";
+  }
   // Under the board: what the numbers mean.
   function opsBoardFoot() {
-    var sh = sheet(); if (!opsDesk() || !sh || sh.kind !== "drops" || !S.rows.length) return "";
+    var sh = sheet(); if (!opsDesk() || !sh || !S.rows.length) return "";
+    if (sh.kind === "picks") {
+      var c = function (v) { return S.rows.filter(function (r) { return (r.intake || "") === v; }).length; };
+      return '<p class="ops-bfoot"><span class="num">' + c("") + "</span> not in yet · <span class=\"num\">" + c("Collected") + "</span> taken in · " + c("No Show") + " no show · " + c("RTC") + " RTC · " + S.rows.length + " cars · All times Europe/London</p>";
+    }
     var done = S.rows.filter(function (r) { return !outstanding(r); }).length;
     return '<p class="ops-bfoot"><span class="num">' + S.rows.filter(waiting).length + "</span> not sent yet · <span class=\"num\">" + done + "</span> done (sent and clear) · " + S.rows.length + " cars · All times Europe/London</p>";
   }

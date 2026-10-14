@@ -311,7 +311,6 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk .deskbtn{bottom:24px!important;}
  /* board head: the title and the sheet, then search, TO DO / ALL / Key check and the counts on one line */
  html.ops body.ops-desk #boardHead:not(.hidden){max-width:var(--dw);align-items:center;gap:8px;padding:18px var(--dg) 0;}
- html.ops body.ops-desk.picks #boardHead:not(.hidden){max-width:1120px;padding-left:16px;padding-right:16px;}
  html.ops body.ops-desk #opsHead{order:0;flex:0 0 100%;}
  html.ops .opshead h1{margin:0;font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.5px;color:var(--op-ink);}
  html.ops .ops-scope{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:4px 0 6px;font-size:14px;color:var(--op-mut);}
@@ -339,7 +338,12 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk #boardHead:has(#tallyFold.hidden) .tabs{border-right:0;}
  /* the DROPS table: the column head and every row on the same columns */
  html.ops body.ops-desk{--dcols:84px minmax(150px,1.05fr) minmax(150px,1.1fr) minmax(150px,1.2fr) 92px minmax(140px,1fr) 300px;--dareas:"t r f c y s a" "t n n n n n a";}
- html.ops body.ops-desk.on-board:not(.picks) main{max-width:var(--dw);padding:0 var(--dg) 40px;}
+ html.ops body.ops-desk.on-board main{max-width:var(--dw);padding:0 var(--dg) 40px;}
+ html.ops body.ops-desk.picks.on-board main{padding-bottom:96px;}
+ html.ops body.ops-desk.picks{--dcols:84px minmax(140px,1fr) minmax(150px,1.1fr) 130px 130px minmax(160px,1fr) 320px;--dareas:"t r c b f s a" "t n n n n n a";}
+ html.ops .drow .dc-b{grid-area:b;}
+ html.ops .prow .dc-b b{font-size:14px;font-weight:600;color:var(--op-ink);}
+ html.ops .prow .cat{font-size:9.5px;}
  html.ops body.ops-desk #colHead.dhead{display:grid;grid-template-columns:var(--dcols);gap:0;padding:0;border:1px solid var(--op-line);border-bottom:0;border-radius:6px 6px 0 0;background:#eef2f6;font-size:11px;font-weight:650;letter-spacing:.6px;text-transform:uppercase;color:#48596c;}
  html.ops body.ops-desk #colHead.dhead span{padding:10px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
  html.ops body.ops-desk main .sec{padding:8px 12px 7px;font-size:11.5px;letter-spacing:.8px;}
@@ -420,8 +424,11 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
 }
 /* 900–1199 px: the customer goes under the car, the buttons get narrower */
 @media(min-width:900px) and (max-width:1199px){
+ html.ops body.ops-desk.picks{--dcols:74px minmax(150px,1.3fr) 120px 100px minmax(110px,1fr) 250px;--dareas:"t r b f s a" "t c b f s a" "t n n n n a";}
+ html.ops body.ops-desk.picks #colHead.dhead span:nth-child(3){display:none;}
+ html.ops body.ops-desk.picks #colHead.dhead span:nth-child(5){white-space:normal;line-height:1.2;}
  html.ops body.ops-desk{--dw:100%;--dg:16px;--dcols:68px minmax(160px,1.3fr) minmax(140px,1fr) 80px minmax(120px,1fr) 222px;--dareas:"t r f y s a" "t c f y s a" "t n n n n a";}
- html.ops body.ops-desk #colHead.dhead span:nth-child(4){display:none;}
+ html.ops body.ops-desk:not(.picks) #colHead.dhead span:nth-child(4){display:none;}
  html.ops body.ops-desk #colHead.dhead span:nth-child(2)::after{content:" · customer";}
  html.ops .drow .dc-r{padding-bottom:0;}
  html.ops .drow .dc-c{display:flex;gap:8px;padding-top:2px;}

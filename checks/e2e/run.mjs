@@ -107,6 +107,19 @@ function deskDb(theme = "ops") {
     const { r, d, ...rest } = c;
     return { id: "w" + (i + 1), sheet_id: "d0", company_id: "c1", kind: "drops", num: i + 1, phone: "07700900" + String(100 + i), note: "", ...rest, return_at: lonIso(d || TONIGHT, r) };
   }));
+  db.company.brand.picks_yard = true;
+  const picks = [
+    { reg: "PA11AAA", make: "FORD KUGA", name: "ADAMS MRS", ref: "TKO-2026-2001", d: "07:30", back: [3, "14:20"], flight: "U22410", intake: "Collected", intake_at: ago(200), intake_by: "s2", pt_at: ago(190), pt_by: "s2", yard: "S" },
+    { reg: "PB22BBB", make: "AUDI A4 AVANT S LINE", name: "BAKER MR", ref: "TKO-2026-2002", d: "08:15", back: [1, "09:05"], flight: "FR1188", intake: "Collected", intake_at: ago(150), intake_by: "s4", yard: "CP" },
+    { reg: "PC33CCC", make: "", name: "CARTER", ref: "AGENT-REF-PARK-AND-RIDE-0000002003-LONG", d: "09:40", back: [10, "21:30"], flight: "", intake: "" },
+    { reg: "PD44DDD", make: "NISSAN LEAF", name: "DAVIES MS", ref: "TKO-2026-2004", d: "10:05", back: [2, "06:45"], flight: "W43302", intake: "No Show", intake_at: ago(60), intake_by: "s2" },
+    { reg: "PE55EEE", make: "BMW X5", name: "EDWARDS MR", ref: "TKO-2026-2005", d: "11:50", back: [5, "18:10"], flight: "EZY8813", intake: "RTC", intake_at: ago(30), intake_by: "s1", note: "Customer rang, flight moved" },
+    { reg: "PF66FFF", make: "KIA SPORTAGE", name: "FOSTER MRS", ref: "DESK-0001", d: "12:30", back: [1, "23:55"], flight: "", intake: "Collected", intake_at: ago(20), intake_by: "s2", pick_called: "New Booking", pick_called_at: ago(25), doc_path: "c1/docs/x/1.jpg", yard: "" },
+    { reg: "PG77GGG", make: "TOYOTA YARIS", name: "GRAY MR", ref: "TKO-2026-2007", d: "15:45", back: [7, "11:00"], flight: "FR2207", intake: "" },
+    { reg: "PH88HHH", make: "PEUGEOT 3008", name: "HILL MS", ref: "TKO-2026-2008", d: "23:20", back: [4, "02:15"], flight: "U22999", intake: "" },
+  ];
+  db.bookings = db.bookings.filter((b) => b.sheet_id !== "p0").concat(picks.map((c, i) => { const { d, back, ...rest } = c;
+    return { id: "pk" + (i + 1), sheet_id: "p0", company_id: "c1", kind: "picks", num: i + 1, note: "", phone: "07700900" + (300 + i), ...rest, drop_at: lonIso(TONIGHT, d), return_at: lonIso(addDays(TONIGHT, back[0]), back[1]) }; }));
   db.flightRuns = [{ at: ago(35), source: "schedule", trigger: "timer", result: {} }, { at: ago(12), source: "live", trigger: "timer", result: {} }];
   return db;
 }
@@ -724,7 +737,7 @@ await scenario(async () => {
   check("Operations: navy TO DO, grey page, numbers in a panel", chrome.tab === "rgb(24, 40, 59)" && chrome.bg === "rgb(245, 247, 250)" && chrome.tally === "6px", chrome);
   check("Operations: Standard itself keeps its own chrome", await std.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(255, 255, 255)" && getComputedStyle(document.querySelector(".tabs button.on")).backgroundColor === "rgb(255, 255, 255)"));
   await plus.setViewportSize({ width: 1280, height: 900 }); await sleep(200);
-  check("Operations: wide screen, PICKS keeps its rows at 1120 px", await plus.evaluate(() => document.body.classList.contains("picks") && Math.round(document.getElementById("main").getBoundingClientRect().width) === 1120 && !document.querySelector("#main .drow")));
+  check("Operations: wide screen, PICKS gets the table too", await plus.evaluate(() => document.body.classList.contains("picks") && !!document.querySelector("#main .row.drow .dc-b") && Math.round(document.getElementById("main").getBoundingClientRect().width) === document.documentElement.clientWidth));
   await pickKind(plus, "drops"); await sleep(200);
   { const w = await plus.evaluate(() => ({ main: Math.round(document.getElementById("main").getBoundingClientRect().width), page: document.documentElement.clientWidth, desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .row.drow") }));
   check("Operations: wide screen, the board uses the width (the table layout)", w.main === w.page && w.desk && w.drow, w); }
@@ -894,7 +907,39 @@ await scenario(async () => {
   await page.keyboard.press("Escape"); await sleep(250);
   await page.click('#bnav [data-bn="menuBtn"]'); await sleep(300);
   check("Ops wide: Menu opens under the tabs", await page.evaluate(() => Math.round(document.getElementById("menu").getBoundingClientRect().top) === Math.round(document.getElementById("bnav").getBoundingClientRect().bottom)));
-  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape"); await sleep(250);
+  // PICKS on a wide screen: its own columns and its own buttons
+  await page.click('#bnav [data-view="board"]'); await sleep(300);
+  await pickKind(page, "picks"); await sleep(400);
+  if (await page.evaluate(() => !!document.getElementById("tabAll"))) { await page.click("#tabAll"); await sleep(300); }
+  const pk = await page.evaluate(() => ({ cols: [...document.querySelectorAll("#colHead.dhead > span")].map((x) => x.textContent).join("|"), rows: document.querySelectorAll("#main .row.drow.prow").length,
+    head: document.getElementById("opsHead").innerText.replace(/\s+/g, " "), foot: (document.querySelector("#main .ops-bfoot") || {}).textContent, side: document.documentElement.scrollWidth <= innerWidth + 1,
+    drops: document.querySelectorAll('#main .prow [data-act="sent"],#main .prow [data-act="called"],#main .prow [data-act="clear"]').length }));
+  const pc = (id, c) => cell(id, c);
+  check("Ops wide PICKS: column heads for arrivals", pk.cols === "Arrival|Registration · vehicle|Customer · ref|Return|Return flight|Status|Actions", pk.cols);
+  check("Ops wide PICKS: every car a table row, no sideways scroll, no SENT / CALLED / CLEAR", pk.rows === 8 && pk.side && pk.drops === 0, pk);
+  check("Ops wide PICKS: title says PICKS with the full date", /^Operations board PICKS · \w+day \d+ \w+/.test(pk.head), pk.head);
+  check("Ops wide PICKS: footer counts by intake", pk.foot === "3 not in yet · 3 taken in · 1 no show · 1 RTC · 8 cars · All times Europe/London", pk.foot);
+  check("Ops wide PICKS: arrival, car, customer, return and return flight", (await pc("pk2", "dc-t")) === "08:15" && /^PB22BBB #2 AUDI A4 AVANT S LINE$/i.test(await pc("pk2", "dc-r")) && /^BAKER MR TKO-2026-2002$/i.test(await pc("pk2", "dc-c")) && /^\w{3}, \d+ \w{3} 09:05 NEXT$/.test(await pc("pk2", "dc-b")) && (await pc("pk2", "dc-f")) === "FR1188" && (await pc("pk3", "dc-f")) === "Not given",
+    [await pc("pk2", "dc-t"), await pc("pk2", "dc-r"), await pc("pk2", "dc-c"), await pc("pk2", "dc-b"), await pc("pk3", "dc-f")]);
+  check("Ops wide PICKS: intake in words (not in, taken in with PT, no show, RTC, desk booking with docket)", (await pc("pk3", "dc-s")) === "Not in yet" && /^Taken in \d\d:\d\d PT done \d\d:\d\d/.test(await pc("pk1", "dc-s")) && /^Taken in \d\d:\d\d PT photos to take$/.test(await pc("pk2", "dc-s")) && (await pc("pk4", "dc-s")) === "No show" && (await pc("pk5", "dc-s")) === "RTC" && /NEW BOOKING Docket photo/.test(await pc("pk6", "dc-s")),
+    [await pc("pk1", "dc-s"), await pc("pk2", "dc-s"), await pc("pk6", "dc-s")]);
+  check("Ops wide PICKS: the note on its own line", /Customer rang, flight moved/.test(await pc("pk5", "dc-n")));
+  const deskActs = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#main .prow")].map((r) => [r.dataset.id, r.querySelector(".acts").outerHTML])));
+  const yb = await page.evaluate(() => { const b = document.querySelector('.prow[data-id="pk2"] .acts .pyard'); return b ? { t: b.querySelector("span").textContent.trim(), bg: getComputedStyle(b).backgroundColor } : null; });
+  check("Ops wide PICKS: the location button shows the yard in its colour", yb && yb.t === "CP" && yb.bg === "rgb(232, 89, 12)", yb);
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
+  const phActs = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#main .row[data-id^=pk]")].map((r) => [r.dataset.id, (r.querySelector(".acts") || {}).outerHTML])));
+  check("Ops wide PICKS: the same buttons as on the phone (COLL, location or NO SHOW, RTC, PT)", Object.keys(deskActs).length === 8 && Object.keys(deskActs).every((k) => deskActs[k] === phActs[k]), { desk: deskActs.pk1, phone: phActs.pk1 });
+  check("Ops phone PICKS: rows as before", await page.evaluate(() => !document.querySelector("#main .drow") && !!document.querySelector('#main .row[data-id="pk1"] .acts')));
+  await page.setViewportSize({ width: 1024, height: 800 }); await sleep(400);
+  check("Ops tablet PICKS: customer under the car, no sideways scroll", await page.evaluate(() => { const r = document.querySelector('.prow[data-id="pk2"]'), a = r.querySelector(".dc-r").getBoundingClientRect(), c = r.querySelector(".dc-c").getBoundingClientRect();
+    return c.top >= a.bottom - 2 && document.documentElement.scrollWidth <= innerWidth + 1 && getComputedStyle(document.querySelector("#colHead.dhead > span:nth-child(3)")).display === "none"; }));
+  await page.setViewportSize({ width: 1440, height: 1000 }); await sleep(400);
+  await page.click('.prow[data-id="pk3"] .acts [data-pick="Collected"]'); await sleep(400);
+  check("Ops wide PICKS: COLL still asks or saves as before", db.calls.some((c) => /intake|pick/.test(c.fn) && JSON.stringify(c.args).includes("pk3")) || await page.evaluate(() => document.getElementById("panel").open || !!document.querySelector(".confirm,.ask")), db.calls.slice(-3));
+  await page.keyboard.press("Escape").catch(() => {}); await sleep(200);
+  check("Ops wide PICKS: the New booking button sits below the last row", await page.evaluate(() => { const b = document.querySelector(".deskbtn"); if (!b) return true; scrollTo(0, document.body.scrollHeight); const rows = [...document.querySelectorAll("#main .prow")], l = rows[rows.length - 1].getBoundingClientRect(), x = b.getBoundingClientRect(); return x.top >= l.bottom - 1 || x.bottom <= l.top; }));
   check("Ops wide: no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
   // A driver: no Dashboard or Settings tab; view-only: buttons off.
@@ -3040,6 +3085,26 @@ async function shots(dir) {
     }
     return;
   }
+  // SHOTS_ONLY=audit: every page of the Operations look at desktop and phone width (sample data only).
+  if (process.env.SHOTS_ONLY === "audit") {
+    for (const [width, height, name] of [[1440, 1000, "desktop"], [390, 844, "phone"]]) {
+      const db = deskDb(); db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
+      db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true }, { id: "s5", name: "OLD DRIVER", role: "bongo", active: false });
+      db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }, { at: new Date(Date.now() - 3600000).toISOString(), action: "CALLED", value: "", reg: "CD34EFG", staff_id: "s2", booking_id: "w2" }];
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      const snap = async (n) => { await sleep(600); const h = Math.min(2600, await page.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight))); await page.setViewportSize({ width, height: h }); await sleep(250); await page.screenshot({ path: path.join(dir, name + "-" + n + ".png") }); await page.setViewportSize({ width, height }); };
+      const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
+      await open(page); await sleep(400);
+      await menu(); await page.screenshot({ path: path.join(dir, name + "-menu.png") });
+      for (const v of ["stats", "summary", "dashboard", "import", "archive", "staff", "settings", "me"]) { if (!(await page.$("#menu[open]"))) await menu(); const b = await page.$('#menuBody [data-view="' + v + '"]'); if (!b) continue; await b.click(); await snap(v); }
+      await page.click("#bnBoard"); await sleep(300);
+      await page.click('.row[data-id="w6"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, name + "-car.png") }); await page.keyboard.press("Escape"); await sleep(300);
+      await menu(); await page.click("#menuBody [data-removedlist]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-removed.png") }); await page.keyboard.press("Escape"); await sleep(300);
+      await menu(); await page.click("#menuBody [data-tutorials]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-tutorials.png") }); await page.keyboard.press("Escape"); await sleep(300);
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=desk: the Operations board and Flights on a desktop, a tablet and a phone (sample data only).
   if (process.env.SHOTS_ONLY === "desk") {
     for (const [width, height, name] of [[1440, 1000, "desktop"], [1024, 900, "tablet"], [390, 844, "phone"]]) {
@@ -3060,6 +3125,9 @@ async function shots(dir) {
         await page.click('.row[data-id="w2"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, "car-desktop.png") }); await page.keyboard.press("Escape"); await sleep(300);
         await page.click('#bnav [data-bn="menuBtn"]'); await sleep(400); await page.screenshot({ path: path.join(dir, "menu-desktop.png") }); await page.keyboard.press("Escape"); await sleep(300);
         await page.click('#kindBar [data-kind="picks"]'); await sleep(600); await page.screenshot({ path: path.join(dir, "picks-desktop.png") });
+        await page.evaluate(() => scrollTo(0, document.body.scrollHeight)); await sleep(200); await page.screenshot({ path: path.join(dir, "picks-desktop-end.png") });
+        await page.setViewportSize({ width: 1024, height: 800 }); await sleep(400); await page.evaluate(() => scrollTo(0, 0)); await page.screenshot({ path: path.join(dir, "picks-tablet.png") });
+        await page.setViewportSize({ width: 390, height: 844 }); await sleep(400); await page.screenshot({ path: path.join(dir, "picks-phone.png") });
       }
       await page.context().close();
     }
