@@ -3,6 +3,7 @@
 //   node checks/long-wait-alert.mjs
 // A DROPS car CALLED 20 to 60 minutes ago with no driver SENT and not cleared
 // is pushed once to everyone in its company with DROPS alerts on (setup 88).
+// OVERSTAY cars get no WAITING push, and their OVERSTAY push goes once per car.
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -34,7 +35,8 @@ function fresh() {
       { ...car, id: "sent", called_at: ago(30), sent_at: ago(5) },
       { ...car, id: "cleared", called_at: ago(30), cleared_at: ago(5) },
       { ...car, id: "picks", kind: "picks", called_at: ago(30) },
-      { ...car, id: "other", company_id: "c2", called_at: ago(40), called_by: null, called_word: "Overstay" },
+      { ...car, id: "other", company_id: "c2", called_at: ago(40), called_by: null },
+      { ...car, id: "overstay", called_at: ago(25), called_word: "Overstay" },
     ],
     staff: [
       { id: "st1", company_id: "c1", name: "Ann", active: true },
@@ -66,6 +68,7 @@ function q(table) {
       }
       return { error: null };
     },
+    maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
     delete() { return { eq: async () => ({ error: null }) }; },
     then: (res, rej) => Promise.resolve({ data: rows(), error: null }).then(res, rej),
   };
@@ -93,13 +96,27 @@ check("pushed to everyone active in that company with DROPS alerts on, the calle
 check("never to another company's phones", !pushed.some((p) => p.note.tag === "drops-waiting" && p.to === "st9") && pushed.some((p) => p.note.tag === "drops-other" && p.to === "st9"), pushed);
 const note = pushed.find((p) => p.note.tag === "drops-waiting")?.note;
 check("title says how long and which car; body says who called and that no driver is SENT", /^⏱ WAITING 25 MIN: #1 · AB12CDE \(MY\) — Smith$/.test(note?.title) && /^CALLED at \d\d:\d\d by Ann, no driver SENT yet · U22464 · due 21:40$/.test(note?.body), note);
-check("an OVERSTAY call says OVERSTAY", /^OVERSTAY at/.test(pushed.find((p) => p.note.tag === "drops-other")?.note.body), pushed);
+check("an OVERSTAY car gets no WAITING push", !pushed.some((p) => p.note.tag === "drops-overstay") && r.json.waiting === 2, r);
 check("Discord gets one post per car", discordPosts === 2, discordPosts);
 r = await post({ type: "longwait" });
 check("five minutes later: nothing sent again for the same call", pushed.length === 0 && r.json.sent === 0, r);
 db.bookings.find((b) => b.id === "waiting").called_at = ago(21);
 r = await post({ type: "longwait" });
 check("called again (a new CALLED time): one new alert", [...new Set(pushed.map((p) => p.note.tag))].join() === "drops-waiting", pushed);
+// The database trigger sends booking ids (uuids).
+const OV = "00000000-0000-4000-8000-000000000001", RC = "00000000-0000-4000-8000-000000000002";
+const ov = db.bookings.find((b) => b.id === "overstay");
+ov.id = OV; ov.called_at = ago(2);
+r = await post({ type: "booking", id: OV });
+const ovNote = pushed.find((p) => p.note.tag === "drops-" + OV)?.note;
+check("OVERSTAY tapped: one OVERSTAY push to the others", r.status === 200 && /^OVERSTAY: /.test(ovNote?.title) && pushed.every((p) => p.to !== "st1"), pushed);
+ov.called_at = ago(1);
+r = await post({ type: "booking", id: OV });
+check("OVERSTAY tapped off and on again: no second push", pushed.length === 0, pushed);
+r = await post({ type: "longwait" });
+Object.assign(db.bookings.find((b) => b.id === "recent"), { id: RC, called_at: ago(1) });
+r = await post({ type: "booking", id: RC });
+check("a normal CALLED still pushes", pushed.some((p) => p.note.tag === "drops-" + RC && /^CALLED: /.test(p.note.title)), pushed);
 timerOk = false;
 r = await post({ type: "longwait" });
 check("without the timer secret: refused", r.status === 403 && pushed.length === 0, r);

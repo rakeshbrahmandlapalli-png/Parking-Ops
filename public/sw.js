@@ -1,6 +1,6 @@
 // TakeOff: keeps the app's own files on the phone so it opens with no signal.
 // Bookings are never cached here; they come from Supabase every time.
-const CACHE = "takeoff-ops-v10";
+const CACHE = "takeoff-ops-v11";
 const FILES = ["/", "/index.html", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())));
@@ -22,13 +22,16 @@ self.addEventListener("fetch", e => {
 });
 
 // Alerts from send-alerts: {title, body, url, tag}. iPhones require every push
-// to show a notification, so one is always shown.
+// to show a notification, so one is always shown. The TakeOff plane goes on
+// TakeOff's own app only; other clients' phones show their own app icon and a P.
+var TAKEOFF = self.location.hostname === "takeoff-ops.vercel.app";
+var NOTE_ICON = TAKEOFF ? "/icons/icon-192.png" : undefined, NOTE_BADGE = TAKEOFF ? "/icons/badge.png" : "/icons/badge-p.png";
 self.addEventListener("push", e => {
   let note = {};
   try { note = e.data ? e.data.json() : {}; } catch (err) { note = { body: e.data ? e.data.text() : "" }; }
-  e.waitUntil(self.registration.showNotification(note.title || "TakeOff", {
+  e.waitUntil(self.registration.showNotification(note.title || (TAKEOFF ? "TakeOff" : "Parking Ops"), {
     body: note.body || "", tag: note.tag || undefined, renotify: !!note.tag,
-    icon: "/icons/icon-192.png", badge: "/icons/badge.png", data: { url: note.url || "/" }
+    icon: NOTE_ICON, badge: NOTE_BADGE, data: { url: note.url || "/" }
   }));
 });
 self.addEventListener("notificationclick", e => {

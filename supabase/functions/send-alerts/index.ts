@@ -2,7 +2,7 @@
 //
 // Phone notifications (web push) and Discord messages for:
 //   DROPS  CALLED / OVERSTAY on a car no driver has been SENT to yet
-//          still no driver SENT 20 minutes after CALLED
+//          still no driver SENT 20 minutes after CALLED (not OVERSTAY)
 //          COMPLAINT
 //          flight CANCELLED on a car not yet handed back
 //   PICKS  RTC
@@ -17,6 +17,7 @@
 //   { type: "longwait" }  by the 5-minute timer (setup/88-long-wait-alert.sql),
 //       with the x-timer header. A DROPS car CALLED more than LONG_WAIT_MIN ago
 //       with no driver SENT (and not cleared) is pushed once to everyone.
+//       OVERSTAY cars are left out: their one OVERSTAY alert is enough.
 //   { type: "import_held" }  by takeoff-bookings (service-role key as the bearer) when a scheduled booking import
 //       is held or fails: owners, managers and the office are pushed once per saved time.
 //   { type: "usage" }  by the morning timer (setup/38-usage-warning.sql), with
@@ -109,8 +110,10 @@ async function onBooking(id: string) {
   const flightLine = b.flight ? `${b.flight} · due ${b.est_time && b.est_time !== "DELAY" ? b.est_time : b.sched_time || time(b.return_at)}` : `back ${time(b.return_at)}`;
   const alerts: { key: string; kind: Kind; channel: "drops" | "picks"; label: string; at: string; by: string | null }[] = [];
 
+  // OVERSTAY goes once per car, however often it is tapped off and on again.
   if (b.kind === "drops" && b.called_at && !b.sent_at && !b.cleared_at && fresh(b.called_at)) {
-    alerts.push({ key: `called:${b.id}:${b.called_at}`, kind: "drops", channel: "drops", label: b.called_word === "Overstay" ? "OVERSTAY" : "CALLED", at: b.called_at, by: b.called_by });
+    const over = b.called_word === "Overstay";
+    alerts.push({ key: over ? `overstay:${b.id}` : `called:${b.id}:${b.called_at}`, kind: "drops", channel: "drops", label: over ? "OVERSTAY" : "CALLED", at: b.called_at, by: b.called_by });
   }
   if (b.kind === "drops" && b.clear_word === "COMPLAINT" && fresh(b.cleared_at)) {
     alerts.push({ key: `complaint:${b.id}:${b.cleared_at}`, kind: "drops", channel: "drops", label: "🚨 COMPLAINT", at: b.cleared_at, by: b.cleared_by });
@@ -152,9 +155,10 @@ async function onLongWait(req: Request) {
     .lte("called_at", new Date(now - LONG_WAIT_MIN * 60000).toISOString())
     .gte("called_at", new Date(now - 60 * 60000).toISOString());
   if (error) throw error;
+  const waiting = (cars ?? []).filter((b) => b.called_word !== "Overstay");
   const staffOf = new Map<string, { id: string; name: string }[]>();
   let sent = 0;
-  for (const b of cars ?? []) {
+  for (const b of waiting) {
     if (!(await once(`wait:${b.id}:${b.called_at}`))) continue;
     if (!staffOf.has(b.company_id)) {
       const { data } = await db.from("staff").select("id, name").eq("company_id", b.company_id).eq("active", true);
@@ -166,11 +170,11 @@ async function onLongWait(req: Request) {
     const car = `${b.num ? "#" + b.num + " · " : ""}${b.reg || "no reg"}${b.yard ? " (" + b.yard + ")" : ""}`;
     const title = `⏱ WAITING ${mins} MIN: ${car} — ${b.name || "Customer"}`;
     const due = b.flight ? `${b.flight} · due ${b.est_time && b.est_time !== "DELAY" ? b.est_time : b.sched_time || time(b.return_at)}` : `back ${time(b.return_at)}`;
-    const body = `${b.called_word === "Overstay" ? "OVERSTAY" : "CALLED"} at ${time(b.called_at)}${byName ? " by " + byName : ""}, no driver SENT yet · ${due}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
+    const body = `CALLED at ${time(b.called_at)}${byName ? " by " + byName : ""}, no driver SENT yet · ${due}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
     sent += await pushTo(people.map((p) => p.id), "drops", { title, body, url: "/", tag: `drops-${b.id}` });
     await discord(b.company_id, "drops", title, body);
   }
-  return reply(200, { waiting: (cars ?? []).length, sent });
+  return reply(200, { waiting: waiting.length, sent });
 }
 
 // A scheduled booking import that was held or did not run: owners, managers and the office are told, once per saved
@@ -209,7 +213,7 @@ async function onTest(req: Request, body: Record<string, unknown>) {
   });
   const { data: me } = await asCaller.rpc("me");
   if (!me?.id) return reply(401, { error: "Sign in again." });
-  const sent = await pushTo([me.id], "drops", { title: "TakeOff test", body: `Notifications work on this phone, ${me.name}.`, url: "/", tag: "test" });
+  const sent = await pushTo([me.id], "drops", { title: "Test notification", body: `Notifications work on this phone, ${me.name}.`, url: "/", tag: "test" });
   const result: Record<string, unknown> = { sent };
   if (body.discord) {
     const { data: allowed } = await asCaller.rpc("can", { p_action: "settings" });
