@@ -61,6 +61,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const base = String(cfg.base ?? "");
   const exportPath = String(cfg.export_path ?? "export_to_excel.php");
   const dropsSearch = String(cfg.drops_search ?? ""), picksSearch = String(cfg.picks_search ?? "");
+  const cancelledSearch = cfg.cancelled_search ? String(cfg.cancelled_search) : "";
   const flightsSearch = cfg.flights_search ? String(cfg.flights_search) : "";
   if (!base || !dropsSearch || !picksSearch) throw new Error("The report addresses aren't set up for " + company.slug + ".");
   const scope = cfg.scope as never; // {all:true} | {column, values} | [{column, values}, …]
@@ -68,11 +69,11 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const fill = (path: string, w: { from: string; to: string }) => path.replace(/\{FROM\}/g, siteDate(w.from)).replace(/\{TO\}/g, siteDate(w.to));
   const client = makeClient({
     base, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never,
-    scripts: [dropsSearch, picksSearch, flightsSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
+    scripts: [dropsSearch, picksSearch, flightsSearch, cancelledSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
   const opts = { pageSize: Number(cfg.page_size ?? 0) || undefined };
-  const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, opts);
+  const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, { ...opts, field: "ret", window: dw });
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
     const fGrid = cfg.flights_format === "html"
@@ -81,7 +82,10 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
     matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   }
-  const picks = readReport(gridFrom(await client.download(fill(picksSearch, pw), exportPath)), scope, opts);
+  const picks = readReport(gridFrom(await client.download(fill(picksSearch, pw), exportPath)), scope, { ...opts, field: "meet", window: pw });
+  // Cancelled bookings need their own search (the main ones list Completed only).
+  const cw = windowFor(Date.now(), Number(cfg.cancelled_days ?? 14));
+  const cancelled = cancelledSearch ? readReport(gridFrom(await client.download(fill(cancelledSearch, cw), exportPath)), scope, { allowEmpty: true }) : { rows: [], excludedScope: 0 };
 
   const refs = Array.from(new Set([...drops.rows, ...picks.rows].map((r: { ref: string }) => r.ref).filter(Boolean)));
   const existing = new Map<string, unknown>();
@@ -94,9 +98,10 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const cancelledRows = [
     ...drops.rows.filter((r: { cancelled: boolean }) => r.cancelled).map((row: unknown) => ({ kind: "drops", row })),
     ...picks.rows.filter((r: { cancelled: boolean }) => r.cancelled).map((row: unknown) => ({ kind: "picks", row })),
+    ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
   const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff: (company.drops_day_end ?? "06:00").slice(0, 5), cancelledRows: cancelledRows as never });
-  return { p, hash: await planHash(p), excluded_scope: drops.excludedScope + picks.excludedScope, requests: client.count };
+  return { p, hash: await planHash(p), excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {

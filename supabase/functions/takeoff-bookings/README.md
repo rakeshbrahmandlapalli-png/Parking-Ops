@@ -17,13 +17,13 @@ for that host. A failed sign-in pauses the sync for an hour.
 - Filters: a "Meet" / "Return" choice with from/to dates (Meet for PICKS, Return for DROPS), Excel and PDF export icons.
 - Vehicle holds make, model and plate together (the reader splits the plate off the end). No phone or flight column; flights come from the Return Report.
 - Supplier Name values seen: HES (Booking Type PR), APL (MG), L4P (MG). The owner confirmed on 14 Oct that **every booking on this site is TakeOff's**, so the scope is `{"all": true}` (still required in the config, so it is a deliberate choice).
-- Pages: Booking Manager `/admin/bookinglist-parkandride.php?req=news` (Meet for PICKS, Return for DROPS; Excel and PDF icons); Return Report `/admin/arrival_report_parkandride.php?req=news` (columns Time, Agent, Ref#, Client, Airport, Telephone, Day, Car Make, Car Reg, Flight No., Flight Time, Booking Status, Return Type, Drivers; only a PDF icon, so flights are read from the page's table with `flights_format: "html"`; its Flight No. boxes are editable on the site, the sync only reads them).
+- Pages: Booking Manager `/admin/bookinglist-parkandride.php?req=news` (Meet for PICKS, Return for DROPS; Excel (`export_to_excel.php`) and PDF (`bookinglist_report.php`) icons; search = GET form `action_Search, search, productype, filter_status (1 Completed, 2 Cancelled), supplier, filter_field (bookings.booking_from = Meet, bookings.booking_to = Return), filter_from, filter_to`, dates like `14-October-2026`); the page also has Edit/Cancel links and a status dropdown, none of which are ever called. Return Report `/admin/arrival_report_parkandride.php?req=news` (columns Time, Agent, Ref#, Client, Airport, Telephone, Day, Car Make, Car Reg, Flight No., Flight Time, Booking Status, Return Type, Drivers; only a PDF icon, so flights are read from the page's table with `flights_format: "html"`; its Flight No. boxes are editable on the site, the sync only reads them).
 - Booking Status values seen: Booked, Collected.
 `
 ## Still not verified
 - the report page addresses behind the Booking Manager search and its export, and the export's real file format
 - whether the export is paginated, and the sign-in success response
-- the search address (its filter field names, after pressing Search) of both pages, and the Excel icon's link on the Booking Manager
+- the Return Report's search form field names; whether `export_to_excel.php` follows the last search (the check refuses it if not)
 Run **Check bookings** once and read the answer before anything else; an unreadable or
 unexpected report stops with a plain message and nothing is imported.
 
@@ -34,7 +34,7 @@ unexpected report stops with a plain message and nothing is imported.
    `TAKEOFF_BOOKING_PASSWORD` yourself (never in chat or in the repo). `SUPABASE_URL`,
    `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are provided to the function by Supabase.
 4. Deploy `takeoff-bookings` with **Verify JWT off** (the function checks the caller itself).
-5. Save TakeOff's settings (SQL editor, once the report addresses and supplier column are known):
+5. Save TakeOff's settings (SQL editor). The Booking Manager search is a GET form (seen in the page source on 14 Oct), so the addresses below are exact; only `flights_search` still needs the Return Report form's field names:
 ```sql
 insert into private.auto_import(company_id, provider, config)
 select id, 'swift', '{
@@ -43,17 +43,17 @@ select id, 'swift', '{
   "login_path": "index.php?req=login",
   "login_fields": {"login": "login", "password": "password", "extra": {"action": "Sign In", "url": "%3F"}},
   "export_path": "export_to_excel.php",
-  "drops_search": "bookinglist-parkandride.php?<filters: Return, {FROM}, {TO}>",
-  "picks_search": "bookinglist-parkandride.php?<filters: Meet, {FROM}, {TO}>",
-  "flights_search": "arrival_report_parkandride.php?<filters: Return, {FROM}, {TO}>",
+  "drops_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=1&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
+  "picks_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=1&supplier=all&filter_field=bookings.booking_from&filter_from={FROM}&filter_to={TO}&submit=Search",
+  "cancelled_search": "bookinglist-parkandride.php?action_Search=action_Search&search=&productype=all&filter_status=2&supplier=all&filter_field=bookings.booking_to&filter_from={FROM}&filter_to={TO}&submit=Search",
   "flights_format": "html",
   "scope": {"all": true},
-  "drops_days": 2, "picks_days": 3
+  "drops_days": 2, "picks_days": 3, "cancelled_days": 14
 }'::jsonb
 from companies where slug = 'takeoff'
 on conflict (company_id) do update set config = excluded.config;
 ```
-   (the login form fields above are from the public sign-in page; the rest are placeholders)
+   Add `"flights_search": "arrival_report_parkandride.php?<its filters>"` once its form is known. Completed bookings only are imported; cancelled ones come from the status-2 search and go to the review list. The check also refuses an export whose dates don't match the search (in case the site ignores the filter).
 6. Import → Check bookings. Read the list. Only then Get bookings now, and use Undo if needed.
 Leave the schedule off until the first import has been reviewed.
 

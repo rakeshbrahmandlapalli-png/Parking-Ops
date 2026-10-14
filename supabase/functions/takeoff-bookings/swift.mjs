@@ -184,6 +184,11 @@ export function readReport(grid, scope, opts = {}) {
     if (opts.allowEmpty) return { rows: [], excludedScope, columns: parsed.columns };
     throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");
   }
+  // The export is whatever the site last searched, so prove it matches the dates we asked for.
+  if (opts.window && opts.field) {
+    const off = parsed.rows.filter((r) => !r.cancelled && r[opts.field] && r[opts.field].key && (r[opts.field].key < opts.window.from || r[opts.field].key > opts.window.to));
+    if (off.length) throw new Error("The export doesn't match the dates searched (" + off.length + " booking(s) outside " + opts.window.from + " to " + opts.window.to + "). Nothing was imported.");
+  }
   if (opts.pageSize && body.length >= opts.pageSize) throw new Error("The report has exactly one page of rows (" + body.length + "), so it may be incomplete. Nothing was imported.");
   if (parsed.rows.length > 1000) throw new Error("More than 1000 bookings in one report; narrow the dates. Nothing was imported.");
   return { rows: parsed.rows, excludedScope, columns: parsed.columns };

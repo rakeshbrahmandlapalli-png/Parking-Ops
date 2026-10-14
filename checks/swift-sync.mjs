@@ -121,6 +121,10 @@ ok("exactly one full page of rows is treated as possibly incomplete", /may be in
   ok("{all:true} scope keeps every booking (owner confirmed all are TakeOff's)", readReport(grid(row("Booked", "T1", "A One", "AB12 CDE", "2026-10-14 08:00", "2026-10-16 10:00", "", "Anyone")), { all: true }).rows.length === 1);
   ok("scope still can't be left out", /scope isn't configured/.test(await throws(() => readReport(grid(), undefined))) && /scope isn't configured/.test(await throws(() => readReport(grid(), {})))); }
 
+{ const g3 = grid(row("Booked", "T1", "A One", "AB12 CDE", "2026-10-14 08:00", "2026-10-15 10:00"));
+  ok("an export inside the searched dates is accepted", readReport(g3, SCOPE, { field: "ret", window: { from: "2026-10-14", to: "2026-10-15" } }).rows.length === 1);
+  ok("an export that doesn't match the search (site ignored the filter) is rejected", /doesn't match the dates searched/.test(await throws(() => readReport(g3, SCOPE, { field: "ret", window: { from: "2026-10-20", to: "2026-10-21" } })))); }
+
 // ── planner ──
 const WIN = { from: "2026-10-12", to: "2026-10-15" };
 const parse = (rows) => readReport(grid(...rows), SCOPE).rows;
