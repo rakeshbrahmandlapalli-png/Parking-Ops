@@ -112,6 +112,20 @@
     return data;
   }
 
+  // The booking import reads the booking site page by page, so its answer can take minutes and may only reach the
+  // phone at the end: no 20-second limit here, only a 5-minute one, and every failure ends as { error }.
+  async function callBookings(body) {
+    var ctrl = new AbortController(), timer = setTimeout(function () { ctrl.abort(); }, 300000);
+    try {
+      var s = (await sb.auth.getSession()).data.session;
+      if (!s) return { error: new Error("Sign in again.") };
+      var res = await fetch(CFG.url + "/functions/v1/takeoff-bookings", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + s.access_token }, body: JSON.stringify(body), signal: ctrl.signal });
+      var text = await res.text(), data = null;
+      try { data = JSON.parse(text); } catch (e) {}
+      return data ? { data: data } : { error: new Error("Error " + res.status) };
+    } catch (e) { return { error: e }; } finally { clearTimeout(timer); }
+  }
+
   // ── state ─────────────────────────────────
   var S = {
     me: null, perms: {}, company: null, staff: {}, sheets: [], sheetId: null, rows: [],
@@ -4501,7 +4515,7 @@
     var a = S.autoImport; if (!a || a.checking || a.running) return;
     a.checking = true; a.error = ""; a.preview = null; render();
     var r;
-    try { r = await sb.functions.invoke("takeoff-bookings", { body: Object.assign({ action: "preview" }, a.custom ? biRange(a) : {}) }); } catch (e) { r = { error: e }; }
+    r = await callBookings(Object.assign({ action: "preview" }, a.custom ? biRange(a) : {}));
     a.checking = false;
     var out = r && r.data;
     if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
@@ -4515,7 +4529,7 @@
     a.running = true; a.error = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
-    try { r = await sb.functions.invoke("takeoff-bookings", { body: Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.custom ? biRange(a) : {}) }); } catch (e) { r = { error: e }; }
+    r = await callBookings(Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.custom ? biRange(a) : {}));
     a.running = false;
     var out = r && r.data;
     if ((r && r.error) || !out || out.ok === false) {
