@@ -130,7 +130,11 @@ export function makeClient(cfg, io) {
       const buf = new Uint8Array(await x.res.arrayBuffer());
       const declared = Number(x.res.headers.get("content-length"));
       if (declared && declared !== buf.length) throw new Error("The download was cut short (" + buf.length + " of " + declared + " bytes). Nothing was imported.");
-      return checkDownload(buf, x.res.headers.get("content-type") || "");
+      const out = checkDownload(buf, x.res.headers.get("content-type") || "");
+      // The search page says how many bookings it found ("(125 results)"); the caller compares that with the download.
+      const m = st.match(/\(\s*(\d[\d,]*)\s+results?\s*\)/i);
+      out.siteRows = m ? Number(m[1].replace(/,/g, "")) : null;
+      return out;
     },
   };
 }

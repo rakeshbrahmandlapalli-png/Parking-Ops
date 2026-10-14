@@ -46,7 +46,7 @@ function site(over = {}) {
       state.loggedIn = true; const h = new Headers({ location: "/admin/home.php" }); h.append("set-cookie", "PHPSESSID=abc123; path=/"); return new Response(null, { status: 302, headers: h });
     }
     if (!state.loggedIn || state.expired) return R(200, '<html><form><input type="password" name="password"></form></html>', { "content-type": "text/html" });
-    if (script === "bookinglist.php") return R(200, "<html>results</html>", { "content-type": "text/html" });
+    if (script === "bookinglist.php") return R(200, state.results || "<html>results</html>", { "content-type": "text/html" });
     if (script === "export_to_excel.php") { const b = state.export || "x\ty"; return R(200, b, { "content-type": "application/vnd.ms-excel", ...(state.length ? { "content-length": String(state.length) } : {}) }); }
     return R(404, "no");
   };
@@ -55,6 +55,11 @@ function site(over = {}) {
 const CFG = { base: BASE, hosts: H, scripts: ["bookinglist.php", "export_to_excel.php"] };
 const mk = (s, user = "u", pass = "p") => makeClient(CFG, { fetch: s.fetch, sleep: async () => {}, user, pass });
 
+{ const s = site({ results: "<html>Completed (125 results)</html>" }); const c = mk(s); await c.login();
+  const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
+  ok("the site's own result count is read from the search page", b.siteRows === 125, b.siteRows); }
+{ const s = site(); const c = mk(s); await c.login(); const b = await c.download("bookinglist.php?a=1", "export_to_excel.php");
+  ok("no count on the page means no count to compare", b.siteRows === null); }
 { const s = site(); const c = mk(s);
   await c.login(); const buf = await c.download("bookinglist.php?a=1", "export_to_excel.php");
   ok("signs in once, searches, downloads", s.calls.filter((x) => x.method === "POST").length === 1 && buf.length > 0 && s.calls.length === 3, s.calls.map((x) => x.method + x.url));

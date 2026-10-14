@@ -88,7 +88,11 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
     const rows: any[] = []; let excludedScope = 0;
     for (const d of eachDay(w)) {
       const one = { from: d, to: d };
-      const r = readReport(gridFrom(await client.download(fill(search, one), exportPath)), scope, { ...opts, field, window: one, allowEmpty: true });
+      const buf = await client.download(fill(search, one), exportPath);
+      const r = readReport(gridFrom(buf), scope, { ...opts, field, window: one, allowEmpty: true });
+      // The site's own count for that search against what the download holds: a short download is never imported.
+      const siteRows = (buf as unknown as { siteRows: number | null }).siteRows;
+      if (siteRows != null && r.rows.length < siteRows) throw new Error("The booking site lists " + siteRows + " bookings for " + d + " but its download holds only " + r.rows.length + ". Nothing was imported.");
       rows.push(...(keep ? r.rows.filter((x: never) => keep(x, d)) : r.rows)); excludedScope += r.excludedScope;
     }
     if (!rows.length) throw new Error("The report has no bookings for this scope and dates. An empty result isn't accepted without a reason; nothing was imported.");
