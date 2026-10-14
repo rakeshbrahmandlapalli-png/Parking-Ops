@@ -375,3 +375,34 @@ export function previewView(p, hash) {
     unchanged: p.items.filter((i) => i.status === "unchanged").slice(0, 600).map((i) => ({ kind: i.kind, day: i.day, ref: i.ref, reg: i.reg })),
   };
 }
+
+// ── scheduled runs ──────────────────────────────────────────────────────────
+// times: "HH:MM" in London time. The slot due now is the latest time that has passed in the last GRACE minutes today and
+// is later than the last slot already handled ("2026-10-14 12:00"), so a slot is attempted once, never retried every tick.
+export const SLOT_GRACE_MIN = 30;
+export function cleanTimes(times) {
+  const ok = Array.from(new Set((Array.isArray(times) ? times : []).map((t) => String(t).trim()).filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))).sort();
+  return ok.slice(0, 6);
+}
+export function dueSlot(nowMs, times, lastSlot) {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(nowMs));
+  const now = (+p.find((x) => x.type === "hour").value % 24) * 60 + +p.find((x) => x.type === "minute").value;
+  const day = londonDay(nowMs, 0);
+  let best = "";
+  cleanTimes(times).forEach((t) => {
+    const m = +t.slice(0, 2) * 60 + +t.slice(3);
+    if (m <= now && now - m <= SLOT_GRACE_MIN) best = t;
+  });
+  const slot = best ? day + " " + best : "";
+  return slot && slot > String(lastSlot || "") ? slot : "";
+}
+// "Import if clean": nothing invalid, no review case the office hasn't already been told about, and no unusually large change.
+// knownReviews: Set of "kind|ref" already on the open review list. Returns { go, why }.
+export function scheduleDecision(p, knownReviews, maxChanges = 200) {
+  if (p.counts.invalid > 0) return { go: false, why: p.counts.invalid + (p.counts.invalid === 1 ? " booking can't be read" : " bookings can't be read") };
+  const fresh = p.reviews.filter((r) => !knownReviews.has(r.kind + "|" + r.ref));
+  if (fresh.length) return { go: false, why: fresh.length + (fresh.length === 1 ? " booking needs" : " bookings need") + " a decision" };
+  const n = p.counts.new + p.counts.changed;
+  if (n > maxChanges) return { go: false, why: n + " changes is more than a scheduled run imports on its own" };
+  return { go: true, why: "" };
+}

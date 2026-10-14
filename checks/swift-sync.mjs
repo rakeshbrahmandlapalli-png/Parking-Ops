@@ -4,7 +4,7 @@
 //   cd checks && npm install @electric-sql/pglite && node swift-sync.mjs
 import fs from "fs";
 import { PGlite } from "@electric-sql/pglite";
-import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate, rangeFor, requestBudget, MAX_REQUESTS } from "../supabase/functions/takeoff-bookings/swift.mjs";
+import { parseHtmlTable, parseTsv, makeClient, assertAllowed, checkDownload, readReport, plan, planHash, previewView, londonDay, windowFor, siteDate, rangeFor, requestBudget, MAX_REQUESTS, cleanTimes, dueSlot, scheduleDecision } from "../supabase/functions/takeoff-bookings/swift.mjs";
 
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -298,5 +298,20 @@ ok("the service-role-only functions are not callable by the app's users", (await
     items: [{ kind: "drops", day: "2026-10-14", ref: "A1", reg: "AB12CDE", name: "X", status: "unchanged" }, { kind: "picks", day: "2026-10-15", ref: "B2", reg: "CD34EFG", name: "Y", status: "unchanged" }] };
   const v = previewView(p0, "h");
   ok("the preview lists unchanged bookings (kind, day, ref, reg only) apart from the changes", v.items.length === 0 && v.unchanged.length === 2 && Object.keys(v.unchanged[0]).sort().join() === "day,kind,ref,reg" && v.can_apply === false, JSON.stringify(v.unchanged)); }
+// scheduled runs
+{
+  const at = (iso) => Date.parse(iso);
+  ok("times are cleaned: valid, sorted, unique, at most 6", JSON.stringify(cleanTimes(["12:00", "06:00", "6:00", "25:00", "12:00", "18:30"])) === JSON.stringify(["06:00", "12:00", "18:30"]) && cleanTimes(["01:00","02:00","03:00","04:00","05:00","06:00","07:00"]).length === 6);
+  ok("a slot is due within 30 minutes after its time (London summer time)", dueSlot(at("2026-10-14T11:10:00Z"), ["12:00"], "") === "2026-10-14 12:00" && dueSlot(at("2026-10-14T10:55:00Z"), ["12:00"], "") === "");
+  ok("a slot more than 30 minutes late is skipped", dueSlot(at("2026-10-14T11:40:00Z"), ["12:00"], "") === "");
+  ok("a handled slot is not due again", dueSlot(at("2026-10-14T11:10:00Z"), ["12:00"], "2026-10-14 12:00") === "");
+  ok("the winter clock change is read in London time", dueSlot(at("2026-12-10T12:05:00Z"), ["12:00"], "") === "2026-12-10 12:00");
+  const plan = (o) => ({ counts: { invalid: 0, new: 3, changed: 1, ...(o.counts || {}) }, reviews: o.reviews || [] });
+  ok("a clean plan goes", scheduleDecision(plan({}), new Set()).go === true);
+  ok("an invalid record holds it", scheduleDecision(plan({ counts: { invalid: 1 } }), new Set()).go === false);
+  ok("a new review case holds it, a known one does not", scheduleDecision(plan({ reviews: [{ kind: "drops", ref: "A1" }] }), new Set()).go === false && scheduleDecision(plan({ reviews: [{ kind: "drops", ref: "A1" }] }), new Set(["drops|A1"])).go === true);
+  ok("an unusually large change holds it", scheduleDecision(plan({ counts: { new: 250 } }), new Set()).go === false);
+}
+
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
