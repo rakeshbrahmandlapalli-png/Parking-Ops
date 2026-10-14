@@ -261,6 +261,7 @@ async function backend(ctx, db) {
     }
     if (p.startsWith("/functions/v1/takeoff-bookings")) {
       const ar = JSON.parse(req.postData() || "{}"); (db.autoRuns = db.autoRuns || []).push(ar);
+      if (db.bookingsDelay && ar.action === "apply") await new Promise((r) => setTimeout(r, db.bookingsDelay));
       if (ar.action === "preview") return db.previewError ? reply(200, { ok: false, error: db.previewError }) : reply(200, { ok: true, preview: db.preview || { hash: "h1", window: {}, counts: { new: 2, changed: 1, unchanged: 4, review: 1, invalid: 0 }, can_apply: true, items: [{ kind: "drops", day: TONIGHT, ref: "T1", reg: "AB12CDE", status: "changed", changes: [{ field: "return", from: "10:00", to: "12:30" }] }], reviews: [], invalid: [] } });
       if (db.applyError) return reply(200, { ok: false, error: db.applyError });
       return reply(200, { ok: true, summary: { days: [{ kind: "drops", day: TONIGHT, added: 2, updated: 1 }, { kind: "picks", day: TONIGHT, added: 3, updated: 0 }], drops_rows: 3, picks_rows: 3 } });
@@ -1784,6 +1785,21 @@ await scenario(async () => {
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: invalid records are listed and block the import", /ambiguous/.test(await page.locator("[data-autoitems]").innerText()) && await page.locator("[data-autorun]").isDisabled());
   check("auto-import: no errors", page.__errors.length === 0, page.__errors);
+});
+
+// 18b2b. The booking site can take longer than 20 seconds: the import waits for the answer instead of giving up (14 Oct, stuck on Importing).
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: false, open_reviews: 0 };
+  db.bookingsDelay = 22000;
+  const page = await phone(browser, db, { width: 1000 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+  await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
+  await page.click("[data-autopreview]"); await sleep(700);
+  await page.click("[data-autorun]"); await sleep(23500);
+  check("auto-import: an import that takes over 20 seconds still finishes with its result", /Bookings in: 5 added, 1 updated/.test(await toast(page)), await toast(page));
+  check("auto-import: no errors after a slow import", page.__errors.length === 0, page.__errors);
 });
 
 // 18b3. A changed plan between check and import is refused, nothing imported.
