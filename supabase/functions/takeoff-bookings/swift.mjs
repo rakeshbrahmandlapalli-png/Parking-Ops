@@ -324,7 +324,7 @@ export async function planHash(p) {
 
 // What the app shows: counts and short lists, no phone numbers.
 // How many rows each report held, per day and per status, so the office can compare with the booking site.
-export function reportStats(rows, field) {
+export function reportStats(rows, field, site) {
   const by_day = {}, by_status = {};
   rows.forEach((r) => {
     const d = r[field] && r[field].key ? r[field].key : "?";
@@ -332,7 +332,7 @@ export function reportStats(rows, field) {
     const st = r.cancelled ? "Cancelled" : (r.status || "—");
     by_status[st] = (by_status[st] || 0) + 1;
   });
-  return { rows: rows.length, by_day, by_status };
+  return { rows: rows.length, by_day, by_status, site: site || {} };
 }
 
 export function previewView(p, hash) {
