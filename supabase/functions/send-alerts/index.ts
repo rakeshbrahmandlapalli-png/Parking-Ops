@@ -2,6 +2,7 @@
 //
 // Phone notifications (web push) and Discord messages for:
 //   DROPS  CALLED / OVERSTAY on a car no driver has been SENT to yet
+//          still no driver SENT 20 minutes after CALLED
 //          COMPLAINT
 //          flight CANCELLED on a car not yet handed back
 //   PICKS  RTC
@@ -13,6 +14,9 @@
 //       and recent, and alert_log makes sure each one goes out once.
 //   { type: "test", discord? }  by the "Send a test" buttons, with a sign-in.
 //       Sends to the caller's own phones; Discord only for owner/manager.
+//   { type: "longwait" }  by the 5-minute timer (setup/88-long-wait-alert.sql),
+//       with the x-timer header. A DROPS car CALLED more than LONG_WAIT_MIN ago
+//       with no driver SENT (and not cleared) is pushed once to everyone.
 //   { type: "usage" }  by the morning timer (setup/38-usage-warning.sql), with
 //       the x-timer header. If usage_status() finds a free-plan limit getting
 //       close (or no backup last night), the owners and managers of the
@@ -40,6 +44,7 @@ const reply = (status: number, body: unknown) =>
 const TZ = "Europe/London";
 const time = (iso: string | null) => iso ? new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "";
 const FRESH_MIN = 30;   // a tap older than this is history, not news
+const LONG_WAIT_MIN = 20;   // CALLED this long with no driver SENT
 
 type Kind = "drops" | "picks" | "flights";
 type Note = { title: string; body: string; url: string; tag: string };
@@ -129,9 +134,45 @@ async function onBooking(id: string) {
   return { sent };
 }
 
-async function onUsage(req: Request) {
+async function fromTimer(req: Request) {
   const { data: ok } = await db.rpc("timer_secret_ok", { p_secret: req.headers.get("x-timer") ?? "" });
-  if (ok !== true) return reply(403, { error: "Not the timer." });
+  return ok === true;
+}
+
+// Cars called between LONG_WAIT_MIN and an hour ago: older calls are history,
+// and alert_log keeps it to one push per call.
+async function onLongWait(req: Request) {
+  if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
+  const now = Date.now();
+  const { data: cars, error } = await db.from("bookings")
+    .select("id, company_id, num, reg, yard, name, flight, est_time, sched_time, return_at, called_at, called_word, called_by, note")
+    .eq("kind", "drops").is("sent_at", null).is("cleared_at", null)
+    .lte("called_at", new Date(now - LONG_WAIT_MIN * 60000).toISOString())
+    .gte("called_at", new Date(now - 60 * 60000).toISOString());
+  if (error) throw error;
+  const staffOf = new Map<string, { id: string; name: string }[]>();
+  let sent = 0;
+  for (const b of cars ?? []) {
+    if (!(await once(`wait:${b.id}:${b.called_at}`))) continue;
+    if (!staffOf.has(b.company_id)) {
+      const { data } = await db.from("staff").select("id, name").eq("company_id", b.company_id).eq("active", true);
+      staffOf.set(b.company_id, data ?? []);
+    }
+    const people = staffOf.get(b.company_id)!;
+    const byName = people.find((p) => p.id === b.called_by)?.name ?? "";
+    const mins = Math.floor((now - new Date(b.called_at).getTime()) / 60000);
+    const car = `${b.num ? "#" + b.num + " · " : ""}${b.reg || "no reg"}${b.yard ? " (" + b.yard + ")" : ""}`;
+    const title = `⏱ WAITING ${mins} MIN: ${car} — ${b.name || "Customer"}`;
+    const due = b.flight ? `${b.flight} · due ${b.est_time && b.est_time !== "DELAY" ? b.est_time : b.sched_time || time(b.return_at)}` : `back ${time(b.return_at)}`;
+    const body = `${b.called_word === "Overstay" ? "OVERSTAY" : "CALLED"} at ${time(b.called_at)}${byName ? " by " + byName : ""}, no driver SENT yet · ${due}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
+    sent += await pushTo(people.map((p) => p.id), "drops", { title, body, url: "/", tag: `drops-${b.id}` });
+    await discord(b.company_id, "drops", title, body);
+  }
+  return reply(200, { waiting: (cars ?? []).length, sent });
+}
+
+async function onUsage(req: Request) {
+  if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
   const { data: u, error } = await db.rpc("usage_status");
   if (error) throw error;
   const warnings: string[] = u?.warnings ?? [];
@@ -173,6 +214,7 @@ Deno.serve(async (req) => {
   try {
     if (msg.type === "booking" && /^[0-9a-f-]{36}$/i.test(String(msg.id))) return reply(200, await onBooking(String(msg.id)));
     if (msg.type === "test") return await onTest(req, msg);
+    if (msg.type === "longwait") return await onLongWait(req);
     if (msg.type === "usage") return await onUsage(req);
     return reply(400, { error: "Unknown message." });
   } catch (e) {
