@@ -30,7 +30,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights, addDaysKey } from "./reader.mjs";
-import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf } from "./swift.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -63,7 +63,7 @@ function fFieldsScripts(cfg: Record<string, unknown>, flightsSearch: string, bas
 type Co = { id: string; slug: string; drops_day_end?: string };
 
 // Sign in once, read the approved reports, compare with what the app holds.
-async function collect(company: Co, cfg: Record<string, unknown>) {
+async function collect(company: Co, cfg: Record<string, unknown>, range?: { from: string; to: string }) {
   const base = String(cfg.base ?? "");
   const exportPath = String(cfg.export_path ?? "export_to_excel.php");
   const dropsSearch = String(cfg.drops_search ?? ""), picksSearch = String(cfg.picks_search ?? "");
@@ -71,10 +71,10 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const flightsSearch = cfg.flights_search ? String(cfg.flights_search) : "";
   if (!base || !dropsSearch || !picksSearch) throw new Error("The report addresses aren't set up for " + company.slug + ".");
   const scope = cfg.scope as never; // {all:true} | {column, values} | [{column, values}, …]
-  const dw = windowFor(Date.now(), Number(cfg.drops_days ?? 2)), pw = windowFor(Date.now(), Number(cfg.picks_days ?? 3));
+  const dw = range ?? windowFor(Date.now(), Number(cfg.drops_days ?? 2)), pw = range ?? windowFor(Date.now(), Number(cfg.picks_days ?? 3));
   const fill = (path: string, w: { from: string; to: string }) => path.replace(/\{FROM\}/g, siteDate(w.from)).replace(/\{TO\}/g, siteDate(w.to));
   const client = makeClient({
-    base, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
+    base, max_requests: range ? requestBudget(Math.round((Date.parse(range.to + "T12:00:00Z") - Date.parse(range.from + "T12:00:00Z")) / 86400000) + 1) : undefined, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
     scripts: [dropsSearch, picksSearch, flightsSearch, cancelledSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
@@ -166,11 +166,15 @@ async function handle(req: Request): Promise<Response> {
     // Company isolation: only the company whose own settings carry the Swift connection, never Airport Parking Bay.
     if (co.slug === "airport-parking-bay" || !cfg.base || cfg.manual_enabled !== true) return reply(400, { error: "Automatic bookings aren't set up for this company." });
 
+    // Optional dates typed on the page: the same range is read again when applying, so the plan hash still has to match.
+    let range: { from: string; to: string } | undefined;
+    if (body.from || body.to) { try { range = rangeFor(Date.now(), String(body.from ?? ""), String(body.to ?? "")); } catch (e) { return reply(200, { ok: false, error: (e as Error).message }); } }
+
     const token = await admin.rpc("swift_lock", { p_company: co.id, p_seconds: 300 });
     if (token.error) return reply(200, { ok: false, error: token.error.message });
     let block = 0;
     try {
-      const c = await collect(co as Co, cfg);
+      const c = await collect(co as Co, cfg, range);
       if (action === "preview") return reply(200, { ok: true, preview: { ...previewView(c.p, c.hash), report: c.report, excluded_scope: c.excluded_scope } });
 
       if (String(body.expect_hash ?? "") !== c.hash) return reply(200, { ok: false, error: "The bookings changed since the preview. Check them again before importing." });

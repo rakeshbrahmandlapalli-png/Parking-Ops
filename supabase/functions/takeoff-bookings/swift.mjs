@@ -29,6 +29,22 @@ export function windowFor(nowMs, days) {
   return { from: londonDay(nowMs, 0), to: londonDay(nowMs, n - 1) };
 }
 
+// A date range the office typed: both ends as yyyy-mm-dd, from not after to, at most MAX_SPAN_DAYS days, and
+// not further than 30 days back or 60 ahead. Returns { from, to } or throws a sentence for the screen.
+export function rangeFor(nowMs, from, to) {
+  const ok = (k) => /^\d{4}-\d{2}-\d{2}$/.test(String(k)) && addDaysKey(String(k), 0) === String(k);
+  if (!ok(from) || !ok(to)) throw new Error("Choose a From and a To date.");
+  if (from > to) throw new Error("The From date is after the To date.");
+  const span = Math.round((Date.parse(to + "T12:00:00Z") - Date.parse(from + "T12:00:00Z")) / 86400000) + 1;
+  if (span > MAX_SPAN_DAYS) throw new Error("Choose at most " + MAX_SPAN_DAYS + " days at a time.");
+  if (from < londonDay(nowMs, -30)) throw new Error("The From date is more than 30 days ago.");
+  if (to > londonDay(nowMs, 60)) throw new Error("The To date is more than 60 days ahead.");
+  return { from, to };
+}
+// Requests one run may make for that many days: a search and an export per day for picks and for drops (drops read one day further),
+// a sign-in, the flights page and the cancelled search, with a little spare.
+export function requestBudget(days) { return Math.max(MAX_REQUESTS, 4 * Math.max(1, days) + 12); }
+
 // ── the guarded client ──────────────────────────────────────────────────────
 // cfg: { base, hosts?, login_path, login_fields, scripts: ["bookinglist-parkandride.php", ...] }
 // io:  { fetch, sleep?, user, pass }
@@ -72,7 +88,7 @@ export function makeClient(cfg, io) {
         else if (postScripts.includes(sc)) { if (++searchPosts > 2) throw new Error("Blocked: too many searches in one run."); }
         else throw new Error("Blocked a form submission to " + sc + ".");
       }
-      if (++count > MAX_REQUESTS) throw new Error("Stopped: too many requests in one run.");
+      if (++count > (cfg.max_requests || MAX_REQUESTS)) throw new Error("Stopped: too many requests in one run.");
       if (count > 1) await sleep(400);
       const headers = { cookie: cookieHeader(), accept: "*/*" };
       if (m === "POST") headers["content-type"] = "application/x-www-form-urlencoded";

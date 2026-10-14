@@ -635,3 +635,8 @@ span.bi-undo{color:var(--ink-2);}
   .bi-rr{grid-template-columns:auto 1fr auto;grid-template-areas:"t by ud" "bd bd ud" "sr rs rs";gap:2px 10px;padding:8px 12px;}
   .bi-t{grid-area:t;font-weight:700;} .bi-by{grid-area:by;} .bi-undo{grid-area:ud;} .bi-bd{grid-area:bd;font-weight:600;} .bi-src{grid-area:sr;color:var(--ink-2);} .bi-res{grid-area:rs;}
 }
+
+.bi-range{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:14px;color:var(--ink-2);}
+.bi-range label{display:inline-flex;align-items:center;gap:8px;font-weight:700;color:var(--ink);}
+.bi-range input[type=date]{min-height:40px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;}
+.bi-range .bi-hint{margin:0;}
