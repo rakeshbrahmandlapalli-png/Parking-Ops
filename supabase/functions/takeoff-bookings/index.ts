@@ -54,6 +54,10 @@ function gridFrom(buf: Uint8Array): string[][] {
     .map((row) => row.map((v) => (v == null ? "" : String(v))));
 }
 
+function fFieldsScripts(cfg: Record<string, unknown>, flightsSearch: string, base: string): string[] {
+  return cfg.flights_post && flightsSearch ? [scriptOf(new URL(flightsSearch, base))] : [];
+}
+
 type Co = { id: string; slug: string; drops_day_end?: string };
 
 // Sign in once, read the approved reports, compare with what the app holds.
@@ -68,7 +72,7 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const dw = windowFor(Date.now(), Number(cfg.drops_days ?? 2)), pw = windowFor(Date.now(), Number(cfg.picks_days ?? 3));
   const fill = (path: string, w: { from: string; to: string }) => path.replace(/\{FROM\}/g, siteDate(w.from)).replace(/\{TO\}/g, siteDate(w.to));
   const client = makeClient({
-    base, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never,
+    base, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
     scripts: [dropsSearch, picksSearch, flightsSearch, cancelledSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
   }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
   await client.login();
@@ -76,8 +80,11 @@ async function collect(company: Co, cfg: Record<string, unknown>) {
   const drops = readReport(gridFrom(await client.download(fill(dropsSearch, dw), exportPath)), scope, { ...opts, field: "ret", window: dw });
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
+    const fFields = cfg.flights_post as Record<string, string> | undefined; // the Return Report's search is a POST form
     const fGrid = cfg.flights_format === "html"
-      ? parseHtmlTable(await client.page(fill(flightsSearch, dw)))
+      ? parseHtmlTable(fFields
+          ? await client.postPage(flightsSearch, Object.fromEntries(Object.entries(fFields).map(([k, v]) => [k, fill(String(v), dw)])))
+          : await client.page(fill(flightsSearch, dw)))
       : gridFrom(await client.download(fill(flightsSearch, dw), String(cfg.flights_export_path ?? exportPath)));
     const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
     matchFlights(drops.rows, f.rows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");

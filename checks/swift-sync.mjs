@@ -83,6 +83,15 @@ ok("empty and oversized downloads are rejected", /empty/.test(await throws(() =>
   let m = ""; for (let i = 0; i < 9 && !m; i++) m = await throws(() => c.download("bookinglist.php", "export_to_excel.php"));
   ok("request count is capped per run", /too many requests/.test(m), m); }
 
+// a report whose search is a POST form (the Return Report): one allowed search, nothing else
+{ const s = site(); s.state.hook = (u, init) => u.pathname.endsWith("report.php") && init.method === "POST" ? new Response("<table><tr><th>Ref#</th></tr></table>", { status: 200 }) : null;
+  const c = makeClient({ ...CFG, scripts: [...CFG.scripts, "report.php"], post_scripts: ["report.php"] }, { fetch: s.fetch, sleep: async () => {}, user: "u", pass: "p" });
+  await c.login();
+  ok("a configured report search can be POSTed (read-only search)", /<table>/.test(await c.postPage("report.php", { filter_from: "14-October-2026" })) && s.calls.filter((x) => x.method === "POST").length === 2);
+  ok("a POST to any other page is blocked", /Blocked a form submission/.test(await throws(() => c.postPage("bookinglist.php", { a: 1 }))));
+  await c.postPage("report.php", {});
+  ok("searches by POST are capped per run", /too many searches/.test(await throws(() => c.postPage("report.php", {})))); }
+
 // ── fixtures: sanitised ──
 const HEAD = ["Booking Status", "Reference", "Full Name", "Car Reg", "Car Make", "Telephone", "Booking From", "Booking To", "Return Flight", "Supplier", "Notes"];
 const row = (st, ref, name, reg, from, to, fl = "", sup = "TakeOff", note = "") => [st, ref, name, "", reg, "", from, to, fl, sup, note].slice(0, 0).concat([st, ref, name, reg, "Ford", "07000 000000", from, to, fl, sup, note]);

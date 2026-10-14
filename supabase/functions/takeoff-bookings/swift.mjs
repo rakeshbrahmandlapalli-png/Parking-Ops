@@ -53,7 +53,8 @@ export function makeClient(cfg, io) {
   const hosts = cfg.hosts && cfg.hosts.length ? cfg.hosts : DEFAULT_HOSTS;
   const loginScript = scriptOf(new URL(cfg.login_path || "index.php?req=login", cfg.base));
   const scripts = Array.from(new Set([loginScript, ...(cfg.scripts || [])]));
-  const jar = {}; let count = 0, posted = false;
+  const jar = {}; let count = 0, loginPosted = false, searchPosts = 0;
+  const postScripts = cfg.post_scripts || []; // report pages whose search form is a POST (Return Report), one search per run each
   const sleep = io.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const cookieHeader = () => Object.entries(jar).map(([k, v]) => k + "=" + v).join("; ");
   const store = (res) => {
@@ -65,7 +66,12 @@ export function makeClient(cfg, io) {
     let url = urlStr, m = method, b = body;
     for (let hop = 0; hop <= 3; hop++) {
       const u = assertAllowed(url, cfg.base, hosts, scripts, m);
-      if (m === "POST") { if (posted || scriptOf(u) !== loginScript) throw new Error("Blocked a second sign-in attempt."); posted = true; }
+      if (m === "POST") {
+        const sc = scriptOf(u);
+        if (sc === loginScript) { if (loginPosted) throw new Error("Blocked a second sign-in attempt."); loginPosted = true; }
+        else if (postScripts.includes(sc)) { if (++searchPosts > 2) throw new Error("Blocked: too many searches in one run."); }
+        else throw new Error("Blocked a form submission to " + sc + ".");
+      }
       if (++count > MAX_REQUESTS) throw new Error("Stopped: too many requests in one run.");
       if (count > 1) await sleep(400);
       const headers = { cookie: cookieHeader(), accept: "*/*" };
@@ -101,6 +107,15 @@ export function makeClient(cfg, io) {
     // The search page itself, as text (for a report that has no export, like the Return Report).
     async page(searchPath) {
       const s = await send(new URL(searchPath, cfg.base).toString(), "GET");
+      const t = await s.res.text();
+      if (/name=["']?password/i.test(t)) { const e = new Error("The booking site asked for a sign-in again (session expired). Nothing was imported."); e.code = "session_expired"; throw e; }
+      if (!s.res.ok || t.length > MAX_BYTES) throw new Error("The report page didn't load properly. Nothing was imported.");
+      return t;
+    },
+    // A report whose search form is a POST (the Return Report): send the search fields, read the page back.
+    async postPage(searchPath, fields) {
+      const body = new URLSearchParams(); Object.entries(fields).forEach(([k, v]) => body.set(k, String(v)));
+      const s = await send(new URL(searchPath, cfg.base).toString(), "POST", body.toString());
       const t = await s.res.text();
       if (/name=["']?password/i.test(t)) { const e = new Error("The booking site asked for a sign-in again (session expired). Nothing was imported."); e.code = "session_expired"; throw e; }
       if (!s.res.ok || t.length > MAX_BYTES) throw new Error("The report page didn't load properly. Nothing was imported.");
