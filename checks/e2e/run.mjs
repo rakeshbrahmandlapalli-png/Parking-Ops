@@ -192,7 +192,9 @@ function rpc(db, fn, a) {
     case "tap_drop": {
       const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared" }[a.p_action];
       b[f + "_at"] = a.p_on ? now() : null; b[f + "_by"] = a.p_on ? "s1" : null;
+      if (a.p_action === "called" && !a.p_on && b.called_word === "Overstay" && !b.early) { const sh = db.sheets.find((x) => x.id === b.sheet_id); if (b.return_at && sh && b.return_at.slice(0, 10) >= sh.day) b.overstay = false; }
       if (a.p_action === "called") b.called_word = a.p_on ? a.p_word || "Called" : "";
+      if (a.p_action === "called" && a.p_on && a.p_word === "Overstay") b.overstay = true;
       if (a.p_action === "clear") b.clear_word = a.p_on ? a.p_word || "Collected" : "";
       return b;
     }
@@ -1716,6 +1718,26 @@ await scenario(async () => {
   check("marked OVERSTAY today: the block says staying longer", /staying longer/i.test(await page.locator("#main").innerText()) && !/earlier days/i.test(await page.locator("#main").innerText()));
   await page.click('.row[data-id="b1"] .reg'); await sleep(400);
   check("the car panel shows the first booked return", /BACK\n.*was /.test(await page.locator("#panelBody").innerText()));
+});
+
+// 14b. OVERSTAY pressed by mistake and pressed again: the car is no longer an overstay (part 95),
+// but a car carried from an earlier day stays one.
+await scenario(async () => {
+  const db = makeDb(), b = (id) => db.bookings.find((x) => x.id === id);
+  Object.assign(b("b2"), { called_word: "Overstay", called_at: iso(TONIGHT, "18:28"), overstay: true });
+  Object.assign(b("b3"), { return_at: iso(addDays(TONIGHT, -2), "22:15"), sent_at: null, sent_by: null, yard: "", called_word: "Overstay", called_at: iso(TONIGHT, "18:30"), overstay: true });
+  const page = await phone(browser, db);
+  await open(page);
+  await page.waitForSelector('.row[data-id="b2"] .reg', { timeout: 8000 }).catch(() => {});
+  for (const id of ["b2", "b3"]) {
+    await page.click('.row[data-id="' + id + '"] .reg'); await sleep(400);
+    await page.click('#panelBody [data-word="called:Overstay"]'); await sleep(500);
+    await page.keyboard.press("Escape"); await sleep(300);
+  }
+  check("Overstay undo: OVERSTAY off on a car due tonight clears the overstay", b("b2").overstay === false && b("b2").called_word === "", b("b2"));
+  check("Overstay undo: a car carried from an earlier day stays an overstay", b("b3").overstay === true && b("b3").called_word === "", b("b3"));
+  const main = await page.locator("#main").innerText();
+  check("Overstay undo: the board shows only the carried car as an overstay", /earlier days/i.test(main) && !/staying longer/i.test(main), main.slice(0, 400));
 });
 
 // 15. a booking with no reg: the reg is typed in the car's panel
