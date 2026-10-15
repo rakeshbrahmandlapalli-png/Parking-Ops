@@ -319,6 +319,7 @@
     S.rowsSheet = want;
     S.rows = (r.data || []).filter(function (x) { return !x.removed_at; });
     S.removed = (r.data || []).filter(function (x) { return x.removed_at; });
+    loadKeys(want);
     if (sh && sh.kind === "picks") loadPtUnsaved(want);
   }
   async function loadRows() {
@@ -411,12 +412,15 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "sheets", filter: "company_id=eq." + S.company.id }, function () {
         loadSheets().then(function () { var had = S.sheetId; pickDefaultSheet(); return had === S.sheetId ? null : loadRows(); }).then(function () { if (!$("panel").open && !yardOpen()) render(); });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "key_check_sessions", filter: "company_id=eq." + S.company.id }, keyChanged)
+      .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged)
       .subscribe(function (status) {
         if (ch !== channel) return;   // an old link closing late (after sign-out and back in)
         var was = S.live; S.live = status === "SUBSCRIBED"; renderSync();
         // Back after the live link dropped: changes made meanwhile were missed.
         // A short drop (weak signal) fetches just those; a long one, the sheet.
         if (S.live && liveLost) {
+          if (keyAllowed()) loadKeys(S.sheetId);
           var gone = liveLostAt; liveLost = false;
           (Date.now() - gone < QUICK_BACK ? catchUp(gone - 10000) : loadRows()).then(function () { if (!$("panel").open && !yardOpen()) render(); });
         }
@@ -424,7 +428,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; snapForget(); }
+  function teardown() { if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
@@ -547,12 +551,13 @@
   }
   // Signal back: the cars changed meanwhile (a short gap), or the sheet (a long one).
   var offlineAt = 0;
-  window.addEventListener("offline", function () { offlineAt = Date.now(); });
+  window.addEventListener("offline", function () { offlineAt = Date.now(); if (S.me && keyOn()) render(); });
   window.addEventListener("online", function () {
     // Opened from the saved copy (no server at the time): reconnect now, not at the next 15 s retry.
     if (S.offline && S.me) { clearTimeout(S.reconnect); reconnect(); return; }
     if (!S.me && S.bootFailed) { S.bootFailed = false; clearTimeout(S.bootRetry); loadApp(); return; }
     flush(); if (!S.me) return;
+    if (keyAllowed()) loadKeys(S.sheetId);
     // A board from the phone's saved copy (S.offline) is reloaded whole.
     (offlineAt && !S.offline && Date.now() - offlineAt < QUICK_BACK ? catchUp(offlineAt - 10000) : loadRows()).then(render);
     offlineAt = 0;
@@ -566,6 +571,7 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
     if (!S.me) return;
+    if (keyAllowed()) loadKeys(S.sheetId);
     flush(); companyFresh();
     if (S.live && hiddenAt && Date.now() - hiddenAt < QUICK_BACK) {
       // Belt and braces: just the cars changed while away (usually none), in
@@ -818,6 +824,7 @@
   }
   function render() {
     if (!S.me) return;
+    document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
     var fn = { stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
@@ -966,10 +973,10 @@
     var cardsWords = pro && !isPremium();
     $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
     $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
-    $("tabTodo").classList.toggle("on", S.filter === "todo");
-    $("tabAll").classList.toggle("on", S.filter === "all");
-    $("tabTodo").setAttribute("aria-pressed", S.filter === "todo");
-    $("tabAll").setAttribute("aria-pressed", S.filter === "all");
+    $("tabTodo").classList.toggle("on", !keyOn() && S.filter === "todo");
+    $("tabAll").classList.toggle("on", !keyOn() && S.filter === "all");
+    $("tabTodo").setAttribute("aria-pressed", !keyOn() && S.filter === "todo");
+    $("tabAll").setAttribute("aria-pressed", !keyOn() && S.filter === "all");
     if (document.activeElement !== $("q")) $("q").value = S.q;
     $("q").placeholder = pro ? "Search reg or name" : "Search reg, name, number or note";
     show("qClear", !!S.q);
@@ -1022,6 +1029,7 @@
   }
 
   function renderBoard() {
+    if (keyOn()) { boardChunks = null; sheetChunks = null; return renderKeyBoard(); }
     var n = backupNudge(), d = deskBtn() + keyStrip(); sheetChunks = null;
     var sh = renderSheet(), o = otherDaysHtml(), f = opsBoardFoot();
     boardChunks = [["nudge", n], ["desk", d]].concat(sheetChunks || [["sheet", sh]]).concat([["foot", f], ["other", o]]);
@@ -3431,52 +3439,112 @@
       }).join("") + '</div><span class="fd-unit">Counts are bookings</span><input type="search" id="flQ" placeholder="Registration, flight or reference" aria-label="Search flights" autocomplete="off" value="' + esc(S.flQ || "") + '"></div>' +
       '<div id="flTables">' + flTablesHtml() + "</div>";
   }
-  // ── Key check (K beside TO DO / ALL on a DROPS board) ──
-  // The office pulls every key out of the cabinet. With K on, each drop gets a
-  // tick box and its yard tag goes grey; ticking the car (key found) brings the
-  // yard's colour back. Ticks are kept on this phone, per sheet.
-  var KEYS_KEY = "takeoff_keys", KEYMODE_KEY = "takeoff_keymode";
-  function keyTicks() { try { return JSON.parse(localStorage.getItem(KEYS_KEY) || "{}") || {}; } catch (e) { return {}; } }
-  function keysFor(id) { var all = keyTicks(), t = all[id] || {}; return Array.isArray(t) ? {} : t; }
-  function setKeys(id, ticks) {
-    var all = keyTicks(); all[id] = ticks;
-    // Only the last few sheets are kept.
-    var ids = Object.keys(all); if (ids.length > 6) ids.slice(0, ids.length - 6).forEach(function (k) { delete all[k]; });
-    try { localStorage.setItem(KEYS_KEY, JSON.stringify(all)); } catch (e) {}
-  }
-  function keyAllowed() { var sh = sheet(); return !!(sh && sh.kind === "drops" && S.me && S.me.role !== "view" && (!isCards() || isBoard())); }
+  // ── Shared key checks (part 93). Only the display switch stays on the phone. ──
+  var KEYMODE_KEY = "takeoff_keymode", keyLoadSeq = 0, keyLiveTimer = null;
+  function keyAllowed() { var sh = sheet(); return !!(sh && sh.kind === "drops" && S.me && S.me.role !== "view" && (S.me.extra || []).indexOf("-keycheck") < 0 && (!isCards() || isBoard())); }
   function keyOn() { return keyAllowed() && keyModeChoice(); }
-  // Grey tags stay while a check is under way (any key ticked on this sheet),
-  // K on or off; K only shows the tick boxes. Reset ends the check.
-  function keyAny() { var sh = sheet(); return !!(sh && Object.keys(keysFor(sh.id)).length); }
-  function keyGrey() { return keyAllowed() && (keyModeChoice() || keyAny()); }
+  function keyCurrent() { var k = S.keys; return k && S.company && k.company === S.company.id && k.sheet === S.sheetId ? k : null; }
+  function keyGrey() { var k = keyCurrent(); return keyAllowed() && !!(k && !k.error && k.session && k.session.status === "active"); }
   function keyModeChoice() { try { return localStorage.getItem(KEYMODE_KEY) === "1"; } catch (e) { return false; } }
-  function toggleKeyMode() { try { if (keyModeChoice()) localStorage.removeItem(KEYMODE_KEY); else localStorage.setItem(KEYMODE_KEY, "1"); } catch (e) {} render(); }
-  function keyFound(r) { var sh = sheet(); return !!(sh && keysFor(sh.id)[r.id]); }
-  // The row's tick box (key mode on): ticked = the key is in the cabinet.
-  function keyBox(r) { if (!keyOn()) return ""; var on = keyFound(r); return '<button type="button" class="kbox' + (on ? " on" : "") + '" data-keytick="' + r.id + '" aria-pressed="' + on + '" aria-label="Key for ' + esc(r.reg) + ' found"></button>'; }
-  // The K switch beside TO DO / ALL (DROPS only), with the count while a
-  // check is under way; Reset beside it while K is on.
-  function renderKeyBtn() {
-    var sh = sheet(), can0 = keyAllowed(), on = keyOn(), grey = keyGrey();
-    show("keyBtn", can0); document.body.classList.toggle("keymode", grey);
-    if (!can0) return;
-    var t = keysFor(sh.id), cars = S.rows.filter(function (r) { return !r.cleared_at; }), n = cars.filter(function (r) { return t[r.id]; }).length;
-    $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
-    $("keyBtn").innerHTML = "<b>K</b>" + (grey ? '<span class="num">' + n + "/" + cars.length + "</span>" : "");
-    // Operations: K says what it is (a check that every car's key is in the cabinet).
-    if (isOps()) {
-      $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet" + (grey ? " (" + n + " of " + cars.length + " cars on site ticked)" : "");
-      if (opsDesk()) $("keyBtn").innerHTML = "<b>Key check</b>" + (grey ? ' <span class="num">' + n + "/" + cars.length + "</span>" : "");
-    }
+  function keyModeSet(on) { try { if (on) localStorage.setItem(KEYMODE_KEY, "1"); else localStorage.removeItem(KEYMODE_KEY); } catch (e) {} }
+  async function toggleKeyMode() { keyModeSet(!keyOn()); S.keyFilter = "all"; render(); if (keyOn()) await loadKeys(S.sheetId); }
+  function keyEntry(r) { var k = keyCurrent(); return k && k.entries[r.id] || { state: "unchecked", revision: 0 }; }
+  function keyFound(r) { return keyEntry(r).state === "found"; }
+  function keyBox() { return ""; } // The normal operations rows never mix key and delivery actions.
+  function keyState(r) { return r.sent_at ? "driver" : keyEntry(r).state; }
+  function keyCars() { return S.rows.filter(function (r) { return r.kind === "drops" && !r.cleared_at && !r.removed_at; }); }
+  function keyCounts() {
+    var c = { all: 0, found: 0, unchecked: 0, missing: 0, driver: 0 };
+    keyCars().forEach(function (r) { var s = keyState(r); c[s]++; if (s !== "driver") c.all++; }); return c;
   }
-  // K on with keys ticked: a line above the list to end the check.
-  function keyStrip() { return keyOn() && keyAny() ? '<div class="kstrip"><span>Key check</span><button type="button" data-keyreset>Untick all</button></div>' : ""; }
-  function resetKeys() { var sh = sheet(); if (!sh || !confirm("Untick every key on this sheet? All yard colours come back.")) return; setKeys(sh.id, {}); render(); }
-  function tickKey(id) {
-    var sh = sheet(); if (!sh) return;
-    var t = keysFor(sh.id); if (t[id]) delete t[id]; else t[id] = Date.now();
-    setKeys(sh.id, t); render();
+  function keyTake(want, company, data) {
+    var entries = {}; (data.entries || []).forEach(function (e) { entries[e.booking_id] = e; });
+    S.keys = { sheet: want, company: company, session: data.session || null, entries: entries, error: "", busy: false };
+  }
+  async function loadKeys(want) {
+    var sh = sheet(), company = S.company && S.company.id;
+    if (!want || want !== S.sheetId || !company || !sh || sh.kind !== "drops" || !keyAllowed()) return;
+    var seq = ++keyLoadSeq, old = keyCurrent();
+    if (!old) { S.keys = { sheet: want, company: company, entries: {}, session: null, loading: true }; S.keyFilter = "all"; S.keyYard = ""; }
+    var r; try { r = await sb.rpc("key_check_get", { p_sheet: want }); } catch (e) { r = { error: e }; }
+    if (seq !== keyLoadSeq || !S.company || company !== S.company.id || want !== S.sheetId) return;
+    if (r.error || !r.data) {
+      S.keys = { sheet: want, company: company, entries: {}, session: null, error: isDown(r) ? "Can't load key checks. Check your signal and try again." : "Key check isn't available yet. Speak to the office." };
+    } else keyTake(want, company, r.data);
+    if (S.view === "board" && !S.switching && !$("panel").open && !yardOpen()) render();
+  }
+  function keyChanged(payload) {
+    var r = payload.new || payload.old || {};
+    if (r.sheet_id && r.sheet_id !== S.sheetId) return;
+    clearTimeout(keyLiveTimer); keyLiveTimer = setTimeout(function () { loadKeys(S.sheetId); }, 100);
+  }
+  // Reconcile missed realtime events, including after a phone wakes or reconnects.
+  setInterval(function () { if (S.me && keyOn() && S.view === "board" && document.visibilityState === "visible") loadKeys(S.sheetId); }, 30000);
+  async function keyMutate(fn, args) {
+    var k = keyCurrent(), want = S.sheetId, company = S.company && S.company.id;
+    if (!k || k.loading || k.error || S.keySaving || S.offline || !navigator.onLine) { toast("Connect to the internet to check keys.", true); return false; }
+    S.keySaving = true; render();
+    var r; try { r = await sb.rpc(fn, args); } catch (e) { r = { error: e }; }
+    S.keySaving = false;
+    if (!S.company || S.company.id !== company || S.sheetId !== want) { if (S.me) render(); return false; }
+    if (r.error) toast(isDown(r) ? "Key check wasn't confirmed. Reconnect and check its status before retrying." : r.error.message, true);
+    await loadKeys(want); return !r.error;
+  }
+  function startKeyCheck(restart) {
+    var k = keyCurrent(); if (!k) return;
+    if (restart && !confirm("Start a new shared key check? Everyone will see unchecked keys. This check stays in the history.")) return;
+    return keyMutate("key_check_start", { p_sheet: S.sheetId, p_restart: !!restart, p_previous: k.session ? k.session.id : null });
+  }
+  function tickKey(id, state) {
+    var k = keyCurrent(), r = S.rows.filter(function (x) { return x.id === id; })[0];
+    if (!k || !k.session || k.session.status !== "active" || !r || r.sent_at || r.cleared_at) return;
+    var e = keyEntry(r);
+    return keyMutate("key_check_set", { p_session: k.session.id, p_booking: id, p_state: state || (e.state === "found" ? "unchecked" : "found"), p_revision: e.revision });
+  }
+  async function finishKeyCheck() {
+    var k = keyCurrent(), c = keyCounts(); if (!k || !k.session) return;
+    if (!c.all || c.unchecked || c.missing) { S.keyFilter = c.missing ? "missing" : "unchecked"; render(); return toast("Check every remaining key before finishing.", true); }
+    if (await keyMutate("key_check_finish", { p_session: k.session.id })) toast("Key check completed.");
+  }
+  function renderKeyBtn() {
+    var can0 = keyAllowed(), on = keyOn(), k = keyCurrent(), c = keyCounts();
+    show("keyBtn", can0); document.body.classList.toggle("keymode", keyGrey());
+    document.body.classList.toggle("keychecking", on && S.view === "board");
+    if (!can0) return;
+    $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
+    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
+    $("keyBtn").setAttribute("aria-label", "Key check" + (k && k.session ? ", " + c.found + " of " + c.all + " found" : ""));
+    $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet";
+    if (on) { $("tabTodo").classList.remove("on"); $("tabAll").classList.remove("on"); $("tabTodo").setAttribute("aria-pressed", "false"); $("tabAll").setAttribute("aria-pressed", "false"); }
+  }
+  function keyStrip() { return ""; }
+  function renderKeyBoard() {
+    var k = keyCurrent(), sh = sheet(), c = keyCounts(), disabled = S.keySaving || S.offline || !navigator.onLine;
+    if (!k || k.loading) return '<div class="msg" role="status">Loading shared key check…</div>';
+    if (k.error) return '<div class="msg" role="alert">' + esc(k.error) + ' <button type="button" class="btn small" data-keyretry>Try again</button></div>';
+    var s = k.session, active = s && s.status === "active", closed = s && !active;
+    var head = '<section class="kc" aria-label="Shift key check"><div class="kc-head"><div><b>Shift key check</b><span class="kc-session">' +
+      (s ? (active ? "Started " : "Completed ") + hhmm(active ? s.started_at : s.finished_at) + " · " + esc(active ? s.started_by_name : s.finished_by_name) : "Shared with the team") + '</span></div><div class="kc-head-actions">' +
+      (sh.archived_at ? '<span class="note">Archived shift</span>' : s ? '<button type="button" data-keynew' + (disabled ? ' disabled' : '') + '>New check</button>' + (active ? '<button type="button" class="kc-primary" data-keyfinish' + (disabled ? ' disabled' : '') + '>Finish check</button>' : '') : '<button type="button" class="kc-primary" data-keystart' + (disabled || !c.all ? ' disabled' : '') + '>Start check</button>') + '</div></div>';
+    if (!s) return head + '<div class="kc-ready">' + c.all + ' keys to check' + (c.driver ? " · " + c.driver + " with drivers" : "") + '.</div></section>';
+    head += '<div class="kc-counts">' + [["all","Expected"],["found","Found"],["unchecked","Unchecked"],["missing","Missing"]].map(function (x) {
+      return '<button type="button" class="kc-count kc-' + x[0] + '" data-keyfilter="' + x[0] + '" aria-pressed="' + ((S.keyFilter || "all") === x[0]) + '"><b class="num">' + c[x[0]] + '</b><span>' + x[1] + '</span></button>';
+    }).join("") + '</div><div class="kc-progress" role="progressbar" aria-label="Keys confirmed found" aria-valuemin="0" aria-valuemax="' + c.all + '" aria-valuenow="' + c.found + '"><div style="width:' + (c.all ? c.found / c.all * 100 : 0) + '%"></div></div>' +
+      '<div class="kc-filters"><label>Yard <select id="keyYard" aria-label="Filter key check by yard"><option value="">All yards</option>' +
+      (S.company.yards || []).map(function (y) { return '<option value="' + esc(y) + '"' + (S.keyYard === y ? ' selected' : '') + '>' + esc(YARD_LABEL[y] || y) + '</option>'; }).join("") + '<option value="-"' + (S.keyYard === "-" ? ' selected' : '') + '>No yard</option></select></label><span class="kc-order">Unchecked and missing first</span>' +
+      (c.driver ? '<button type="button" data-keyfilter="driver" aria-pressed="' + (S.keyFilter === "driver") + '">With driver <b class="num">' + c.driver + '</b></button>' : '') + '<span class="kc-shared" role="status" aria-live="polite">' + (S.keySaving ? 'Saving…' : 'Shared team check') + '</span></div></section>';
+    if (closed) head += '<div class="kc-completed" role="status">Check completed · ' + s.found_count + '/' + s.expected_count + ' keys confirmed.' + (c.unchecked || c.missing ? ' Shift changed — start a new check for the remaining keys.' : '') + '</div>';
+    if (S.offline || !navigator.onLine) head += '<div class="kc-warning" role="status">Offline · reconnect before confirming keys.</div>';
+    var q = S.q.trim().toUpperCase().replace(/\s/g,""), rank = { unchecked:0, missing:1, found:2, driver:3 };
+    var rows = keyCars().filter(function (r) {
+      return ((!S.keyFilter || S.keyFilter === "all") || keyState(r) === S.keyFilter) && (!S.keyYard || (S.keyYard === "-" ? !r.yard : r.yard === S.keyYard)) &&
+        (!q || [r.reg,r.make,r.num,r.name,r.ref,r.phone,r.note,r.flight].join("").toUpperCase().replace(/\s/g,"").indexOf(q) >= 0);
+    }).sort(function (a,b) { return rank[keyState(a)] - rank[keyState(b)] || (a.return_at || "").localeCompare(b.return_at || "") || (a.num || 0) - (b.num || 0); });
+    head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
+    return head + (rows.length ? rows.map(function (r) {
+      var st = keyState(r), e = keyEntry(r), locked = disabled || !active || st === "driver" || sh.archived_at;
+      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div><div class="kc-yard">' + (r.yard ? '<span class="code ' + esc(r.yard) + '">' + esc(YARD_LABEL[r.yard] || r.yard) + '</span>' : '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(staffName(r.sent_by) || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
+    }).join("") : '<div class="msg">No keys match this view.</div>') + '<div class="kc-foot">Showing ' + rows.length + ' of ' + keyCars().length + ' cars on this shift.</div>';
   }
 
   function renderStats() {
@@ -5553,8 +5621,13 @@
     if (t.dataset.swipeleft) { setSwipeLeftChoice(t.dataset.swipeleft); render(); return openMenu(); }
     if (t.closest("[data-swipeonlyme]")) { setSwipeOnlyChoice(!swipeOnlyChoice()); render(); return openMenu(); }
     if (t.dataset.keytick) return tickKey(t.dataset.keytick);
+    if (t.dataset.keymissing) return tickKey(t.dataset.keymissing, "missing");
+    if (t.dataset.keyfilter) { S.keyFilter = t.dataset.keyfilter; return render(); }
+    if (t.dataset.keystart !== undefined) return startKeyCheck(false);
+    if (t.dataset.keynew !== undefined) return startKeyCheck(true);
+    if (t.dataset.keyfinish !== undefined) return finishKeyCheck();
+    if (t.dataset.keyretry !== undefined) return loadKeys(S.sheetId);
     if (t.id === "keyBtn") return toggleKeyMode();
-    if (t.dataset.keyreset !== undefined) return resetKeys();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.view) return go(t.dataset.view);
@@ -5604,7 +5677,7 @@
     if (t.dataset.discordsave !== undefined) return saveDiscord(t, false);
     if (t.dataset.discordclear !== undefined) { if (confirm("Stop posting " + brandName() + " alerts to Discord?")) saveDiscord(t, true); return; }
     if (t.dataset.resetsettings !== undefined) { S.settingsDraft = Object.assign({}, TIMING_DEFAULT); render(); return; }
-    if (t.dataset.filter) { S.filter = t.dataset.filter; S.boardQueue = ""; render(); return; }
+    if (t.dataset.filter) { keyModeSet(false); S.filter = t.dataset.filter; S.boardQueue = ""; render(); return; }
     if (t.closest("#tallyFold")) return toggleTallyFold();
     if (t.dataset.actf) { S.actFilter = t.dataset.actf; return render(); }
     if (t.dataset.cat) { S.catFilter = S.catFilter === t.dataset.cat ? "" : t.dataset.cat; render(); return; }
@@ -5719,6 +5792,7 @@
     }
   });
   document.addEventListener("change", async function (e) {
+    if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
     var t = e.target;
     if ((t.id === "biFrom" || t.id === "biTo") && S.autoImport) {

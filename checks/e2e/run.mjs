@@ -146,6 +146,34 @@ function rpc(db, fn, a) {
     return sh.id;
   };
   switch (fn) {
+    case "key_check_get": return db.keyChecks?.[a.p_sheet] || { session: null, entries: [] };
+    case "key_check_start": {
+      if (db.me.role === "view") throw new Error("You cannot check keys.");
+      db.keyChecks ||= {};
+      const old = db.keyChecks[a.p_sheet];
+      if (old && !a.p_restart) return old;
+      if (a.p_restart && old?.session.id !== a.p_previous) throw new Error("The key check changed. Refresh and try again.");
+      const session = { id: 'key-' + (db.keySeq = (db.keySeq || 0) + 1), sheet_id: a.p_sheet, status: 'active', started_at: now(), started_by_name: db.me.name };
+      const entries = db.bookings.filter(b => b.sheet_id === a.p_sheet && !b.sent_at && !b.cleared_at && !b.removed_at).map(b => ({ booking_id: b.id, state: 'unchecked', revision: 0 }));
+      return db.keyChecks[a.p_sheet] = { session, entries };
+    }
+    case "key_check_set": {
+      const k = Object.values(db.keyChecks || {}).find(k => k.session.id === a.p_session);
+      if (!k || k.session.status !== 'active') throw new Error('This check has ended.');
+      const b = row(a.p_booking);
+      if (!b || b.sheet_id !== k.session.sheet_id || b.cleared_at || b.sent_at || b.removed_at) throw new Error('That key is no longer in the cabinet.');
+      let e = k.entries.find(e => e.booking_id === a.p_booking);
+      if (!e) { e = { booking_id: a.p_booking, state: 'unchecked', revision: 0 }; k.entries.push(e); }
+      if (e.revision !== a.p_revision) throw new Error('Someone updated this key. Refresh and check its current status.');
+      if (e.state !== a.p_state) Object.assign(e,{ state: a.p_state, revision: e.revision + 1, checked_at: now(), checked_by_name: db.me.name });
+      return e;
+    }
+    case "key_check_finish": {
+      const k = Object.values(db.keyChecks || {}).find(k => k.session.id === a.p_session);
+      const cars = db.bookings.filter(b => b.sheet_id === k.session.sheet_id && !b.sent_at && !b.cleared_at && !b.removed_at);
+      if (cars.some(b => !k.entries.some(e => e.booking_id === b.id && e.state === 'found'))) throw new Error('Keys still need attention.');
+      Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
+    }
     case "me": return db.me;
     case "set_capacity": {
       const yc = {}; for (const [k, v] of Object.entries(a.p_yards || {})) { if (!db.company.yards.includes(k)) throw new Error("Not a valid yard: " + k); if (+v) yc[k] = +v; }
@@ -240,7 +268,8 @@ async function backend(ctx, db) {
     if (p.startsWith("/rest/v1/rpc/")) {
       const fn = p.slice(13), args = JSON.parse(req.postData() || "{}");
       db.calls.push({ fn, args });
-      return reply(200, rpc(db, fn, args));
+      if (db.keyGate && fn.startsWith('key_check_')) { const error = await db.keyGate(fn,args); if (error) return reply(400,{message:error}); }
+      try { return reply(200, rpc(db, fn, args)); } catch(e) { return reply(400,{message:e.message}); }
     }
     if (p.startsWith("/storage/v1/object/sign/pt-photos/")) return reply(200, { signedURL: "/object/sign/pt-photos/" + p.slice(34) + "?token=t" });
     if (p.startsWith("/storage/v1/object/pt-photos/")) { db.uploads.push(p.slice(29)); (db.uploadMarks = db.uploadMarks || []).push(((req.postDataBuffer() || Buffer.alloc(0)).toString("latin1").match(/name="cacheControl"\r\n\r\n(\d+)/) || [])[1] || ""); return reply(200, { Key: "pt-photos/" + p.slice(29) }); }
@@ -381,7 +410,9 @@ const pickKind = async (page, kind) => {
 };
 
 // Each section stands alone: if one breaks part-way, it's reported and the rest still run.
-async function scenario(fn) {
+async function scenario(fn, tag) {
+  if (process.env.KEYS_ONLY && tag !== 'keys') return;
+  if (process.env.DESK_ONLY && tag !== 'desk') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
@@ -888,8 +919,8 @@ await scenario(async () => {
   check("Ops wide: CALLED works as before", db.calls.some((c) => c.fn === "tap_drop" && c.args.p_booking === "w1" && c.args.p_action === "called" && c.args.p_on === true));
   const k = await page.evaluate(() => ({ t: document.getElementById("keyBtn").innerText.trim(), title: document.getElementById("keyBtn").title }));
   check("Ops wide: K says Key check, with what it does", k.t === "Key check" && /key is found in the cabinet/.test(k.title), k);
-  await page.click("#keyBtn"); await sleep(250);
-  check("Ops wide: Key check on: a tick box on each row, the count on the button", await page.evaluate(() => document.querySelectorAll("#main .drow .kbox").length > 10 && /^Key check\s+\d+\/\d+$/.test(document.getElementById("keyBtn").innerText.trim())));
+  await page.click("#keyBtn"); await page.waitForSelector("[data-keystart]"); await page.click("[data-keystart]"); await page.waitForSelector(".kc-row");
+  check("Ops wide: Key check on: a tick box on each row, the count on the button", await page.evaluate(() => document.querySelectorAll("#main .kc-row .kbox").length > 10 && /^Key check\s+\d+\/\d+$/.test(document.getElementById("keyBtn").innerText.trim())));
   await page.click("#keyBtn"); await sleep(250);
   await page.fill("#q", "ZZ99ZZZ"); await sleep(400);
   check("Ops wide: a search with no match says so", await page.evaluate(() => /Not (found|on this sheet)/.test(document.querySelector("#main .msg").textContent)));
@@ -905,7 +936,7 @@ await scenario(async () => {
   // phone: the rows and the bottom bar as before
   await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
   const ph = await page.evaluate(() => ({ desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .drow"), row: !!document.querySelector('#main .row[data-id="w2"] .acts'), nav: getComputedStyle(document.getElementById("bnav")).position, after: document.getElementById("bnav").previousElementSibling.id, dash: document.getElementById("bnDash").offsetParent === null, key: document.getElementById("keyBtn").innerText.trim(), head: document.getElementById("opsHead").offsetParent === null }));
-  check("Ops phone after a wide screen: rows, K and the bottom bar back as they were", !ph.desk && !ph.drow && ph.row && ph.nav === "fixed" && ph.after === "main" && ph.dash && ph.key === "K" && ph.head, ph);
+  check("Ops phone after a wide screen: rows, K and the bottom bar back as they were", !ph.desk && !ph.drow && ph.row && ph.nav === "fixed" && ph.after === "main" && ph.dash && /^K/.test(ph.key) && ph.head, ph);
   // Flights on a wide screen
   await page.setViewportSize({ width: 1440, height: 1000 }); await sleep(300);
   await page.click('#bnav [data-bn="flBtn"]'); await sleep(500);
@@ -978,7 +1009,7 @@ await scenario(async () => {
   check("Standard with features on a wide screen: its own rows and bottom bar", await p4.evaluate(() => !document.body.classList.contains("ops-desk") && !document.querySelector("#main .drow") && getComputedStyle(document.getElementById("bnav")).position === "fixed" && document.getElementById("bnav").previousElementSibling.id === "main"));
   await p4.click('#bnav [data-bn="flBtn"]').catch(() => {}); await sleep(300);
   await p4.context().close();
-});
+}, "desk");
 await scenario(async () => {
   // Operations on a wide screen: the other pages (Dashboard, Settings, Booking details, Summary, Stats, Archive, Staff, Me, Menu).
   const mk = () => { const db = deskDb(); db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
@@ -2915,47 +2946,98 @@ await scenario(async () => {
 });
 
 
-// 22. Key check (K beside TO DO / ALL): a tick box per drop, yard tags grey until the key is found
+// 22. Shared key checks: real UI against a shared mock server.
 for (const theme of ["ops", ""]) await scenario(async () => {
-  const name = "Key check (" + (theme || "Standard") + "): ";
-  const page = await phone(browser, keysDb(theme), { width: 360 });
+  const name = "Shared keys (" + (theme || "Standard") + "): ";
+  const db = keysDb(theme), page = await phone(browser, db, { width: 360 });
   await open(page);
-  check(name + "K shows on a DROPS board, off to start", await page.isVisible("#keyBtn") && !(await page.locator(".kbox").count()) && !(await page.locator(".code.kgrey").count()));
-  await page.click("#keyBtn"); await sleep(300);
-  check(name + "K on: every drop gets a tick box", await page.locator("#main .row .kbox").count() === await page.locator("#main .row").count());
-  check(name + "K on: yard tags go grey, NO YARD stays as it is", await page.locator('.row[data-id="k3"] .code.kgrey').count() === 1 && !(await page.locator('.row[data-id="k1"] .kgrey').count()));
-  const grey = await page.locator('.row[data-id="k3"] .code').evaluate((e) => getComputedStyle(e).backgroundColor);
-  check(name + "a grey tag is grey", grey === "rgb(232, 234, 237)", grey);
-  check(name + "K shows 0 of the cars on site", /0\/17/.test(await text(page, "#keyBtn")), await text(page, "#keyBtn"));
-  await page.click('.row[data-id="k3"] .kbox'); await sleep(200);
-  check(name + "ticking a car brings its yard colour back", !(await page.locator('.row[data-id="k3"] .kgrey').count()) && await page.locator('.row[data-id="k3"] .kbox.on').count() === 1 && /1\/17/.test(await text(page, "#keyBtn")));
-  check(name + "ticking doesn't open the car", !(await page.locator("#panel").evaluate((p) => p.open)));
-  await page.click('.row[data-id="k4"] .kbox'); await page.click('.row[data-id="k4"] .kbox'); await sleep(200);
-  check(name + "a second tap unticks", await page.locator('.row[data-id="k4"] .code.kgrey').count() === 1);
-  await page.reload(); await page.waitForSelector("#main .row"); await sleep(300);
-  check(name + "K and the ticks are kept after the app is reopened", await page.locator('.row[data-id="k3"] .kbox.on').count() === 1 && /1\/17/.test(await text(page, "#keyBtn")));
-  const wide = await page.evaluate(() => [...document.querySelectorAll("#main *")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.className));
-  check(name + "nothing wider than a 360 px phone", wide.length === 0, wide.slice(0, 3));
-  await pickKind(page, "picks");
-  check(name + "no K and no tick boxes on PICKS", !(await page.isVisible("#keyBtn")) && !(await page.locator(".kbox").count()));
-  await pickKind(page, "drops"); await page.click("#keyBtn"); await sleep(200);
-  check(name + "K off: tick boxes go, but unticked tags stay grey while a check is under way", !(await page.locator(".kbox").count()) && await page.locator('.row[data-id="k4"] .code.kgrey').count() === 1 && !(await page.locator('.row[data-id="k3"] .kgrey').count()));
-  check(name + "K off: the count stays on the button, Untick all is hidden", /1\/17/.test(await text(page, "#keyBtn")) && !(await page.locator("[data-keyreset]").count()));
-  await page.click("#keyBtn"); await sleep(200);
-  check(name + "K on with a tick: Untick all shows above the list", await page.isVisible("[data-keyreset]"));
-  await page.click("[data-keyreset]"); await sleep(200);
-  check(name + "Reset unticks every key (it asks first)", !(await page.locator(".kbox.on").count()) && page.__dialogs.some((d) => /Untick every key/.test(d)) && !(await page.locator("[data-keyreset]").count()));
-  await page.click("#keyBtn"); await sleep(200);
-  check(name + "K off with no ticks: the board is back to normal", !(await page.locator(".kbox").count()) && !(await page.locator(".kgrey").count()) && (await text(page, "#keyBtn")).trim() === "K");
-  check(name + "no errors", page.__errors.length === 0, page.__errors);
-});
-await scenario(async () => {
-  const db = keysDb("ops"); db.me.role = "view";
-  const page = await phone(browser, db);
-  await open(page);
-  check("Key check: no K for a view-only person", !(await page.isVisible("#keyBtn")));
-});
+  check(name + "off initially", await page.isVisible("#keyBtn") && !(await page.locator(".kbox").count()));
+  // Old phone-local ticks must never become shared physical confirmations.
+  await page.evaluate(() => localStorage.setItem('takeoff_keys', JSON.stringify({d0:{k3:Date.now()}})));
+  await page.click('#keyBtn'); await page.waitForSelector('[data-keystart]');
+  await page.click('[data-keystart]'); await page.waitForSelector('.kc-row');
+  check(name + "all 17 cabinet keys start unchecked", await page.locator('.kc-row').count() === 17 && /0\/17/.test(await text(page,'#keyBtn')) && !(await page.locator('.kbox.on').count()));
+  check(name + "delivery actions are outside key mode", !(await page.locator('#main [data-act]').count()));
+  await page.click('[data-keytick="k3"]'); await page.waitForSelector('[data-keytick="k3"].on');
+  check(name + "confirmation stores staff, time and server state", db.keyChecks.d0.entries.find(e=>e.booking_id==='k3').state === 'found' && /RAKESH/.test(await page.locator('.row[data-id="k3"] .kc-person').textContent()));
+  check(name + "found keys move below unchecked", await page.locator('.kc-row').first().getAttribute('data-id') === 'k1');
+  await page.click('[data-keymissing="k4"]'); await page.waitForSelector('.kc-row-missing');
+  await page.click('[data-keyfilter="missing"]');
+  check(name + "missing filter shows only reported keys", await page.locator('.kc-row').count()===1 && await page.locator('.kc-row').getAttribute('data-id')==='k4');
+  await page.click('[data-keytick="k4"]'); await page.waitForFunction(()=>!document.querySelector('.kc-row'));
+  await page.click('[data-keyfilter="all"]');
+  await page.selectOption('#keyYard','CP');
+  check(name + "yard filter applies to key rows", await page.locator('.kc-row').count()===6);
+  await page.selectOption('#keyYard','');
+  await page.click('[data-keyfinish]');
+  check(name + "cannot finish with unchecked keys", !db.calls.some(c=>c.fn==='key_check_finish') && db.keyChecks.d0.session.status==='active');
+  await page.click('[data-keyfilter="all"]');
+  // Another browser context reads the same server state, not localStorage.
+  const teammate = await phone(browser, db, { width: 1024 }); await open(teammate);await teammate.click('#keyBtn');
+  await teammate.waitForSelector('[data-keytick="k3"].on');
+  check(name + "a second device sees checked keys", /2\/17/.test(await text(teammate,'#keyBtn')));
+  // Change on another device while this page is still stale.
+  await teammate.click('[data-keytick="k3"]'); await teammate.waitForSelector('[data-keytick="k3"]:not(.on)');
+  await page.click('[data-keytick="k3"]'); await sleep(250);
+  check(name + "stale device cannot overwrite newer status", db.keyChecks.d0.entries.find(e=>e.booking_id==='k3').state==='unchecked' && /Someone updated/.test(await toast(page)));
+  await page.reload(); await page.waitForSelector('.kc-row');
+  check(name + "reload restores current shared state", !await page.locator('[data-keytick="k3"]').evaluate(e=>e.classList.contains('on')) && /1\/17/.test(await text(page,'#keyBtn')));
+  // Imported cars join unchecked; SENT cars are accounted for separately.
+  db.bookings.find(b=>b.id==='k5').sent_at=now();db.bookings.find(b=>b.id==='k5').sent_by='s2';
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await sleep(350);
+  await page.reload();await page.waitForSelector('.kc-row-driver');
+  check(name + "with driver is separate from cabinet count", /1\/16/.test(await text(page,'#keyBtn')) && await page.locator('.kc-row-driver .kbox').count()===0);
+  for(const width of [320,360,736,1024,1440]) { await page.setViewportSize({width,height:900});await sleep(100);check(name+'fits '+width+'px',await noSideScroll(page),await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>({tag:e.tagName,id:e.id,cls:e.className,width:e.getBoundingClientRect().width})))); }
+  await page.setViewportSize({width:360,height:844});
+  // On failure, no optimistic success and no offline mutation queue.
+  const before = db.keyChecks.d0.entries.find(e=>e.booking_id==='k1').state;
+  db.keyGate=fn=>fn==='key_check_set'?'Test save refused':null;
+  await page.click('[data-keytick="k1"]');await sleep(250);
+  check(name+'failed save does not confirm a key',db.keyChecks.d0.entries.find(e=>e.booking_id==='k1').state===before && !(await page.locator('[data-keytick="k1"].on').count()));
+  db.keyGate=null;
+  const saves=db.calls.filter(c=>c.fn==='key_check_set').length;
+  await page.context().setOffline(true);await page.waitForSelector('.kc-warning');
+  check(name+'offline checks are disabled',await page.locator('.kbox:not([disabled])').count()===0&&db.calls.filter(c=>c.fn==='key_check_set').length===saves);
+  await page.context().setOffline(false);await page.waitForFunction(()=>!document.querySelector('.kc-warning'));
+  await page.click('[data-keynew]');await sleep(250);
+  check(name+'new check asks and resets shared ticks',page.__dialogs.some(d=>/new shared key check/.test(d))&&db.keyChecks.d0.entries.every(e=>e.state==='unchecked'));
+  // Confirm the remaining cabinet keys and finish through the UI.
+  while(await page.locator('.kc-row:not(.kc-row-driver) .kbox:not(.on)').count()) {
+    await page.locator('.kc-row:not(.kc-row-driver) .kbox:not(.on)').first().click();
+    await page.waitForFunction(()=>!document.querySelector('.kc-shared')?.textContent.includes('Saving'));
+  }
+  await page.click('[data-keyfinish]');await page.waitForSelector('.kc-completed');
+  check(name+'completed check is read-only',db.keyChecks.d0.session.status==='completed'&&await page.locator('.kbox:not([disabled])').count()===0);
+  await page.click('#tabAll');await page.waitForSelector('.row .acts');
+  check(name+'All returns to delivery actions',!(await page.locator('.kc').count())&&await page.locator('.row .acts').count()>0);
+  await page.click('#keyBtn');await page.waitForSelector('.kc-completed');
+  await pickKind(page,'picks');check(name+'no key mode on picks',!await page.isVisible('#keyBtn')&&!(await page.locator('.kc').count()));
+  check(name+'no runtime errors',page.__errors.length===0,page.__errors);
+  await page.context().close();await teammate.context().close();
+}, 'keys');
+await scenario(async()=>{
+  const db=keysDb('ops');db.me.role='view';const page=await phone(browser,db);await open(page);
+  check('Shared keys: view-only has no Key check',!await page.isVisible('#keyBtn'));await page.context().close();
+},'keys');
+await scenario(async()=>{
+  const db=keysDb('ops');db.keyGate=()=> 'Function not found';const page=await phone(browser,db);await open(page);await page.click('#keyBtn');await page.waitForSelector('[data-keyretry]');
+  check('Shared keys: unavailable setup fails clearly without local ticks',await page.locator('.kbox').count()===0&&/Speak to the office/.test(await text(page,'#main')));await page.context().close();
+},'keys');
 
+
+await scenario(async()=>{
+  const db=keysDb('ops'), page=await phone(browser,db);await open(page);await page.click('#keyBtn');await page.waitForSelector('[data-keystart]');await page.click('[data-keystart]');await page.waitForSelector('.kc-row');
+  await page.click('[data-keytick="k3"]');await page.waitForSelector('[data-keytick="k3"].on');
+  let release; const gate=new Promise(resolve=>release=resolve);
+  db.keyGate=async(fn,args)=>{if(fn==='key_check_get'&&args.p_sheet==='d0')await gate;return null;};
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await sleep(100);
+  await page.selectOption('#sheetPick','d1');await page.waitForSelector('[data-keystart]');
+  release();await sleep(250);
+  check('Shared keys: late old-shift response cannot carry ticks to new shift',await page.locator('.kbox.on').count()===0&&await page.locator('[data-keystart]').count()===1);
+  await page.click('[data-keystart]');await page.waitForSelector('.kc-row');
+  check('Shared keys: next shift has its own unchecked session',db.keyChecks.d1.session.id!==db.keyChecks.d0.session.id&&db.keyChecks.d1.entries.every(e=>e.state==='unchecked'));
+  await page.context().close();
+},'keys');
 
 // ── switching sheets: the old cars never stay tappable under the new date ──
 await scenario(async () => {
@@ -3414,7 +3496,7 @@ async function shots(dir) {
     const page = await phone(browser, keysDb(process.env.SHOTS_THEME || "ops"), { width: 390 }); await page.setViewportSize({ width: 390, height: 1000 });
     const snap = async (name) => { await sleep(400); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(dir, name + ".png") }); };
     await open(page); await snap("keys-off");
-    await page.click("#keyBtn"); await snap("keys-on");
+    await page.click("#keyBtn"); await page.waitForSelector("[data-keystart]"); await page.click("[data-keystart]"); await page.waitForSelector(".kc-row"); await snap("keys-on");
     for (const id of ["k3", "k5", "k6", "k8", "k11"]) await page.click('.row[data-id="' + id + '"] .kbox');
     await snap("keys-some-ticked");
     await page.click("#keyBtn"); await snap("keys-k-off-still-grey"); await page.click("#keyBtn");
