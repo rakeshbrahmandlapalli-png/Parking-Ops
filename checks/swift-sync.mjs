@@ -338,5 +338,10 @@ ok("the service-role-only functions are not callable by the app's users", (await
   const g2 = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td><input name='f' value='W61601'></td><td>Z</td></tr></table>");
   ok("a single-quoted Flight No. box is read", readReport(g2, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601"); }
 
+{ const g = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td><input type=\"hidden\" name=\"id\" value=\"81020\"><input type=\"text\" name=\"flight\" value=\"W61601\"></td><td>Z</td></tr></table>");
+  ok("a hidden booking id beside the Flight No. box is skipped", readReport(g, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601");
+  const g2 = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td>W6 1601</td><td>Z</td></tr></table>");
+  ok("a plain-text flight is still read", readReport(g2, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601"); }
+
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);

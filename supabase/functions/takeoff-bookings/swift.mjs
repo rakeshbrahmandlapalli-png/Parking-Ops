@@ -208,10 +208,14 @@ export function parseHtmlTable(html) {
   (String(html).match(/<tr[\s\S]*?<\/tr>/gi) || []).forEach((tr) => {
     const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map((c) => {
       // The Flight No. boxes: value="W61601", value='W61601' or value=W61601 (older pages leave out the quotes).
-      const inp = c.match(/<input[^>]*\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      // Hidden fields (a booking id beside the box) are skipped; several visible boxes are read together.
+      const vals = [...c.matchAll(/<input\b([^>]*)>/gi)].filter((m) => !/\btype\s*=\s*["']?hidden/i.test(m[1])).map((m) => {
+        const v = m[1].match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+        return v ? (v[1] ?? v[2] ?? v[3] ?? "").trim() : "";
+      }).filter(Boolean);
       const ta = c.match(/<textarea[^>]*>([\s\S]*?)<\/textarea>/i);
       const sel = c.match(/<option[^>]*selected[^>]*>([\s\S]*?)<\/option>/i);
-      return inp ? (inp[1] ?? inp[2] ?? inp[3] ?? "").trim() : ta ? text(ta[1]) : sel ? text(sel[1]) : text(c);
+      return vals.length ? vals.join(" ") : ta && text(ta[1]) ? text(ta[1]) : sel ? text(sel[1]) : text(c);
     });
     if (cells.some(Boolean)) grid.push(cells);
   });
