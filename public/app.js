@@ -3285,20 +3285,26 @@
     var t = r.early ? '<b class="num">' + esc(r.sched_time || "—") + '</b><small>Early return</small>'
       : '<b class="num">' + esc(r.return_at ? hhmm(r.return_at) : "—") + "</b>" + (noFl && r.est_time ? '<small>Collect <span class="num">' + esc(r.est_time) + "</span></small>" : "");
     var mk = String(r.make || "").trim();
-    var fl = noFl ? '<span class="mut">No flight</span>' : r.flight ? '<b class="num">' + esc(r.flight) + "</b>"
+    // The flight number alone; tapping it changes it (as the car's FLIGHT NUMBER does).
+    var fl = noFl ? (can("flights") ? '<button type="button" class="flno mut" data-addflight title="Change flight">No flight</button>' : '<span class="mut">No flight</span>')
+      : r.flight ? (can("flights") ? '<button type="button" class="flno num" data-addflight title="Change flight">' + esc(r.flight) + "</button>" : '<b class="num">' + esc(r.flight) + "</b>")
       : can("flights") ? '<button type="button" class="addflight" data-addflight>+ FLIGHT</button>' : '<span class="mut">No flight number</span>';
+    // The flight's times sit in Status, beside what the flight check says.
+    var landed = !noFl && !canc && r.flight_status === "landed" && r.est_time && r.est_time !== "DELAY";
+    var fstate = landed ? '<span class="fx ok">Landed <span class="num">' + esc(r.est_time) + "</span></span>" : opsFlightState(r, canc);
     var times = [];
     if (!noFl && r.sched_time) times.push('Sch <span class="num">' + esc(r.sched_time) + "</span>");
-    if (!noFl && !canc && r.est_time && r.est_time !== "DELAY") times.push((r.flight_status === "landed" ? "Landed " : "Est ") + '<span class="num">' + esc(r.est_time) + "</span>");
+    if (!noFl && !canc && !landed && r.est_time && r.est_time !== "DELAY") times.push('Est <span class="num">' + esc(r.est_time) + "</span>");
+    var ftimes = times.length ? '<span class="ftm">' + times.join(" · ") + "</span>" : r.flight && !noFl && !fstate && !r.sent_at && !r.cleared_at ? '<span class="mut">No times yet</span>' : "";
     var state = opsDropState(r, overWord, cmpl);
-    var extra = [opsFlightState(r, canc), flightToCheck(r) ? '<span class="tag ck">' + checkWord(r) + "</span>" : "", over && !overWord && !inOverstayBlock(r) ? '<span class="tag ov">OVERSTAY</span>' : "",
+    var extra = [fstate, ftimes, flightToCheck(r) ? '<span class="tag ck">' + checkWord(r) + "</span>" : "", over && !overWord && !inOverstayBlock(r) ? '<span class="tag ov">OVERSTAY</span>' : "",
       chargeTag(r).replace(/^ · /, ""), exitTag(r)].filter(Boolean);
     var notes = earlyLine(r) + noteLine(r);
     return '<div class="row drow' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="dc dc-t" data-open>' + t + "</div>" +
       '<div class="dc dc-r"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + keyBox(r) + catTag(r) + wasTag(r) + "</div>" +
         '<div class="sub" data-open title="' + esc(mk) + '">' + (mk ? esc(niceMake(mk)) : '<span class="mut">No vehicle details</span>') + "</div></div>" +
-      '<div class="dc dc-f" data-open><div class="l1">' + fl + '</div><div class="sub">' + (times.join(" · ") || (r.flight && !noFl ? '<span class="mut">No times yet</span>' : "")) + "</div></div>" +
+      '<div class="dc dc-f" data-open><div class="l1">' + fl + "</div></div>" +
       '<div class="dc dc-c" data-open><div class="l1" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="sub num" title="' + esc(r.ref) + '">' + esc(r.ref || "") + "</div></div>" +
       '<div class="dc dc-y">' + (yardChip(r) || '<span class="mut">—</span>') + "</div>" +
       '<div class="dc dc-s" data-open><div class="l1">' + state[0] + "</div>" + (state[1] || extra.length ? '<div class="sub">' + [state[1]].concat(extra).filter(Boolean).join(" ") + "</div>" : "") + "</div>" +
@@ -3598,7 +3604,8 @@
       .sort(function (a, b) { return (a.return_at || "9") < (b.return_at || "9") ? -1 : 1; });
   }
   async function openQuickFlight(r, chain) {
-    quick = { id: r.id, chain: !!chain, suggest: null, noFlight: false };
+    // A car that has a flight starts with its number and landing time in the boxes.
+    quick = { id: r.id, chain: !!chain, suggest: null, noFlight: false, start: r.flight && r.flight !== "NO FLIGHT" ? { f: r.flight, s: /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : "" } : null };
     drawQuickFlight();
     if (!$("panel").open) $("panel").showModal();
     setTimeout(function () { var i = $("quickFlight"); if (i) i.focus(); }, 50);
@@ -3612,7 +3619,8 @@
   }
   function drawQuickFlight(keepInput) {
     var r = S.rows.filter(function (x) { return x.id === quick.id; })[0]; if (!r) return;
-    var typed = keepInput && $("quickFlight") ? $("quickFlight").value : "", typedSched = keepInput && $("quickSched") ? $("quickSched").value : "";
+    var st0 = quick.start || { f: "", s: "" };
+    var typed = keepInput && $("quickFlight") ? $("quickFlight").value : st0.f, typedSched = keepInput && $("quickSched") ? $("quickSched").value : st0.s;
     var left = missingFlights().filter(function (x) { return x.id !== r.id; }).length;
     var chips = quick.suggest === null ? '<div class="hint">Looking for flights near ' + esc(hhmm(r.return_at)) + "…</div>"
       : quick.suggest.length ? '<div class="suggest">' + quick.suggest.map(function (f) {
@@ -3641,6 +3649,8 @@
     if (!f) { toast("Type the flight number or tap one below.", true); return; }
     if (f === "NO FLIGHT" && !/^\d{2}:\d{2}$/.test(collect || "")) { quick.noFlight = true; drawQuickFlight(); return; }
     if (f === "NO FLIGHT" || !/^\d{2}:\d{2}$/.test(sched || "")) sched = undefined;
+    // The old flight's time left in the box doesn't carry over to a new flight number.
+    if (quick.start && f !== r.flight && sched === quick.start.s) sched = undefined;
     setFlight(r, f, collect, sched);
     toast(r.reg + " · " + f + (collect ? " · " + collect : sched ? " · sched " + sched : ""));
     var next = quick.chain ? missingFlights()[0] : null;

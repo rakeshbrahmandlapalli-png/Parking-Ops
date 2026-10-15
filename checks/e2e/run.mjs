@@ -206,7 +206,7 @@ function rpc(db, fn, a) {
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) b.sheet_id = to.id; return b; }
     case "set_reg": { const b = row(a.p_booking); b.reg = a.p_reg; return b; }
     case "set_yard": { const b = row(a.p_booking); b.yard = a.p_yard; return b; }
-    case "set_flight": { const b = row(a.p_booking); b.flight = a.p_flight; return b; }
+    case "set_flight": { const b = row(a.p_booking); if (b.flight !== a.p_flight) Object.assign(b, { sched_at: null, sched_time: "", est_at: null, est_time: "", flight_status: a.p_flight === "NO FLIGHT" ? "noflight" : "", flight_note: "" }); b.flight = a.p_flight; return b; }
     case "set_pick_flight": { const b = row(a.p_booking); b.flight = a.p_flight; return b; }
     case "set_pick_return": { const b = row(a.p_booking); b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString(); return b; }
     case "set_sched_time": { const b = row(a.p_booking); b.sched_time = a.p_time; return db.schedEcho === false ? null : b; }
@@ -837,6 +837,24 @@ await scenario(async () => {
   await feat.keyboard.press("Escape");
   await std.context().close(); await plus.context().close(); await feat.context().close();
 });
+// Operations on a wide screen: the flight number on a DROPS row is a button
+// for anyone who can change flights; the times sit in Status.
+await scenario(async () => {
+  const db = deskDb(), page = await phone(browser, db, { width: 1440 }); await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page); await sleep(400); await page.click("#tabAll"); await sleep(300);
+  const cell = (id, c) => page.evaluate(([id, c]) => { const e = document.querySelector('.row[data-id="' + id + '"] .' + c); return e ? e.innerText.replace(/\s+/g, " ").trim() : null; }, [id, c]);
+  // The flight number on the row changes the flight, starting from what's there.
+  await page.click('.row[data-id="w2"] .dc-f .flno'); await sleep(400);
+  const qf = await page.evaluate(() => ({ open: document.getElementById("panel").open, f: (document.getElementById("quickFlight") || {}).value, s: (document.getElementById("quickSched") || {}).value }));
+  check("Ops wide: tapping the flight number opens the flight, filled in", qf.open && qf.f === "FR2002" && qf.s === "12:05", qf);
+  db.calls.length = 0;
+  await page.fill("#quickFlight", "FR2009"); await page.click("#quickForm .save"); await sleep(400);
+  check("Ops wide: a new flight number saved, the old flight's time not carried over", db.calls.some((c) => c.fn === "set_flight" && c.args.p_booking === "w2" && c.args.p_flight === "FR2009") && !db.calls.some((c) => c.fn === "set_sched_time") && !(await page.evaluate(() => document.getElementById("panel").open)), db.calls.map((c) => c.fn));
+  check("Ops wide: the row shows the new flight, its old times gone", (await cell("w2", "dc-f")) === "FR2009" && !/Sch 12:05/.test(await cell("w2", "dc-s")), [await cell("w2", "dc-f"), await cell("w2", "dc-s")]);
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(400);
+  check("Ops phone: no flight button on the rows", await page.evaluate(() => !document.querySelector("#main .flno")));
+  await page.context().close();
+});
 // Operations on a wide screen: the DROPS board as a table and Flights as tables;
 // a phone and every other look keep their rows.
 await scenario(async () => {
@@ -854,13 +872,14 @@ await scenario(async () => {
   check("Ops wide: no sideways scrolling", lay.side);
   await page.click("#tabAll"); await sleep(300);
   const cell = (id, c) => page.evaluate(([id, c]) => { const e = document.querySelector('.row[data-id="' + id + '"] .' + c); return e ? e.innerText.replace(/\s+/g, " ").trim() : null; }, [id, c]);
-  check("Ops wide: booked return, timetable and estimate kept apart", (await cell("w2", "dc-t")) === "12:05" && (await cell("w2", "dc-f")) === "FR2002 Sch 12:05 · Est 12:03", [await cell("w2", "dc-t"), await cell("w2", "dc-f")]);
+  check("Ops wide: booked return, timetable and estimate kept apart", (await cell("w2", "dc-t")) === "12:05" && (await cell("w2", "dc-f")) === "FR2002" && /Sch 12:05 · Est 12:03$/.test(await cell("w2", "dc-s")), [await cell("w2", "dc-t"), await cell("w2", "dc-f"), await cell("w2", "dc-s")]);
+  check("Ops wide: the flight's times in Status, landed with its time", /^Sent \d\d:\d\d Landed \d\d:\d\d/.test(await cell("w6", "dc-s")) && !/Landed/.test(await cell("w6", "dc-f")), [await cell("w6", "dc-s"), await cell("w6", "dc-f")]);
   check("Ops wide: no flight number: the collection time staff typed, named", (await cell("w9", "dc-t")) === "14:10 Collect 14:30" && (await cell("w9", "dc-f")) === "No flight", [await cell("w9", "dc-t"), await cell("w9", "dc-f")]);
   check("Ops wide: overnight car keeps its own time (00:40), estimate after midnight", (await cell("w15", "dc-t")) === "00:40" && /Delayed \+45 min/.test(await cell("w15", "dc-s")), await cell("w15", "dc-s"));
   check("Ops wide: customer and long reference in their column", (await cell("w5", "dc-c")) === "BROWN AGENT-REF-PARK-AND-RIDE-0000001046-LONG" && (await cell("w5", "dc-r")) === "IJ90MNO #5 No vehicle details", [await cell("w5", "dc-c"), await cell("w5", "dc-r")]);
-  check("Ops wide: status in words (called and waiting, sent, cleared, overstay, not called)", /^Called \d\d:\d\d waiting 1[45] min$/.test(await cell("w2", "dc-s")) && /^Sent \d\d:\d\d Landed$/.test(await cell("w6", "dc-s")) && /^Cleared \d\d:\d\d$/.test(await cell("w13", "dc-s")) && /^Overstay/.test(await cell("w16", "dc-s")) && (await cell("w14", "dc-s")) === "Not called",
-    [await cell("w2", "dc-s"), await cell("w6", "dc-s"), await cell("w13", "dc-s"), await cell("w16", "dc-s")]);
-  check("Ops wide: flight problems on the row", (await cell("w4", "dc-s")) === "Not called Delayed" && (await cell("w10", "dc-s")) === "Not called Flight cancelled" && /CHECK FLIGHT NO\./.test(await cell("w7", "dc-s")) && /CHECK MANUALLY/.test(await cell("w8", "dc-s")), [await cell("w4", "dc-s"), await cell("w7", "dc-s")]);
+  check("Ops wide: status in words (called and waiting, sent, cleared, overstay, not called)", /^Called \d\d:\d\d waiting 1[45] min Sch 12:05 · Est 12:03$/.test(await cell("w2", "dc-s")) && /^Sent \d\d:\d\d Landed 12:41 Sch 12:40$/.test(await cell("w6", "dc-s")) && /^Cleared \d\d:\d\d$/.test(await cell("w13", "dc-s")) && /^Overstay/.test(await cell("w16", "dc-s")) && /^Not called( |$)/.test(await cell("w14", "dc-s")),
+    [await cell("w2", "dc-s"), await cell("w6", "dc-s"), await cell("w13", "dc-s"), await cell("w16", "dc-s"), await cell("w14", "dc-s")]);
+  check("Ops wide: flight problems on the row", (await cell("w4", "dc-s")) === "Not called Delayed Sch 12:20" && /^Not called Flight cancelled/.test(await cell("w10", "dc-s")) && /CHECK FLIGHT NO\./.test(await cell("w7", "dc-s")) && /CHECK MANUALLY/.test(await cell("w8", "dc-s")), [await cell("w4", "dc-s"), await cell("w7", "dc-s"), await cell("w10", "dc-s")]);
   const yc = await page.evaluate(() => getComputedStyle(document.querySelector('.row[data-id="w2"] .dc-y .code')).backgroundColor);
   check("Ops wide: the yard tag in the company's own colour", yc === "rgb(47, 158, 68)", yc);
   const btn = await page.evaluate(() => { const r = document.querySelector('.row[data-id="w6"]'); return [...r.querySelectorAll(".acts button")].map((b) => b.className + (b.disabled ? " dis" : "")); });
@@ -952,6 +971,7 @@ await scenario(async () => {
   const vw = deskDb(); vw.me = { ...vw.me, role: "view" }; vw.perms = {};
   const p3 = await phone(browser, vw, { width: 1440 }); await open(p3); await sleep(300);
   check("Ops wide: view-only: SENT / CALLED / CLEAR disabled, no Key check", await p3.evaluate(() => [...document.querySelectorAll("#main .drow .acts button")].every((b) => b.disabled) && document.getElementById("keyBtn").offsetParent === null));
+  check("Ops wide: view-only: the flight number is plain text, not a button", await p3.evaluate(() => !document.querySelector("#main .drow .flno") && /FR2002/.test(document.querySelector('#main .row[data-id="w2"] .dc-f').textContent)));
   await p3.context().close();
   // Standard with features on a wide screen: unchanged.
   const p4 = await phone(browser, deskDb("stdplus"), { width: 1440 }); await open(p4); await sleep(300);
@@ -3288,6 +3308,19 @@ async function shots(dir) {
       if (want("car")) { await page.click('.row[data-id="w6"] .reg'); await sleep(500); await page.screenshot({ path: path.join(dir, name + "-car.png") }); await page.keyboard.press("Escape"); await sleep(300); }
       if (want("removed")) { await menu(); await page.click("#menuBody [data-removedlist]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-removed.png") }); await page.keyboard.press("Escape"); await sleep(300); }
       if (want("tutorials")) { await menu(); await page.click("#menuBody [data-tutorials]"); await sleep(600); await page.screenshot({ path: path.join(dir, name + "-tutorials.png") }); await page.keyboard.press("Escape"); await sleep(300); }
+      await page.context().close();
+    }
+    return;
+  }
+  // SHOTS_ONLY=flightcol: the DROPS board's Flight and Status columns, desktop, tablet and phone, and the flight opened from the row (sample data only).
+  if (process.env.SHOTS_ONLY === "flightcol") {
+    for (const [width, height, name] of [[1440, 900, "desktop"], [1024, 900, "tablet"], [390, 844, "phone"]]) {
+      const page = await phone(browser, deskDb(), { width }); await page.setViewportSize({ width, height });
+      await open(page); await sleep(500); await page.click("#tabAll"); await sleep(400);
+      await page.screenshot({ path: path.join(dir, "drops-" + name + ".png") });
+      if (name === "desktop" && await page.locator('.row[data-id="w2"] .flno').count()) {
+        await page.click('.row[data-id="w2"] .flno'); await sleep(800); await page.screenshot({ path: path.join(dir, "flight-edit-desktop.png") });
+      }
       await page.context().close();
     }
     return;
