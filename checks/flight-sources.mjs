@@ -197,6 +197,20 @@ fresh(); Object.assign(db.bookings[0], { sched_at: null });
 r = await post({ action: "check" });
 check("a flight not checked against the timetable yet, due within the hour with no aircraft: still DELAY", db.bookings[0].flight_status === "delayed", db.bookings[0]);
 
+// More clients (15 Oct): with { slot: true } the timer wakes every minute and
+// each client gets one minute in ten, so clients don't queue in one run.
+fresh();
+for (let i = 2; i <= 12; i++) db.companies.push({ ...db.companies[0], id: "c" + i, name: "C" + i, slug: "c" + i, created_at: iso(now + i) });
+db.companies[0].created_at = iso(now);
+db.companies.push({ ...db.companies[0], id: "cp", name: "Parking Ops", slug: "platform", created_at: iso(now - 1) });
+db.companies.push({ ...db.companies[0], id: "cs", name: "Gone", slug: "gone", suspended_at: iso(now), created_at: iso(now - 2) });
+const slotNow = new Date().getUTCMinutes() % 10;
+r = await post({ action: "timer", slot: true });
+const want = ["TAKEOFF", ...Array.from({ length: 11 }, (_, k) => "C" + (k + 2))].filter((_, i) => i % 10 === slotNow);
+check("slot timer: only this minute's clients (not the platform or a suspended one)", JSON.stringify(r.json.results.map((x) => x.company)) === JSON.stringify(want), { got: r.json.results.map((x) => x.company), want });
+r = await post({ action: "timer" });
+check("old timer call (no slot): still every active client", r.json.results.length === 12, r.json.results.map((x) => x.company));
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

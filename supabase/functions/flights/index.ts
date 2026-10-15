@@ -54,6 +54,7 @@ type Timing = { enabled: boolean; live_every_min: number; schedule_every_hours: 
 const DEFAULT_TIMING: Timing = { enabled: true, live_every_min: 30, schedule_every_hours: 2, active_from: 6, active_to: 24, before_min: 90, after_hours: 5 };
 const timingOf = (c: Company): Timing => ({ ...DEFAULT_TIMING, ...(c.flight_settings ?? {}) });
 const SLACK_MIN = 2;   // the timer wakes every 10 min, a little late at times
+const TIMER_SLOTS = 10;   // with { slot: true }, one minute in ten per client
 const PRESSES_PER_HOUR = 2;   // drivers and terminal staff, both buttons together
 const DELAY_WITHIN = 60, DELAY_AFTER = 20;
 const MIN_DELAY = 15, MAX_DELAY = 360, MAX_EARLY = 60, MIN_FLIGHT = 20;
@@ -507,9 +508,16 @@ Deno.serve(async (req) => {
       if (ok !== true) return reply(403, { error: "Not the timer." });
       if (!Deno.env.get("FR24_TOKEN")) return reply(200, { skipped: "No FlightRadar24 token yet" });
       // Suspended clients and the product owner's own login don't use paid credits.
-      const { data: companies } = await admin.from("companies").select("*").is("suspended_at", null).neq("slug", "platform");
+      const { data: companies } = await admin.from("companies").select("*").is("suspended_at", null).neq("slug", "platform").order("created_at");
+      // { slot: true } (setup 94: the timer wakes every minute): each client
+      // gets one minute of the ten, so a client is still checked every 10 min
+      // but clients no longer queue behind each other in one run. Clients
+      // sharing a minute (more than 10) still go one after another, which
+      // keeps FR24's 10-a-minute limit. Without it, every client every call.
+      const slot = new Date().getUTCMinutes() % TIMER_SLOTS;
+      const due = ((companies ?? []) as Company[]).filter((_, i) => body.slot !== true || i % TIMER_SLOTS === slot);
       const results = [];
-      for (const c of (companies ?? []) as Company[]) {
+      for (const c of due) {
         try { results.push(await runCompany(admin, c, "timer")); }
         catch (err) { results.push({ company: c.name, error: (err as Error).message }); }
       }
