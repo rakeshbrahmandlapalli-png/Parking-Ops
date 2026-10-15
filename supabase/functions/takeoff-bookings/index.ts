@@ -105,7 +105,7 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
   // Returns before the cutoff on the day after belong to the last sheet, so that day is searched too, for those only.
   const dwx = { from: dw.from, to: addDaysKey(dw.to, 1) };
   const drops = await readDays(dropsSearch, dwx, "ret", (r, d) => d !== dwx.to || (!!r.ret && !!r.ret.time && r.ret.time <= cutoff));
-  const flights: { rows: number; matched: number; cars: number; by_day: Record<string, number> } = { rows: 0, matched: 0, cars: drops.rows.length, by_day: {} };
+  const flights: { rows: number; matched: number; cars: number; by_day: Record<string, number>; head: string[]; sample: string[] } = { rows: 0, matched: 0, cars: drops.rows.length, by_day: {}, head: [], sample: [] };
   if (flightsSearch) {
     // The Return Report has no Excel export: read its results table (flights_format "html"), or a download.
     // One search per day, like the bookings: a several-day search can come back cut short.
@@ -119,6 +119,9 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
         : gridFrom(await client.download(fill(flightsSearch, one), String(cfg.flights_export_path ?? exportPath)));
       const f = readReport(fGrid, scope, { ...opts, allowEmpty: true, flights: true });
       flights.by_day[d] = f.rows.length; fRows.push(...f.rows);
+      // What the report held, for Diagnostics: its column names and a few rows as read (no names or phones).
+      if (!flights.head.length) flights.head = (fGrid.find((r: string[]) => r.some((x) => /flight/i.test(x))) ?? []).slice(0, 16);
+      f.rows.slice(0, 3 - flights.sample.length).forEach((r: { ref: string; reg: string; flightIn: string }) => flights.sample.push((r.ref || "?") + " " + (r.reg || "?") + " " + (r.flightIn || "no flight")));
     }
     flights.rows = fRows.length;
     flights.matched = matchFlights(drops.rows, fRows.map((r: { ref: string; reg: string; flightIn: string; flightOut: string }) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");

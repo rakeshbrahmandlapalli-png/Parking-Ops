@@ -331,5 +331,17 @@ ok("the service-role-only functions are not callable by the app's users", (await
   const n = matchFlights(drops, fr.rows.map((r) => ({ ref: r.ref, reg: r.reg, flight: r.flightIn || r.flightOut })), "flightIn");
   ok("a Return Report row gives its DROPS car the return flight", n === 1 && drops[0].flightIn === "W61601", JSON.stringify(fr.rows)); }
 
+// Flight No. boxes written without quotes (older PHP pages) are still read
+{ const g = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td><input type=text name=flight_81020 value=W61601 size=8></td><td>Z</td></tr></table>");
+  const f = readReport(g, { all: true }, { flights: true, allowEmpty: true });
+  ok("an unquoted Flight No. box is read", f.rows[0] && f.rows[0].flightIn === "W61601", JSON.stringify(f.rows));
+  const g2 = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td><input name='f' value='W61601'></td><td>Z</td></tr></table>");
+  ok("a single-quoted Flight No. box is read", readReport(g2, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601"); }
+
+{ const g = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td><input type=\"hidden\" name=\"id\" value=\"81020\"><input type=\"text\" name=\"flight\" value=\"W61601\"></td><td>Z</td></tr></table>");
+  ok("a hidden booking id beside the Flight No. box is skipped", readReport(g, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601");
+  const g2 = parseHtmlTable("<table><tr><th>Ref#</th><th>Car Reg</th><th>Flight No.</th><th>Client</th></tr><tr><td>LKNLZL</td><td>HG68SCV</td><td>W6 1601</td><td>Z</td></tr></table>");
+  ok("a plain-text flight is still read", readReport(g2, { all: true }, { flights: true, allowEmpty: true }).rows[0].flightIn === "W61601"); }
+
 console.log(fails ? fails + " FAILED" : "all passed");
 process.exit(fails ? 1 : 0);
