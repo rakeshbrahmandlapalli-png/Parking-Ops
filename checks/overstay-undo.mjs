@@ -1,4 +1,4 @@
-// Setup part 94 (OVERSTAY taken off undoes the overstay) on a throwaway
+// Setup part 95 (OVERSTAY taken off undoes the overstay) on a throwaway
 // in-memory Postgres (PGlite), with just the tables and columns tap_drop touches.
 //   cd checks && npm install @electric-sql/pglite && node overstay-undo.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -23,8 +23,8 @@ create function drops_day_of(p_at timestamptz, c companies) returns date languag
 insert into companies default values;
 insert into sheets(company_id, kind, day) select id, 'drops', '2026-10-16' from companies;
 `);
-await db.exec(fs.readFileSync(new URL("../setup/94-overstay-undo.sql", import.meta.url), "utf8"));
-await db.exec(fs.readFileSync(new URL("../setup/94-overstay-undo.sql", import.meta.url), "utf8")); // safe to run twice
+await db.exec(fs.readFileSync(new URL("../setup/95-overstay-undo.sql", import.meta.url), "utf8"));
+await db.exec(fs.readFileSync(new URL("../setup/95-overstay-undo.sql", import.meta.url), "utf8")); // safe to run twice
 const q = async (s) => (await db.query(s)).rows;
 let fails = 0; const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
 const car = async (reg, ret, extra = "") => (await q(`insert into bookings(company_id, sheet_id, kind, reg, return_at${extra ? ", early" : ""})

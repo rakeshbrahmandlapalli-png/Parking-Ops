@@ -1559,7 +1559,7 @@
         if (on) { x.yard_before_t = x.yard; x.yard = "T"; x.sent_at = nowIso(); x.sent_by = S.me.id; }
         else { if (x.yard === "T" && x.yard_before_t) x.yard = x.yard_before_t; x.yard_before_t = ""; x.sent_at = null; x.sent_by = null; }
       } else if (action === "called") {
-        // OVERSTAY taken off a car due back on this sheet was a mis-tap (part 94).
+        // OVERSTAY taken off a car due back on this sheet was a mis-tap (part 95).
         if (!on && x.called_word === "Overstay" && !x.early && returnDay(x) && returnDay(x) >= sheetDayOf(x)) x.overstay = false;
         x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null;
         if (on && word === "Overstay") x.overstay = true;
@@ -2509,7 +2509,7 @@
     });
     start(1); add("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
     start(2); add("<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + kids.length + " >>\nendobj\n");
-    start(3); add("<< /Title (" + String(title).replace(/[()\\]/g, "") + ") /Producer (TakeOff) >>\nendobj\n");
+    start(3); add("<< /Title (" + String(title).replace(/[()\\]/g, "") + ") /Producer (Parking Ops) >>\nendobj\n");
     var size = 4 + jpgs.length * 3, xref = pos, x = "xref\n0 " + size + "\n0000000000 65535 f \n";
     for (var n = 1; n < size; n++) x += String(offs[n]).padStart(10, "0") + " 00000 n \n";
     add(x + "trailer\n<< /Size " + size + " /Root 1 0 R /Info 3 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
@@ -4471,7 +4471,9 @@
       return "<p>" + esc("On the booking site, " + k + ": " + X.rows + " · " + Object.keys(X.by_day).sort().map(function (d) { return d.slice(8) + "th " + X.by_day[d] + (X.site && X.site[d] != null ? " of " + X.site[d] : ""); }).join(" · ") + " · " + Object.keys(X.by_status).map(function (x) { return x + " " + X.by_status[x]; }).join(", ")) + "</p>" +
         (X.form ? "<p>" + esc("Search form: " + X.form) + "</p>" : "");
     }).join("") + (P.report.flights ? (function (F) {
-      return "<p>" + esc("Return flights: " + F.matched + " of " + F.cars + " drops matched · Return Report " + F.rows + " · " + Object.keys(F.by_day || {}).sort().map(function (d) { return d.slice(8) + "th " + F.by_day[d]; }).join(" · ")) + "</p>";
+      return "<p>" + esc("Return flights: " + F.matched + " of " + F.cars + " drops matched · Return Report " + F.rows + " · " + Object.keys(F.by_day || {}).sort().map(function (d) { return d.slice(8) + "th " + F.by_day[d]; }).join(" · ")) + "</p>" +
+        (F.head && F.head.length ? "<p>" + esc("Return Report columns: " + F.head.join(" | ")) + "</p>" : "") +
+        (F.sample && F.sample.length ? "<p>" + esc("Read as: " + F.sample.join(" · ")) + "</p>" : "");
     })(P.report.flights) : "");
   }
   function biChecked(P) {
@@ -4687,7 +4689,7 @@
       xl.rows.forEach(function (r) { if (r[field]) times[r[field].time || "none"] = 1; });
       if (xl.rows.length >= 5 && Object.keys(times).length === 1)
         throw new Error("Every car in this file has the same " + (I.kind === "drops" ? "return" : "drop-off") + " time (" + (Object.keys(times)[0] === "none" ? "no time" : Object.keys(times)[0]) +
-          "), so the times weren't read. Nothing was imported. Close the app completely, open it again and retry; if it still happens, send Rakesh the file.");
+          "), so the times weren't read. Nothing was imported. Close the app completely, open it again and retry; if it still happens, send the file to whoever looks after the app.");
       groupImport();
       if (!I.real.dates.length) throw new Error("Found " + xl.rows.length + " bookings but no dates in them.");
       var inner = I.real.dates.length >= 3 ? I.real.dates.slice(1, -1) : I.real.dates;

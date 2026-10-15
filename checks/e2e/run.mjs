@@ -1720,7 +1720,7 @@ await scenario(async () => {
   check("the car panel shows the first booked return", /BACK\n.*was /.test(await page.locator("#panelBody").innerText()));
 });
 
-// 14b. OVERSTAY pressed by mistake and pressed again: the car is no longer an overstay (part 94),
+// 14b. OVERSTAY pressed by mistake and pressed again: the car is no longer an overstay (part 95),
 // but a car carried from an earlier day stays one.
 await scenario(async () => {
   const db = makeDb(), b = (id) => db.bookings.find((x) => x.id === id);

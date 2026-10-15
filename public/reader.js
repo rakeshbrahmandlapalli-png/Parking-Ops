@@ -103,7 +103,7 @@
       });
       if ((found.ref || found.name) && Object.keys(found).length >= 3) { headRow = r; cols = found; }
     }
-    if (headRow < 0) throw new Error("Couldn't find the column names (like Ref, Name, Vehicle, Return) in that Excel. Tell Rakesh which columns it has.");
+    if (headRow < 0) throw new Error("Couldn't find the column names (like Ref, Name, Vehicle, Return) in that Excel. Tell whoever looks after the app which columns it has.");
     var get = function (row, key) { return (cols[key] || []).map(function (c) { return String(row[c] || "").trim(); }).filter(Boolean).join(" "); };
     var out = [];
     grid.slice(headRow + 1).forEach(function (row) {

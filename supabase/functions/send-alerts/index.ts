@@ -186,7 +186,8 @@ async function onImportHeld(req: Request, msg: Record<string, unknown>) {
   if (!/^[0-9a-f-]{36}$/i.test(company) || !text) return reply(400, { error: "Bad request." });
   if (!(await once(`importheld:${company}:${slot}`))) return reply(200, { sent: 0, note: "already sent" });
   const { data: people } = await db.from("staff").select("id").eq("company_id", company).eq("active", true).in("role", ["owner", "manager", "office"]);
-  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title: "TakeOff: bookings need a decision", body: text, url: "/", tag: "import-held" });
+  const { data: co } = await db.from("companies").select("name").eq("id", company).maybeSingle();
+  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title: `${co?.name ?? "Parking Ops"}: bookings need a decision`, body: text, url: "/", tag: "import-held" });
   return reply(200, { sent });
 }
 
@@ -200,7 +201,7 @@ async function onUsage(req: Request) {
   const { data: cos } = await db.from("companies").select("id, slug").in("slug", (u.to ?? []).map((x: string) => x.trim()));
   const ids = (cos ?? []).map((c) => c.id);
   const { data: people } = ids.length ? await db.from("staff").select("id").in("company_id", ids).eq("active", true).in("role", ["owner", "manager"]) : { data: [] };
-  const title = "⚠️ TakeOff: free plan check";
+  const title = "⚠️ Parking Ops: plan check";
   const body = warnings.join(" ") + " Tell whoever looks after the app.";
   const sent = await pushTo((people ?? []).map((p) => p.id), null, { title, body, url: "/", tag: "usage" });
   for (const c of cos ?? []) await discord(c.id, "drops", title, body);
@@ -218,9 +219,11 @@ async function onTest(req: Request, body: Record<string, unknown>) {
   if (body.discord) {
     const { data: allowed } = await asCaller.rpc("can", { p_action: "settings" });
     if (allowed !== true) return reply(403, { error: "Only an owner or manager can test Discord." });
-    const text = `Test from the TakeOff app by ${me.name}. Alerts will arrive in this channel.`;
-    result.drops = await discord(me.company_id, "drops", "TakeOff test (DROPS channel)", text);
-    result.picks = await discord(me.company_id, "picks", "TakeOff test (PICKS channel)", text);
+    const { data: co } = await db.from("companies").select("name").eq("id", me.company_id).maybeSingle();
+    const app = co?.name ?? "Parking Ops";
+    const text = `Test from the ${app} app by ${me.name}. Alerts will arrive in this channel.`;
+    result.drops = await discord(me.company_id, "drops", `${app} test (DROPS channel)`, text);
+    result.picks = await discord(me.company_id, "picks", `${app} test (PICKS channel)`, text);
   }
   return reply(200, result);
 }
