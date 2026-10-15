@@ -2506,7 +2506,7 @@
     });
     start(1); add("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
     start(2); add("<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + kids.length + " >>\nendobj\n");
-    start(3); add("<< /Title (" + String(title).replace(/[()\\]/g, "") + ") /Producer (TakeOff) >>\nendobj\n");
+    start(3); add("<< /Title (" + String(title).replace(/[()\\]/g, "") + ") /Producer (Parking Ops) >>\nendobj\n");
     var size = 4 + jpgs.length * 3, xref = pos, x = "xref\n0 " + size + "\n0000000000 65535 f \n";
     for (var n = 1; n < size; n++) x += String(offs[n]).padStart(10, "0") + " 00000 n \n";
     add(x + "trailer\n<< /Size " + size + " /Root 1 0 R /Info 3 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
@@ -4686,7 +4686,7 @@
       xl.rows.forEach(function (r) { if (r[field]) times[r[field].time || "none"] = 1; });
       if (xl.rows.length >= 5 && Object.keys(times).length === 1)
         throw new Error("Every car in this file has the same " + (I.kind === "drops" ? "return" : "drop-off") + " time (" + (Object.keys(times)[0] === "none" ? "no time" : Object.keys(times)[0]) +
-          "), so the times weren't read. Nothing was imported. Close the app completely, open it again and retry; if it still happens, send Rakesh the file.");
+          "), so the times weren't read. Nothing was imported. Close the app completely, open it again and retry; if it still happens, send the file to whoever looks after the app.");
       groupImport();
       if (!I.real.dates.length) throw new Error("Found " + xl.rows.length + " bookings but no dates in them.");
       var inner = I.real.dates.length >= 3 ? I.real.dates.slice(1, -1) : I.real.dates;
