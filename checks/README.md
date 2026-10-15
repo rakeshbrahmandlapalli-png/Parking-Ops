@@ -2,6 +2,12 @@
 
 Run these before merging a change. Every line must say ok / PASS.
 
+Shared key checks (part 93): `node checks/key-check.mjs` tests the database rules
+on PGlite. `KEYS_ONLY=1 node checks/e2e/run.mjs` tests the real key-check UI,
+two browser contexts, failed saves, stale updates, filters and narrow screens.
+`SHOTS=<dir> SHOTS_ONLY=keys node checks/e2e/run.mjs` captures the phone and desk
+states using the test server. These commands never touch live bookings.
+
 | What | How | Covers |
 |---|---|---|
 | `db-tests.sql` | Paste into the Supabase SQL editor (or run through the Supabase connector). It always ends with `ERROR: DB TESTS: N passed, 0 failed` — that error is how it rolls everything back. | Roles, one company never touching another's cars or photos, taps, early returns, re-imports, the 06:00 carry-over, changed return dates, PT links and the photo store. |
