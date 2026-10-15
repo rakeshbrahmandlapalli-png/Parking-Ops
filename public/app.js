@@ -1547,6 +1547,7 @@
       '<div class="l2 cl2 num" data-open><span class="l2a">' + (mk ? mk + " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + pickFlight(r) + extra + "</span></div>" + noteLine(r) + "</div>";
   }
 
+  function sheetDayOf(r) { var sh = S.sheets.filter(function (x) { return x.id === r.sheet_id; })[0]; return sh ? sh.day : ""; }
   function rowOf(el) { var c = el.closest("[data-id]"); return c ? S.rows.filter(function (r) { return r.id === c.dataset.id; })[0] : null; }
   function nowIso() { return new Date().toISOString(); }
 
@@ -1558,6 +1559,8 @@
         if (on) { x.yard_before_t = x.yard; x.yard = "T"; x.sent_at = nowIso(); x.sent_by = S.me.id; }
         else { if (x.yard === "T" && x.yard_before_t) x.yard = x.yard_before_t; x.yard_before_t = ""; x.sent_at = null; x.sent_by = null; }
       } else if (action === "called") {
+        // OVERSTAY taken off a car due back on this sheet was a mis-tap (part 94).
+        if (!on && x.called_word === "Overstay" && !x.early && returnDay(x) && returnDay(x) >= sheetDayOf(x)) x.overstay = false;
         x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null;
         if (on && word === "Overstay") x.overstay = true;
       } else {
