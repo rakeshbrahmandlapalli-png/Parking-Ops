@@ -337,7 +337,7 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk #colHead{order:9;margin-top:10px;}
  html.ops body.ops-desk #boardHead:has(#tallyFold.hidden) .tabs{border-right:0;}
  /* the DROPS table: the column head and every row on the same columns */
- html.ops body.ops-desk{--dcols:84px minmax(150px,1.05fr) minmax(150px,1.1fr) minmax(150px,1.2fr) 92px minmax(140px,1fr) 300px;--dareas:"t r f c y s a" "t n n n n n a";}
+ html.ops body.ops-desk{--dcols:84px minmax(150px,1.05fr) minmax(96px,.55fr) minmax(150px,1.1fr) 92px minmax(200px,1.7fr) 300px;--dareas:"t r f c y s a" "t n n n n n a";}
  html.ops body.ops-desk.on-board main{max-width:var(--dw);padding:0 var(--dg) 40px;}
  html.ops body.ops-desk.picks.on-board main{padding-bottom:96px;}
  html.ops body.ops-desk.picks{--dcols:84px minmax(140px,1fr) minmax(150px,1.1fr) 130px 130px minmax(160px,1fr) 320px;--dareas:"t r c b f s a" "t n n n n n a";}
@@ -376,6 +376,11 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops .drow select.code.pick{min-height:30px;padding:0 6px;font-size:12px;}
  html.ops .drow .kbox{width:22px;height:22px;}
  html.ops .drow .addflight{line-height:24px;}
+ html.ops .drow .flno{margin:0;padding:1px 4px;margin-left:-4px;border:1px solid transparent;border-radius:4px;background:none;font:inherit;font-weight:700;color:var(--op-ink);cursor:pointer;}
+ html.ops .drow .flno.mut{font-weight:500;color:#8692a2;}
+ html.ops .drow .flno:hover{border-color:#c3ccd7;border-style:dashed;}
+ html.ops .drow .flno:focus-visible{outline:2px solid var(--op-ink);outline-offset:1px;}
+ html.ops .drow .ftm{color:var(--op-mut);}
  html.ops .row.done.drow .sub,html.ops .row.done.drow .dc-t b{color:#80868b;}
  html.ops .drow .acts{grid-area:a;width:auto;flex:none;align-items:center;gap:6px;padding:8px 12px;}
  html.ops .drow .acts button{min-height:42px;border-radius:6px;font-size:11.5px;letter-spacing:.3px;}
@@ -427,7 +432,7 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk.picks{--dcols:74px minmax(150px,1.3fr) 120px 100px minmax(110px,1fr) 250px;--dareas:"t r b f s a" "t c b f s a" "t n n n n a";}
  html.ops body.ops-desk.picks #colHead.dhead span:nth-child(3){display:none;}
  html.ops body.ops-desk.picks #colHead.dhead span:nth-child(5){white-space:normal;line-height:1.2;}
- html.ops body.ops-desk{--dw:100%;--dg:16px;--dcols:68px minmax(160px,1.3fr) minmax(140px,1fr) 80px minmax(120px,1fr) 222px;--dareas:"t r f y s a" "t c f y s a" "t n n n n a";}
+ html.ops body.ops-desk{--dw:100%;--dg:16px;--dcols:68px minmax(160px,1.3fr) 96px 80px minmax(150px,1.7fr) 222px;--dareas:"t r f y s a" "t c f y s a" "t n n n n a";}
  html.ops body.ops-desk:not(.picks) #colHead.dhead span:nth-child(4){display:none;}
  html.ops body.ops-desk #colHead.dhead span:nth-child(2)::after{content:" · customer";}
  html.ops .drow .dc-r{padding-bottom:0;}
