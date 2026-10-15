@@ -4468,7 +4468,9 @@
       return "<p>" + esc("On the booking site, " + k + ": " + X.rows + " · " + Object.keys(X.by_day).sort().map(function (d) { return d.slice(8) + "th " + X.by_day[d] + (X.site && X.site[d] != null ? " of " + X.site[d] : ""); }).join(" · ") + " · " + Object.keys(X.by_status).map(function (x) { return x + " " + X.by_status[x]; }).join(", ")) + "</p>" +
         (X.form ? "<p>" + esc("Search form: " + X.form) + "</p>" : "");
     }).join("") + (P.report.flights ? (function (F) {
-      return "<p>" + esc("Return flights: " + F.matched + " of " + F.cars + " drops matched · Return Report " + F.rows + " · " + Object.keys(F.by_day || {}).sort().map(function (d) { return d.slice(8) + "th " + F.by_day[d]; }).join(" · ")) + "</p>";
+      return "<p>" + esc("Return flights: " + F.matched + " of " + F.cars + " drops matched · Return Report " + F.rows + " · " + Object.keys(F.by_day || {}).sort().map(function (d) { return d.slice(8) + "th " + F.by_day[d]; }).join(" · ")) + "</p>" +
+        (F.head && F.head.length ? "<p>" + esc("Return Report columns: " + F.head.join(" | ")) + "</p>" : "") +
+        (F.sample && F.sample.length ? "<p>" + esc("Read as: " + F.sample.join(" · ")) + "</p>" : "");
     })(P.report.flights) : "");
   }
   function biChecked(P) {

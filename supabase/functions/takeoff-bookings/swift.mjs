@@ -207,9 +207,11 @@ export function parseHtmlTable(html) {
   const text = (h) => h.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&pound;/g, "£").replace(/\s+/g, " ").trim();
   (String(html).match(/<tr[\s\S]*?<\/tr>/gi) || []).forEach((tr) => {
     const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map((c) => {
-      const inp = c.match(/<input[^>]*value=["']([^"']*)["']/i);
+      // The Flight No. boxes: value="W61601", value='W61601' or value=W61601 (older pages leave out the quotes).
+      const inp = c.match(/<input[^>]*\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const ta = c.match(/<textarea[^>]*>([\s\S]*?)<\/textarea>/i);
       const sel = c.match(/<option[^>]*selected[^>]*>([\s\S]*?)<\/option>/i);
-      return inp ? inp[1].trim() : sel ? text(sel[1]) : text(c);
+      return inp ? (inp[1] ?? inp[2] ?? inp[3] ?? "").trim() : ta ? text(ta[1]) : sel ? text(sel[1]) : text(c);
     });
     if (cells.some(Boolean)) grid.push(cells);
   });
