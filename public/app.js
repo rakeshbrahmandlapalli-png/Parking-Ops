@@ -4437,6 +4437,7 @@
         r.lines = [why ? why.charAt(0).toUpperCase() + why.slice(1) : "Needs an office decision"];
         r.sub = (i.changes || []).map(biChange);
         r.explain = "Held back. This booking stays out of the import until the office decides.";
+        r.acts = revActs(i.kind, i.ref, rv && rv.detail && rv.detail.why, i.changes, revId(i.kind, i.ref));
       }
       rows.push(r);
     });
@@ -4444,7 +4445,8 @@
       if (r.kind !== "cancelled") return;
       var d = r.detail || {};
       rows.push({ key: "x|" + (d.kind || "") + "|" + r.ref, board: String(d.kind || "").toUpperCase(), date: d.on_sheet ? biDay(d.on_sheet) : "", ref: r.ref, reg: d.reg || "", status: "review",
-        lines: ["Cancellation requires review"], sub: d.name ? [d.name] : [], explain: "Cancelled on the booking site. Nothing is removed here; check the car and remove it by hand if it really is cancelled." });
+        lines: ["Cancellation requires review"], sub: d.name ? [d.name] : [], explain: "Cancelled on the booking site. Nothing is removed here; check the car and remove it by hand if it really is cancelled.",
+        acts: revActs(d.kind || "", r.ref, "", [], revId(d.kind || "", r.ref, "cancelled")) });
     });
     (P.invalid || []).forEach(function (i) { rows.push({ key: "i|" + (i.kind || "") + "|" + (i.ref || ""), board: String(i.kind || "").toUpperCase(), date: "", ref: i.ref || "No reference", reg: "", status: "invalid", lines: [i.reason || "Can't be read"], sub: [], explain: "Fix this record on the booking site, then check again." }); });
     return rows;
@@ -4459,7 +4461,7 @@
       '<span class="bi-board">' + esc(r.board) + '</span><span class="bi-date">' + esc(r.date) + '</span><span class="bi-ref">' + esc(r.ref) + '</span><span class="bi-reg">' + esc(r.reg) + "</span>" +
       '<span class="bi-chg"><span class="bi-main">' + esc(r.lines[0] || "") + "</span>" + (more.length ? '<span class="bi-more">' + more.map(function (x) { return "<small>" + esc(x) + "</small>"; }).join("") + "</span>" : "") + "</span>" +
       '<span class="bi-st"><em class="bi-pill s-' + r.status + '">' + esc(BI_STATUS[r.status] || r.status) + '</em></span><span class="bi-chev" aria-hidden="true"></span></button>' +
-      (r.explain ? '<p class="bi-ex bi-more">' + esc(r.explain) + "</p>" : "") + "</div>";
+      (r.explain ? '<p class="bi-ex bi-more">' + esc(r.explain) + "</p>" : "") + (r.acts ? '<div class="bi-ex bi-more bi-racts">' + r.acts + "</div>" : "") + "</div>";
   }
   function biConn(a) {
     if (a.running) return { cls: "busy", text: "Importing…" };
@@ -4563,9 +4565,12 @@
     }
     if (a.reviews && a.reviews.length) {
       h += '<div class="bi-held"><h3>Held for the office</h3><div data-autoreviews>' + a.reviews.map(function (r) {
-        var d = r.detail || {};
-        return "<div><span>" + esc((r.kind === "cancelled" ? "Cancelled · " : "Changed · ") + r.ref) + "<small>" + esc(r.kind === "cancelled" ? ((d.name || "") + " " + (d.reg || "") + " · " + (d.kind || "")) : (d.why || "")) +
-          '</small></span><button type="button" class="btn ghost small" data-reviewdone="' + esc(r.id) + '">Done</button></div>';
+        var d = r.detail || {}, b = S.revCars[(d.kind || "") + "|" + r.ref], reg = (b && b.reg) || d.reg || "";
+        var why = r.kind === "cancelled" ? ((d.name || "") + " · " + (d.kind || "")) : String(d.why || "").replace(/\b\d{4}-\d\d-\d\d\b/g, biDay).replace(/^./, function (x) { return x.toUpperCase(); });
+        var chg = r.kind === "cancelled" ? [] : (d.changes || []).map(biChange);
+        return '<div class="bi-hr"><span>' + esc((r.kind === "cancelled" ? "Cancelled · " : "Changed · ") + r.ref) + (reg ? ' · <b class="bi-hreg">' + esc(reg) + "</b>" : "") + "<small>" + esc(why) + "</small>" +
+          (chg.length ? "<small>" + esc(chg.join(" · ")) + "</small>" : "") + '</span><span class="bi-acts">' + revActs(d.kind || "", r.ref, r.kind === "cancelled" ? "" : d.why, d.changes, r.id) +
+          '<button type="button" class="btn ghost small" data-reviewdone="' + esc(r.id) + '">Done</button></span></div>';
       }).join("") + "</div></div>";
     } else if (a.open_reviews) h += '<p class="bi-hint">' + a.open_reviews + " to check.</p>";
     return h + '<p class="bi-hint">It only reads from the booking site. Cancelled or changed bookings are listed for you; nothing is removed.</p></div></div>';
@@ -4633,6 +4638,73 @@
     await loadSheets(); await loadRows();
     toast("✓ Bookings in: " + added + " added, " + updated + " updated across " + days.length + " sheet(s).");
     S.recentImports = null; loadAutoImport();
+  }
+  // Held bookings (19 Oct): the car each one is about, so the reg shows beside the
+  // reference and the office can open it, or move it to the booking site's night
+  // with the app's own EARLY RETURN (an earlier night) or return change (a later one).
+  S.revCars = {};
+  function loadRevCars(list) {
+    var want = list.filter(function (x) { return x.ref && S.revCars[x.kind + "|" + x.ref] === undefined; });
+    if (!want.length) return;
+    want.forEach(function (x) { S.revCars[x.kind + "|" + x.ref] = null; });
+    var refs = want.map(function (x) { return x.ref; }).filter(function (x, i, l) { return l.indexOf(x) === i; });
+    sb.from("bookings").select("id, sheet_id, kind, ref, reg, name, cleared_at, removed_at, early, return_at, sheets!bookings_sheet_id_fkey(day, kind)").in("ref", refs).then(function (r) {
+      if (r.error) { want.forEach(function (x) { delete S.revCars[x.kind + "|" + x.ref]; }); return; }
+      want.forEach(function (x) { S.revCars[x.kind + "|" + x.ref] = false; });
+      // One car per booking: one still on a board before a removed one, then the latest night.
+      (r.data || []).forEach(function (b) {
+        var k = b.kind + "|" + b.ref, cur = S.revCars[k], day = (b.sheets || {}).day || "";
+        if (!cur || (cur.removed_at && !b.removed_at) || (!cur.removed_at === !b.removed_at && day > ((cur.sheets || {}).day || ""))) S.revCars[k] = b;
+      });
+      if (S.view === "import") render();
+    }, function () { want.forEach(function (x) { delete S.revCars[x.kind + "|" + x.ref]; }); });
+  }
+  // The open held review for this booking, if there is one (its Done button).
+  function revId(kind, ref, type) {
+    var a = S.autoImport, m = ((a && a.reviews) || []).filter(function (r) { return r.ref === ref && (r.detail || {}).kind === kind && (!type || r.kind === type); })[0];
+    return m ? m.id : "";
+  }
+  // The move the app can make safely: DROPS only, a car not gone, not already early.
+  function revMove(kind, why, changes, b) {
+    var m = /moved from sheet (\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)/.exec(why || "");
+    if (!m || kind !== "drops" || !b || b.cleared_at || b.removed_at || b.early) return null;
+    var to = m[2], here = (b.sheets || {}).day || m[1];
+    if (to < here) return to >= currentShiftKey() && can("called") ? { day: to } : null;
+    var ret = (changes || []).filter(function (c) { return c.field === "return"; })[0];
+    if (to > here && can("import") && ret && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(ret.to || "")) return { day: to, ret: ret.to };
+    return null;
+  }
+  S.revCtx = {};
+  var revWant = [], revTimer = null;
+  function revActs(kind, ref, why, changes, rid) {
+    var k = kind + "|" + ref, b = S.revCars[k];
+    if (b === undefined) { revWant.push({ kind: kind, ref: ref }); clearTimeout(revTimer); revTimer = setTimeout(function () { var w = revWant; revWant = []; loadRevCars(w); }, 0); }
+    if (!b) return "";
+    var mv = revMove(kind, why, changes, b);
+    S.revCtx[k] = { mv: mv, rid: rid };
+    return (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: "drops", day: mv.day }).replace(/^DROPS /, "")) + "</button>" : "") +
+      '<button type="button" class="btn ghost small" data-rvopen="' + esc(k) + '">' + (b.removed_at ? "Removed cars" : "Open") + "</button>";
+  }
+  async function revOpen(k) {
+    var b = S.revCars[k]; if (!b) return;
+    await openArchived(b.sheet_id, b.removed_at ? "" : b.reg);
+    if (S.sheetId !== b.sheet_id) return;
+    if (b.removed_at) return openRemoved();
+    var row = S.rows.filter(function (x) { return x.id === b.id; })[0];
+    if (row) openPanel(row);
+  }
+  async function revMoveGo(k, btn) {
+    var b = S.revCars[k], c = S.revCtx[k], mv = c && c.mv; if (!b || !mv) return;
+    var to = sheetLabel({ kind: "drops", day: mv.day });
+    if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
+    btn.disabled = true;
+    var x = mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
+    btn.disabled = false;
+    if (x.error) return toast(x.error.message, true);
+    if (c.rid) await sb.rpc("swift_review_resolve", { p_id: Number(c.rid) });
+    delete S.revCars[k];
+    toast((b.reg || "Car") + (x.data && x.data.sheet_id !== b.sheet_id ? " moved to " + to + "." : " stays on its night as staying longer until " + to + " is imported."));
+    await loadSheets(); loadAutoImport();
   }
   async function reviewDone(id) {
     var r = await sb.rpc("swift_review_resolve", { p_id: Number(id) });
@@ -5167,7 +5239,7 @@
       }
     }
     if ($("menu").open) $("menu").close();
-    switchSheet(sheetId, { archive: arch, q: q || "", filter: "all", force: true });
+    return switchSheet(sheetId, { archive: arch, q: q || "", filter: "all", force: true });
   }
   async function archiveSheet(id, on) {
     var sh = S.sheets.concat(S.handArchived || [], S.archiveSheet ? [S.archiveSheet] : []).filter(function (x) { return x.id === id; })[0];
@@ -5721,6 +5793,8 @@
     if (t.dataset.birangereset !== undefined) { var bb = S.autoImport; if (bb) { bb.custom = false; bb.preview = null; bb.error = ""; render(); } return; }
     if (t.dataset.autopreview !== undefined) return previewAutoImport();
     if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
+    if (t.dataset.rvopen) return revOpen(t.dataset.rvopen);
+    if (t.dataset.rvmove) return revMoveGo(t.dataset.rvmove, t);
     if (t.dataset.autorun !== undefined) return runAutoImport(t);
     if (t.dataset.read !== undefined) return readImport();
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }

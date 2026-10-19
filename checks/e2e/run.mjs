@@ -329,6 +329,7 @@ async function backend(ctx, db) {
       if (q.id && q.id.startsWith("eq.")) rows = rows.filter((b) => b.id === q.id.slice(3));
       if (q.id && q.id.startsWith("neq.")) rows = rows.filter((b) => b.id !== q.id.slice(4));
       if (q.ref && q.ref.startsWith("eq.")) rows = rows.filter((b) => b.ref === q.ref.slice(3));
+      if (q.ref && q.ref.startsWith("in.(")) { const refs = q.ref.slice(4, -1).split(",").map((x) => x.replace(/^"|"$/g, "")); rows = db.bookings.filter((b) => refs.includes(b.ref)); }
       (db.bookingGets = db.bookingGets || []).push(q);
       if (q.updated_at && q.updated_at.startsWith("gte.")) { const t = q.updated_at.slice(4); rows = rows.filter((b) => (b.updated_at || "") >= t); }
       if (q.or) { const m = q.or.match(/%([^%]+)%/); const t = m ? m[1].toUpperCase() : ""; rows = rows.filter((b) => [b.reg, b.ref, b.phone, b.name].join(" ").toUpperCase().replace(/\s+/g, "").includes(t)); }
@@ -415,6 +416,7 @@ const pickKind = async (page, kind) => {
 async function scenario(fn, tag) {
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
+  if (process.env.HELD_ONLY && tag !== 'held') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
@@ -1841,6 +1843,53 @@ await scenario(async () => {
   check("auto-import: marking a review done removes it", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 5) && await page.locator("[data-autoreviews]").count() === 0);
   check("auto-import: no errors", page.__errors.length === 0, page.__errors);
 });
+
+// 18b1. Held for the office (19 Oct): the reg beside the reference, Open, and Move where the app can do it safely.
+await scenario(async () => {
+  const db = makeDb();
+  const YESTERDAY = addDays(TONIGHT, -1);
+  db.bookings.find((b) => b.id === "b3").cleared_at = iso(TONIGHT, "21:00");
+  db.autoImport = { available: true, running: false, open_reviews: 3 };
+  db.reviews = [
+    { id: 7, ref: "R5", kind: "conflict", detail: { kind: "drops", why: "moved from sheet " + TOMORROW + " to " + TONIGHT + "; the app can't move it safely", changes: [{ field: "return", from: TOMORROW + " 06:15", to: TONIGHT + " 23:30" }] } },
+    { id: 8, ref: "R3", kind: "conflict", detail: { kind: "drops", why: "already handed back or removed, but the booking site now shows different details", changes: [{ field: "return", from: TONIGHT + " 22:15", to: TOMORROW + " 10:00" }] } },
+    { id: 9, ref: "R1", kind: "conflict", detail: { kind: "drops", why: "moved from sheet " + TONIGHT + " to " + YESTERDAY + "; the app can't move it safely", changes: [] } },
+  ];
+  db.preview = { hash: "h2", window: {}, counts: { new: 0, changed: 0, unchanged: 0, review: 1, invalid: 0 }, can_apply: true,
+    items: [{ kind: "drops", day: TONIGHT, ref: "R4", reg: "DY16MYO", status: "review", changes: [] }],
+    reviews: [{ ref: "R4", kind: "conflict", detail: { kind: "drops", why: "moved from sheet " + TOMORROW + " to " + TONIGHT + "; the app can't move it safely", changes: [] } }], invalid: [] };
+  for (const width of [1280, 390]) {
+    const page = await phone(browser, db, { width });
+    await open(page);
+    await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+    await page.waitForSelector("[data-autoreviews] [data-rvopen]", { timeout: 6000 });
+    const held = await page.locator("[data-autoreviews]").innerText();
+    check("held (" + width + "): the reg shows beside the reference", /R5 · EN11KOO/.test(held) && /R3 · DV59ACF/.test(held) && /R1 · EK14JPV/.test(held), held);
+    check("held (" + width + "): the change is listed with the reason", /Return:/.test(held));
+    const rowOf = (ref) => page.locator("[data-autoreviews] .bi-hr", { hasText: ref + " ·" });
+    check("held (" + width + "): a move to tonight offers Move", await rowOf("R5").locator("[data-rvmove]").count() === 1 && /Move to \d+[A-Z]{2} [A-Z]{3}/.test(await rowOf("R5").locator("[data-rvmove]").innerText()));
+    check("held (" + width + "): a handed-back car offers Open only", await rowOf("R3").locator("[data-rvmove]").count() === 0 && await rowOf("R3").locator("[data-rvopen]").count() === 1);
+    check("held (" + width + "): a move to a night that has passed offers Open only", await rowOf("R1").locator("[data-rvmove]").count() === 0 && await rowOf("R1").locator("[data-rvopen]").count() === 1);
+    const box = await rowOf("R5").boundingBox();
+    check("held (" + width + "): the row fits the screen", box && box.x + box.width <= width + 1, box);
+    if (width === 1280 && process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/held-desktop.png", fullPage: true });
+    if (width === 390 && process.env.HELD_SHOTS) { await page.locator(".bi-held").evaluate((e) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 60)); await sleep(200); await page.screenshot({ path: process.env.HELD_SHOTS + "/held-phone.png" }); }
+    if (width === 390) {
+      await page.click("[data-autopreview]"); await sleep(700);
+      await page.click('[data-birow="drops|R4"]'); await sleep(200);
+      const pr = page.locator(".bi-row", { hasText: "R4" });
+      check("review row: the check's Needs review row has Move and Open", await pr.locator("[data-rvmove]").count() === 1 && await pr.locator("[data-rvopen]").count() === 1, await pr.innerText());
+      if (process.env.HELD_SHOTS) { await pr.evaluate((e) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 120)); await sleep(200); await page.screenshot({ path: process.env.HELD_SHOTS + "/review-row-phone.png" }); }
+      await rowOf("R5").locator("[data-rvmove]").click(); await sleep(800);
+      check("held: Move confirms, then makes it an early return on tonight's sheet", page.__dialogs.some((d) => /Move EN11KOO to DROPS/.test(d)) && db.calls.some((c) => c.fn === "early_return" && c.args.p_booking === "b5" && c.args.p_day === TONIGHT), page.__dialogs);
+      check("held: a moved booking leaves the list", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 7));
+      await rowOf("R3").locator("[data-rvopen]").click(); await sleep(900);
+      check("held: Open shows the car's booking details on its night", await page.locator("#panel").evaluate((d) => d.open) && /DV59ACF/.test(await page.locator("#panelBody").innerText()) && (await page.locator("#sheetPick").inputValue()) === "d0");
+    }
+    check("held (" + width + "): no errors", page.__errors.length === 0, page.__errors);
+    await page.close();
+  }
+}, 'held');
 
 // 18b2. A failed check shows the reason and offers no import; an invalid record blocks it.
 await scenario(async () => {
