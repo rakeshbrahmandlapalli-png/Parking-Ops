@@ -2980,6 +2980,14 @@ for (const theme of ["ops", ""]) await scenario(async () => {
   await page.click('[data-keystart]'); await page.waitForSelector('.kc-row');
   check(name + "all 17 cabinet keys start unchecked", await page.locator('.kc-row').count() === 17 && /0\/17/.test(await text(page,'#keyBtn')) && !(await page.locator('.kbox.on').count()));
   check(name + "delivery actions are outside key mode", !(await page.locator('#main [data-act]').count()));
+  // The board's flight, customer and ref ride along; the yard is the same picker as the board's.
+  check(name + "rows show flight, customer and ref", await page.locator('.row[data-id="k3"] .kc-fl').innerText().then(t=>/W43602/.test(t)) && /NIKOLLI/i.test(await page.locator('.row[data-id="k3"] .kc-cu').textContent()) && /K2/.test(await page.locator('.row[data-id="k3"] .kc-cu').textContent()));
+  check(name + "yard is a picker, not greyed", await page.locator('.row[data-id="k3"] .kc-yard select[data-yard]').count()===1 && !(await page.locator('.kc-yard .kgrey').count()));
+  await page.selectOption('.row[data-id="k1"] .kc-yard select[data-yard]','NY');await sleep(250);
+  check(name + "changing the yard saves like the board", db.calls.some(c=>c.fn==='set_yard'&&c.args.p_booking==='k1'&&c.args.p_yard==='NY') && db.bookings.find(b=>b.id==='k1').yard==='NY' && db.keyChecks.d0.entries.find(e=>e.booking_id==='k1').state==='unchecked' && await page.locator('.kc').count()===1);
+  await page.locator('.row[data-id="k3"] .kc-fl [data-addflight]').click();
+  check(name + "flight number opens the flight box", await page.isVisible('#panel'));
+  await page.keyboard.press('Escape');await sleep(150);
   await page.click('[data-keytick="k3"]'); await page.waitForSelector('[data-keytick="k3"].on');
   check(name + "confirmation stores staff, time and server state", db.keyChecks.d0.entries.find(e=>e.booking_id==='k3').state === 'found' && /RAKESH/.test(await page.locator('.row[data-id="k3"] .kc-person').textContent()));
   check(name + "found keys move below unchecked", await page.locator('.kc-row').first().getAttribute('data-id') === 'k1');
@@ -3509,6 +3517,19 @@ async function shots(dir) {
       const m = await page.evaluate(() => { const rows = document.querySelectorAll("#main .row"), last = rows[rows.length - 1].getBoundingClientRect(), nav = document.getElementById("bnav").getBoundingClientRect(); return { lastBottom: Math.round(last.bottom), navTop: Math.round(nav.top), navBottom: Math.round(nav.bottom), vv: Math.round(visualViewport.height), scale: visualViewport.scale }; });
       console.log(name, JSON.stringify(m));
       await page.screenshot({ path: path.join(dir, "bottom-" + name + (zoom ? "-zoomed" : "") + ".png") });
+      await page.context().close();
+    }
+    return;
+  }
+  // SHOTS_ONLY=keysdesk: the key check with flight, customer and yard picker at desktop, tablet and phone width.
+  if (process.env.SHOTS_ONLY === "keysdesk") {
+    for (const [width, height, name] of [[1440, 1000, "desktop"], [1024, 900, "tablet"], [390, 1000, "phone"]]) {
+      const db = keysDb(process.env.SHOTS_THEME || "ops"), makes = ["KIA NIRO GREY", "TOYOTA COROLLA ICON", "CITROEN DS3 RED", "VAUXHALL ZAFIRA BLACK"];
+      db.bookings.forEach((b, i) => { b.make = makes[i % makes.length]; });
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await open(page); await page.click("#keyBtn"); await page.waitForSelector("[data-keystart]"); await page.click("[data-keystart]"); await page.waitForSelector(".kc-row");
+      for (const id of ["k3", "k5"]) await page.click('.row[data-id="' + id + '"] .kbox');
+      await sleep(500); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(dir, "keycheck-" + name + ".png") });
       await page.context().close();
     }
     return;
