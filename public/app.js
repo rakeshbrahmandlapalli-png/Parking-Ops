@@ -1206,9 +1206,9 @@
     return out;
   }
 
-  function yardChip(r) {
-    // Key mode: grey until the car's key is ticked.
-    var kg = r.kind === "drops" && r.yard && keyGrey() && !keyFound(r) ? " kgrey" : "";
+  function yardChip(r, noGrey) {
+    // Key mode: grey until the car's key is ticked (not in the key check itself).
+    var kg = !noGrey && r.kind === "drops" && r.yard && keyGrey() && !keyFound(r) ? " kgrey" : "";
     if (!can("yard")) return r.yard ? '<span class="code ' + esc(r.yard) + kg + '">' + esc(r.yard) + "</span>" : "";
     // The chip is the picker: one tap, choose, saved.
     return '<select class="code pick ' + (r.yard ? esc(r.yard) : "unset") + kg + '" data-yard aria-label="Yard for ' + esc(r.reg) + '"><option value="">' + (r.yard ? "—" : "YARD") + "</option>" +
@@ -3288,6 +3288,13 @@
   function checkWord(r) {
     return /^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY" : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.";
   }
+  // The flight number alone; tapping it changes it (as the car's FLIGHT NUMBER does).
+  function flightCell(r) {
+    var noFl = r.flight === "NO FLIGHT" || r.flight_status === "noflight";
+    return noFl ? (can("flights") ? '<button type="button" class="flno mut" data-addflight title="Change flight">No flight</button>' : '<span class="mut">No flight</span>')
+      : r.flight ? (can("flights") ? '<button type="button" class="flno num" data-addflight title="Change flight">' + esc(r.flight) + "</button>" : '<b class="num">' + esc(r.flight) + "</b>")
+      : can("flights") ? '<button type="button" class="addflight" data-addflight>+ FLIGHT</button>' : '<span class="mut">No flight number</span>';
+  }
   function opsDeskRow(r, cls, overWord, cmpl, canc, over) {
     var noFl = r.flight === "NO FLIGHT" || r.flight_status === "noflight";
     // Return: the time they booked to be back. An early return was booked for
@@ -3295,11 +3302,7 @@
     // collection time staff typed in is under it, named as such.
     var t = r.early ? '<b class="num">' + esc(r.sched_time || "—") + '</b><small>Early return</small>'
       : '<b class="num">' + esc(r.return_at ? hhmm(r.return_at) : "—") + "</b>" + (noFl && r.est_time ? '<small>Collect <span class="num">' + esc(r.est_time) + "</span></small>" : "");
-    var mk = String(r.make || "").trim();
-    // The flight number alone; tapping it changes it (as the car's FLIGHT NUMBER does).
-    var fl = noFl ? (can("flights") ? '<button type="button" class="flno mut" data-addflight title="Change flight">No flight</button>' : '<span class="mut">No flight</span>')
-      : r.flight ? (can("flights") ? '<button type="button" class="flno num" data-addflight title="Change flight">' + esc(r.flight) + "</button>" : '<b class="num">' + esc(r.flight) + "</b>")
-      : can("flights") ? '<button type="button" class="addflight" data-addflight>+ FLIGHT</button>' : '<span class="mut">No flight number</span>';
+    var mk = String(r.make || "").trim(), fl = flightCell(r);
     // The flight's times sit in Status, beside what the flight check says.
     var landed = !noFl && !canc && r.flight_status === "landed" && r.est_time && r.est_time !== "DELAY";
     var fstate = landed ? '<span class="fx ok">Landed <span class="num">' + esc(r.est_time) + "</span></span>" : opsFlightState(r, canc);
@@ -3543,10 +3546,13 @@
       return ((!S.keyFilter || S.keyFilter === "all") || keyState(r) === S.keyFilter) && (!S.keyYard || (S.keyYard === "-" ? !r.yard : r.yard === S.keyYard)) &&
         (!q || [r.reg,r.make,r.num,r.name,r.ref,r.phone,r.note,r.flight].join("").toUpperCase().replace(/\s/g,"").indexOf(q) >= 0);
     }).sort(function (a,b) { return rank[keyState(a)] - rank[keyState(b)] || (a.return_at || "").localeCompare(b.return_at || "") || (a.num || 0) - (b.num || 0); });
-    head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
+    head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>FLIGHT</span><span>CUSTOMER · REF</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
     return head + (rows.length ? rows.map(function (r) {
       var st = keyState(r), e = keyEntry(r), locked = disabled || !active || st === "driver" || sh.archived_at;
-      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div><div class="kc-yard">' + (r.yard ? '<span class="code ' + esc(r.yard) + '">' + esc(YARD_LABEL[r.yard] || r.yard) + '</span>' : '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(staffName(r.sent_by) || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
+      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div>' +
+        '<div class="kc-fl">' + flightCell(r) + (r.name ? '<span class="kc-meta kc-flcu" title="' + esc(r.name) + '">' + esc(nice(r.name)) + '</span>' : '') + '</div>' +
+        '<div class="kc-cu"><div class="kc-name" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="kc-meta num">' + esc(r.ref || "") + '</div></div>' +
+        '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(staffName(r.sent_by) || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
     }).join("") : '<div class="msg">No keys match this view.</div>') + '<div class="kc-foot">Showing ' + rows.length + ' of ' + keyCars().length + ' cars on this shift.</div>';
   }
 
