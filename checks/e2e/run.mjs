@@ -421,6 +421,8 @@ async function scenario(fn, tag) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
   }
+  // Each section starts clean: pages a section left open would pile up until the browser gives out.
+  for (const c of browser.contexts()) await c.close().catch(() => {});
 }
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
@@ -1887,7 +1889,7 @@ await scenario(async () => {
       check("held: Open shows the car's booking details on its night", await page.locator("#panel").evaluate((d) => d.open) && /DV59ACF/.test(await page.locator("#panelBody").innerText()) && (await page.locator("#sheetPick").inputValue()) === "d0");
     }
     check("held (" + width + "): no errors", page.__errors.length === 0, page.__errors);
-    await page.close();
+    await page.context().close();
   }
 }, 'held');
 
