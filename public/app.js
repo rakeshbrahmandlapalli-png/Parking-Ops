@@ -254,6 +254,7 @@
     S.bootFailed = false; clearTimeout(S.bootRetry);
     if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
     S.me = me.data;
+    sb.rpc("i_am_here").then(function () {}, function () {});
     var res = await Promise.all([
       sb.rpc("my_permissions"),
       sb.from("companies").select("*").eq("id", S.me.company_id).single(),
@@ -5163,6 +5164,29 @@
     if (r && r.error) return toast(r.error.message, true);
     await reloadStaff();
   }
+  // Online / Offline (setup 99): the app checks in every minute while it is on
+  // screen; anyone seen or who changed something in the last 5 minutes is Online.
+  var SEEN_ONLINE = 5 * 60000;
+  async function loadSeen() {
+    S.seenAt = Date.now();
+    var r = await sb.rpc("staff_seen");
+    if (r.error || !Array.isArray(r.data)) return;
+    S.seen = {}; r.data.forEach(function (x) { S.seen[x.id] = x; });
+    if (S.view === "staff" && !$("panel").open && !document.querySelector(".ops-dd[open]") && document.activeElement !== $("newName")) render();
+  }
+  function seenHtml(p) {
+    var x = (S.seen || {})[p.id] || {}, t = Math.max(x.seen_at ? Date.parse(x.seen_at) : 0, x.acted_at ? Date.parse(x.acted_at) : 0);
+    if (p.id === S.me.id || (t && Date.now() - t < SEEN_ONLINE)) return '<b class="seen on">Online</b>';
+    if (!t) return '<b class="seen">Offline</b>';
+    var d = new Date(t), today = londonParts(d).key === londonParts(new Date()).key;
+    return '<b class="seen">Offline · ' + esc(today ? hhmm(d) : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TZ })) + "</b>";
+  }
+  setInterval(function () {
+    if (!S.me || document.visibilityState !== "visible") return;
+    sb.rpc("i_am_here").then(function () {}, function () {});
+    if (S.view === "staff" && isOps()) loadSeen();
+  }, 60000);
+  document.addEventListener("visibilitychange", function () { if (S.me && document.visibilityState === "visible") sb.rpc("i_am_here").then(function () {}, function () {}); });
   function renderStaff() {
     var people = Object.keys(S.staff).map(function (k) { return S.staff[k]; }).filter(function (p) { return !p.removed_at; }).sort(function (a, b) { return (b.active - a.active) || a.name.localeCompare(b.name); });
     if (isOps()) return opsStaff(people);
@@ -5180,6 +5204,7 @@
   // Operations: Staff & access. "Add person" opens the form; each person's
   // PIN and access, New link and Switch off sit in one Actions menu.
   function opsStaff(people) {
+    if (!S.seenAt || Date.now() - S.seenAt > 30000) loadSeen();
     var roles = ["bongo", "terminal", "office", "view"].concat(S.me.role === "owner" || S.me.role === "manager" ? ["manager"] : [], S.me.role === "owner" ? ["owner"] : []);
     return '<p class="ops-sub">Manage your team and their permissions</p>' + (S.issued ? issuedHtml(S.issued) + "<br>" : "") +
       (S.addPerson ? '<form class="ops-card ops-add" id="addStaff" novalidate><header><strong>Add a person</strong><button type="button" class="ops-x" data-addperson aria-label="Close">&times;</button></header>' +
@@ -5187,12 +5212,12 @@
         '<label class="field">Role<select id="newRole">' + roles.map(function (r) { return '<option value="' + r + '">' + ROLE_LABEL[r] + "</option>"; }).join("") + "</select></label></div>" +
         '<div class="ops-btns"><button class="btn" id="addGo">Add and get link</button></div></form>'
         : '<div class="ops-acts"><button type="button" class="btn" data-addperson>Add person</button></div>') +
-      opsPanel("Team members", people.length + (people.length === 1 ? " person" : " people"), '<div class="staffbox ops-team">' + (opsDesk() ? '<div class="ops-person ops-th" aria-hidden="true"><i></i><div class="grow"><strong>Person</strong><small>Account</small><span>Role</span></div><div class="ops-side"><em>Status</em><b>Actions</b></div></div>' : "") + people.map(function (p) {
+      opsPanel("Team members", people.length + (people.length === 1 ? " person" : " people"), '<div class="staffbox ops-team">' + (opsDesk() ? '<div class="ops-person ops-th" aria-hidden="true"><i></i><div class="grow"><strong>Person</strong><small>Account</small><span>Role</span></div><div class="ops-side"><em>Status</em><b class="seen">Online</b><b>Actions</b></div></div>' : "") + people.map(function (p) {
         var acts = p.id === S.me.id ? "" : (canManage(p) ? '<button type="button" data-manage="' + p.id + '">PIN and access</button>' : "") +
           (canChange(p) ? '<button type="button" data-reset="' + p.id + '">New link</button><button type="button" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "");
         return '<div class="ops-person' + (p.active ? "" : " off") + '"><i>' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + "</i>" +
           '<div class="grow"><strong>' + esc(p.name) + "</strong><small>" + (p.id === S.me.id ? "Your account" : "Staff member") + "</small><span>" + esc(ROLE_LABEL[p.role] || p.role) + "</span></div>" +
-          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" +
+          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") +
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }

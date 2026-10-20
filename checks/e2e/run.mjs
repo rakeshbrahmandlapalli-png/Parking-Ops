@@ -175,6 +175,8 @@ function rpc(db, fn, a) {
       Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
     }
     case "me": return db.me;
+    case "i_am_here": db.hereCalls = (db.hereCalls || 0) + 1; return null;
+    case "staff_seen": return db.seen || [];
     case "set_acting": { if (a.p_name && !(db.me.desk_names || []).includes(a.p_name)) throw new Error("That name isn't on this login."); db.me.acting = a.p_name; return db.me; }
     case "set_desk_names": { const p = db.staff.find((x) => x.id === a.p_staff); p.desk_names = a.p_names; return p; }
     case "set_capacity": {
@@ -906,7 +908,15 @@ await scenario(async () => {
   check("Operations: Booking details in sections, flight number and landing side by side, Save always in view", car.secs.join("|") === "Customer & vehicle|Return & parking|Notes & status" && car.reg === "Registration" && car.half && car.foot && car.save === "Save changes", car);
   await plus.fill("#noteText", "ops note"); await plus.click("[data-savepanel]"); await sleep(300);
   check("Operations: Save changes saves the note and closes", !(await plus.evaluate(() => document.getElementById("panel").open)) && opsDb.calls.some((c) => c.fn === "set_note" && c.args.p_note === "ops note"));
+  opsDb.seen = [{ id: "s2", seen_at: new Date(Date.now() - 9 * 60000).toISOString() }];
   await plus.click('#bnav [data-bn="menuBtn"]'); await sleep(200); await plus.click('#menuBody [data-view="staff"]'); await sleep(300);
+  const seen = await plus.evaluate(() => [...document.querySelectorAll("#main .ops-person .seen")].map((x) => x.className + ":" + x.textContent).join("|"));
+  check("Operations: Staff & access shows you Online (green) and someone last seen 9 minutes ago Offline with the time", /^seen on:Online\|seen:Offline · \d\d:\d\d$/.test(seen) && opsDb.hereCalls >= 1, { seen, here: opsDb.hereCalls });
+  opsDb.seen = [{ id: "s2", seen_at: new Date(Date.now() - 4 * 60000).toISOString() }];
+  await plus.evaluate(() => { const real = Date.now; Date.now = () => real() + 31000; });
+  await plus.click('#bnav [data-bn="menuBtn"]'); await sleep(200); await plus.click('#menuBody [data-view="staff"]'); await sleep(400);
+  const seen2 = await plus.evaluate(() => [...document.querySelectorAll("#main .ops-person .seen")].map((x) => x.className + ":" + x.textContent).join("|"));
+  check("Operations: someone seen 4 minutes ago is Online", seen2 === "seen on:Online|seen on:Online", seen2);
   const st = await plus.evaluate(() => ({ title: document.getElementById("viewTitle").textContent, head: document.querySelector("#main .ops-card header").innerText.replace(/\s+/g, " "), people: document.querySelectorAll("#main .ops-person").length,
     badges: [...document.querySelectorAll("#main .ops-person em")].map((x) => x.textContent).join("|"), you: document.querySelector("#main .ops-person small").textContent }));
   check("Operations: Staff & access page: team in one panel, each Active or Inactive", st.title === "Staff & access" && /^Team members \d+ people$/.test(st.head) && st.people >= 2 && /Active/.test(st.badges) && st.you === "Your account", st);
@@ -3521,6 +3531,7 @@ async function shots(dir) {
     for (const [width, height, name] of AW) {
       const db = deskDb(); { const bi = biDb("ops"); Object.assign(db, { autoImport: bi.autoImport, reviews: bi.reviews, preview: bi.preview, imports: bi.imports }); } db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
       db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true }, { id: "s5", name: "OLD DRIVER", role: "bongo", active: false });
+      db.seen = [{ id: "s2", seen_at: new Date(Date.now() - 120000).toISOString() }, { id: "s3", seen_at: new Date(Date.now() - 3 * 3600000).toISOString() }, { id: "s4", acted_at: new Date(Date.now() - 2 * 86400000).toISOString() }];
       db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }, { at: new Date(Date.now() - 3600000).toISOString(), action: "CALLED", value: "", reg: "CD34EFG", staff_id: "s2", booking_id: "w2" }];
       const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
       const snap = async (n) => { await sleep(600); const h = Math.min(2600, await page.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight))); await page.setViewportSize({ width, height: h }); await sleep(250); await page.screenshot({ path: path.join(dir, name + "-" + n + ".png") }); await page.setViewportSize({ width, height }); };
