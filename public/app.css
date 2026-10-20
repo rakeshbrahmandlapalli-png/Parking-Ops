@@ -191,6 +191,11 @@ dialog::backdrop{background:rgb(32 33 36 / .5);}
 .sheet label{display:block;font-size:10px;font-weight:700;letter-spacing:.7px;color:#5f6368;margin:12px 0 4px;}
 .sheet input,.sheet textarea{width:100%;padding:11px 12px;font-size:16px;border:1px solid #c4c7cc;border-radius:7px;background:#fff;color:#202124;}
 .sheet textarea{min-height:76px;resize:vertical;}
+.who.can-switch{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;}
+.swname{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px;}
+.swname .btn{width:100%;justify-content:flex-start;min-height:52px;font-size:17px;}
+#panel .swname .btn.on{background:var(--dark);border-color:var(--dark);color:#fff;}
+#menu .switchname{width:auto;min-height:40px;padding:0 16px;margin:0 0 10px;}
 .sheet select{width:100%;height:46px;padding:0 10px;font-size:16px;border:1px solid #c4c7cc;border-radius:7px;background:#fff;color:#202124;}
 .when2{display:flex;gap:6px;}
 .when2 input{flex:1;min-width:0;}

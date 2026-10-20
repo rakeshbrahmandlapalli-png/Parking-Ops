@@ -254,7 +254,7 @@
     var res = await Promise.all([
       sb.rpc("my_permissions"),
       sb.from("companies").select("*").eq("id", S.me.company_id).single(),
-      sb.from("staff").select("id, name, role, active, created_at, extra, removed_at").order("name"),
+      sb.from("staff").select("*").order("name"),
       loadSheets()
     ]);
     if (!res[1].data || res.some(function (x) { return x && x.error && isDown(x); })) { if (openFromSnap()) return; throw new Error("Couldn't load the company"); }
@@ -647,7 +647,9 @@
     var sh = sheet(), picks = !!(sh && sh.kind === "picks"), board = S.view === "board";
     document.body.classList.toggle("picks", picks);
     document.body.classList.toggle("on-board", board);
-    $("who").textContent = S.me.name.toUpperCase(); $("who").setAttribute("data-role", ROLE_LABEL[S.me.role] || "");
+    $("who").textContent = meName().toUpperCase(); $("who").setAttribute("data-role", ROLE_LABEL[S.me.role] || "");
+    if (deskNames().length) { $("who").setAttribute("role", "button"); $("who").setAttribute("tabindex", "0"); $("who").classList.add("can-switch"); }
+    else { $("who").removeAttribute("role"); $("who").removeAttribute("tabindex"); $("who").classList.remove("can-switch"); }
     show("homeBtn", !S.platform && !!homeSaved());
     $("clock").textContent = londonParts(new Date()).time;
     var shift = currentShiftKey();
@@ -719,12 +721,39 @@
   function niceRole(role) {
     return { owner: "Owner", manager: "Manager", office: "Office", driver: "Driver" }[role] || "Team";
   }
+  // One login, several people (the office PC, part 97): the names on it, the one working now.
+  function deskNames() { return (S.me && S.me.desk_names) || []; }
+  function meName() { return (S.me.acting || S.me.name || ""); }
+  function whoSub() {
+    return '<p class="sub">' + esc(meName()) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>" +
+      (deskNames().length ? '<button type="button" class="btn ghost small switchname" data-switchname>Switch name</button>' : "");
+  }
+  function openSwitchName() {
+    if ($("menu").open) $("menu").close();
+    panelRow = null;
+    $("panelBody").innerHTML = '<h2 id="panelTitle">Who\'s working? <small>' + esc(S.me.name) + "</small></h2>" +
+      '<div class="swname">' + deskNames().map(function (n) {
+        var on = n === S.me.acting;
+        return '<button type="button" class="btn ghost' + (on ? " on" : "") + '" data-acting="' + esc(n) + '" aria-pressed="' + on + '">' + esc(n) + "</button>";
+      }).join("") + "</div>" +
+      '<div class="pbtns"><button type="button" data-close>Close</button></div>';
+    if (!$("panel").open) $("panel").showModal();
+  }
+  async function setActing(n, btn) {
+    btn.disabled = true;
+    var r = await sb.rpc("set_acting", { p_name: n });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    S.me.acting = r.data && r.data.acting !== undefined ? r.data.acting : n;
+    $("panel").close(); render();
+    toast("Working now: " + meName());
+  }
   function cHeadHtml() {
     var short = String((S.company && (S.company.brand || {}).short) || (S.company && S.company.name) || PRODUCT).trim();
     var mark = String((S.company && (S.company.brand || {}).mark) || short.charAt(0) || "P").slice(0, 2);
     return '<span class="ch-mark" aria-hidden="true">' + esc(mark) + '</span>' +
       '<span class="ch-txt"><b>' + esc(short) + '</b>' +
-      '<small>' + esc(S.me.name) + ' · ' + esc(niceRole(S.me.role)) + '</small></span>' +
+      '<small>' + esc(meName()) + ' · ' + esc(niceRole(S.me.role)) + '</small></span>' +
       '<span class="ch-upd"><i aria-hidden="true"></i>Updated ' + esc(londonParts(new Date()).time) + '</span>';
   }
   function dayShortLabel(key) { return key ? new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : ""; }
@@ -2848,7 +2877,8 @@
     if (t.dataset.gone) return removeGone([t.dataset.gone], t);
     if (t.dataset.undoimport) return undoImport(t.dataset.undoimport, t);
     if (t.dataset.goneall !== undefined) return removeGone(Array.prototype.map.call($("panelBody").querySelectorAll("[data-gone]"), function (b) { return b.dataset.gone; }), t);
-    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined)) return staffPanelAction(t);
+    if (t.dataset.acting !== undefined) return setActing(t.dataset.acting, t);
+    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined)) return staffPanelAction(t);
     if (!panelRow) return;
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
     if (t.dataset.savepanel !== undefined) {
@@ -5073,7 +5103,7 @@
   function canChange(p) { return p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner") && (p.role !== "manager" || S.me.role === "owner" || S.me.role === "manager"); }
   function canManage(p) { return (S.me.role === "manager" || S.me.role === "owner") && p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner"); }
   async function reloadStaff() {
-    var list = await sb.from("staff").select("id, name, role, active, created_at, extra, removed_at").order("name");
+    var list = await sb.from("staff").select("*").order("name");
     if (!list.error) { S.staff = {}; list.data.forEach(function (p) { S.staff[p.id] = p; }); }
   }
   var staffEdit = null;
@@ -5088,6 +5118,9 @@
       }).join("") + '</div><div class="pseg" style="margin-top:8px"><button type="button" data-saveaccess>SAVE ACCESS</button><button type="button" data-roledefault>ROLE DEFAULTS</button></div>' +
       '<label for="spPin">SET A NEW PIN</label><div class="when2"><input id="spPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="4 numbers"><button type="button" class="btn ghost" data-savepin>Set PIN</button></div>' +
       '<p class="hint">Their link stays the same. Tell them the new PIN.</p>' +
+      '<label for="spNames">NAMES ON THIS LOGIN</label><textarea id="spNames" rows="3" placeholder="One per line, e.g. RAKESH.O">' + esc((p.desk_names || []).join("\n")) + "</textarea>" +
+      '<div class="pseg" style="margin-top:8px"><button type="button" data-savenames>SAVE NAMES</button></div>' +
+      '<p class="hint">For a shared login: whoever is working picks their name with Switch name.</p>' +
       '<button type="button" class="link rmcar" data-removestaff>Remove ' + esc(p.name) + '</button>' +
       '<div class="pbtns"><button type="button" data-close>Close</button></div>';
     if (!$("panel").open) $("panel").showModal();
@@ -5113,6 +5146,10 @@
       if (!/^\d{4}$/.test(pin)) { t.disabled = false; return toast("The PIN must be 4 numbers.", true); }
       r = await sb.rpc("set_staff_pin", { p_staff: p.id, p_pin: pin });
       if (!r.error) { $("spPin").value = ""; toast("New PIN set for " + p.name + "."); }
+    } else if (t.dataset.savenames !== undefined) {
+      var names = $("spNames").value.split(/[\n,]/).map(function (x) { return x.trim(); }).filter(Boolean);
+      r = await sb.rpc("set_desk_names", { p_staff: p.id, p_names: names });
+      if (!r.error) toast(names.length ? "Names saved for " + p.name + "." : "Names cleared for " + p.name + ".");
     } else if (t.dataset.removestaff !== undefined) {
       if (!confirm("Remove " + p.name + "? Their link and PIN stop working for good. Their name stays on everything they did.")) { t.disabled = false; return; }
       r = await sb.rpc("remove_staff", { p_staff: p.id });
@@ -5160,7 +5197,7 @@
     try {
       body.app_url = location.origin + "/";
       var r = await callFunction("manage-staff", body, true);
-      var list = await sb.from("staff").select("id, name, role, active, created_at, extra, removed_at").order("name");
+      var list = await sb.from("staff").select("*").order("name");
       if (!list.error) { S.staff = {}; list.data.forEach(function (p) { S.staff[p.id] = p; }); }
       return r;
     } catch (err) { toast(err.message, true); return null; }
@@ -5680,6 +5717,7 @@
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
   document.addEventListener("click", async function (e) {
+    if (S.me && e.target.closest && e.target.closest("#who.can-switch, [data-switchname]")) return openSwitchName();
     if (e.target.closest("[data-reload]")) return location.reload();
     // The second line of a row opens the car too, not only the reg.
     var opener = e.target.closest("[data-addflight]") ? null : e.target.closest("div[data-open]");
@@ -5947,7 +5985,7 @@
       (sh.archived_at ? '<button type="button" data-unarchive="' + sh.id + '">Bring back to the list</button>' : '<button type="button" data-archivesheet="' + sh.id + '">Archive this sheet</button>') +
       '<button type="button" class="danger" data-deletesheet="' + sh.id + '">Delete this sheet</button></div>' : "";
     if (hasFeatures()) { $("menuBody").innerHTML = premiumMenuHtml(items, sh); if (!$("menu").open) { opsMenuPlace(); $("menu").showModal(); } markBnav(); menuVersionCheck(); return; }
-    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + '</h2><p class="sub">' + esc(S.me.name) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>" +
+    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + "</h2>" + whoSub() +
       '<div class="menu-list">' + items.filter(function (x) { return x[2]; }).map(function (x) {
         return (x[0] === "me" ? '<button type="button" data-tutorials>Tutorials</button>' : "") + '<button type="button" data-view="' + x[0] + '"' + (S.view === x[0] ? ' aria-current="page"' : "") + ">" + x[1] + "</button>";
       }).join("") + "</div>" + sheetTools + modeHtml() + '<div class="pbtns"><button type="button" data-closemenu>Close</button></div>' + appVersionHtml();
@@ -5981,7 +6019,7 @@
     // A wide screen: each section in its own panel, side by side.
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
-    var h = (o ? '<h2>Menu</h2><p class="sub">' + esc(S.me.name) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>" : "<h2>" + esc(S.company.name) + '</h2><p class="sub">' + esc(S.me.name) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role) + "</p>") +
+    var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
       group(o ? "Operations" : "TODAY", ["board", "flights", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +

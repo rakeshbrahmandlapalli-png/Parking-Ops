@@ -175,6 +175,8 @@ function rpc(db, fn, a) {
       Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
     }
     case "me": return db.me;
+    case "set_acting": { if (a.p_name && !(db.me.desk_names || []).includes(a.p_name)) throw new Error("That name isn't on this login."); db.me.acting = a.p_name; return db.me; }
+    case "set_desk_names": { const p = db.staff.find((x) => x.id === a.p_staff); p.desk_names = a.p_names; return p; }
     case "set_capacity": {
       const yc = {}; for (const [k, v] of Object.entries(a.p_yards || {})) { if (!db.company.yards.includes(k)) throw new Error("Not a valid yard: " + k); if (+v) yc[k] = +v; }
       db.company.capacity = +a.p_total || null; db.company.yard_capacity = yc; return { capacity: db.company.capacity, yard_capacity: yc };
@@ -438,6 +440,53 @@ await scenario(async () => {
   await page.goto(BASE + "/"); await sleep(800);
   check("no personal link: shows the 'ask for your link' screen", await page.isVisible("#noLink"));
 });
+
+// 1-names. One office login, several people (20 Oct): Switch name shows who's working (RAKESH.O).
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme: "ops" };
+  db.me = { id: "s3", name: "OFFICE", role: "manager", company_id: "c1", desk_names: ["RAKESH.O", "SUGU.O", "AMY.O"], acting: "" };
+  db.staff.push({ id: "s3", name: "OFFICE", role: "manager", active: true, desk_names: db.me.desk_names });
+  const page = await phone(browser, db, { width: 1280 });
+  await open(page);
+  check("names: the bar shows the login's name until someone picks theirs", (await page.locator("#who").innerText()) === "OFFICE" && await page.locator("#who.can-switch").count() === 1);
+  await page.click("#who"); await sleep(300);
+  check("names: tapping the name lists the names on this login", await page.locator("#panel [data-acting]").count() === 3 && /Who's working\?/.test(await page.locator("#panelTitle").innerText()));
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/switch-desktop.png" });
+  await page.click('#panel [data-acting="RAKESH.O"]'); await sleep(500);
+  check("names: picking a name switches without signing out", db.calls.some((c) => c.fn === "set_acting" && c.args.p_name === "RAKESH.O") && (await page.locator("#who").innerText()) === "RAKESH.O" && !(await page.locator("#panel").evaluate((d) => d.open)));
+  await page.click("#menuBtn"); await sleep(300);
+  check("names: the menu shows the name working and Switch name", /RAKESH\.O/.test(await page.locator("#menu .sub").first().innerText()) && await page.locator("#menu [data-switchname]").count() === 1);
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/switch-menu-desktop.png" });
+  await page.click("#menu [data-switchname]"); await sleep(300);
+  check("names: the name working now is marked", await page.locator('#panel [data-acting="RAKESH.O"][aria-pressed="true"]').count() === 1);
+  await page.click('#panel [data-acting="SUGU.O"]'); await sleep(500);
+  check("names: switching again", (await page.locator("#who").innerText()) === "SUGU.O");
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(300);
+  await page.click('#bnav [data-bn="menuBtn"]'); await sleep(300);
+  check("names: on a phone Switch name is in the menu", await page.locator("#menu [data-switchname]").isVisible());
+  await page.click("#menu [data-switchname]"); await sleep(300);
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/switch-phone.png" });
+  check("names: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+  // A person on their own login sees no switcher.
+  const solo = await phone(browser, makeDb());
+  await open(solo);
+  await solo.click("#menuBtn"); await sleep(300);
+  check("names: no Switch name on a personal login", await solo.locator("#menu [data-switchname]").count() === 0 && await solo.locator("#who.can-switch").count() === 0);
+  await solo.context().close();
+  // The owner sets the names on the office login.
+  const odb = makeDb(); odb.staff.push({ id: "s3", name: "OFFICE", role: "manager", active: true, desk_names: [] });
+  const own = await phone(browser, odb, { width: 1280 });
+  await open(own);
+  await own.click("#menuBtn"); await sleep(300); await own.click('#menu [data-view="staff"]'); await sleep(400);
+  await own.click('[data-manage="s3"]'); await sleep(300);
+  await own.fill("#spNames", "RAKESH.O\nSUGU.O, AMY.O"); await own.click("[data-savenames]"); await sleep(400);
+  const sn = odb.calls.find((c) => c.fn === "set_desk_names");
+  check("names: the owner saves the names on a login", sn && sn.args.p_staff === "s3" && sn.args.p_names.join() === "RAKESH.O,SUGU.O,AMY.O", sn);
+  if (process.env.HELD_SHOTS) { await own.locator("#spNames").scrollIntoViewIfNeeded(); await own.screenshot({ path: process.env.HELD_SHOTS + "/names-staff-desktop.png" }); }
+  check("names: owner page no errors", own.__errors.length === 0, own.__errors);
+  await own.context().close();
+}, 'held');
 
 // 1a. iPhone: the page can't zoom in (Safari zooms on a search box under 16px and
 // stays zoomed, which slid the bottom bar over the last cars, 13 Oct), and the
