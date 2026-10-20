@@ -88,9 +88,11 @@ The user wants looks kept **separate** (a change to one must not change another)
   the Display note).
 - Tests: `cd checks/e2e && timeout 580 node run.mjs` — **1040 passing, 0 failing** on 20 Oct (each section closes its pages after it runs)
   2026. Add tests for every change. Write output to a file and grep `FAIL|passed`.
-  The mock Supabase lives in run.mjs (`rpc()` cases, REST routes).
+  The mock Supabase lives in `harness.mjs` (`rpc()` cases, REST routes); the tests are in
+  `checks/e2e/sections/NN-*.mjs` (run in name order; add a new area as a new file), stress in
+  `stress.mjs`, previews in `previews.mjs`; `run.mjs` only runs them.
   Previews: `SHOTS=<dir> node run.mjs` screenshots TakeOff's look (phone and desktop).
-  Stress: `STRESS=1 node run.mjs` (36 checks) and `node checks/stress-joblist.cjs`. The board
+  Stress: `STRESS=1 node run.mjs` (37 checks) and `node checks/stress-joblist.cjs`. The board
   re-renders only changed rows (`setMain` + `boardChunks`); keep row HTML one element per row.
 - New DB part: copy the previous `admin_save_client` part, change only what's
   needed, check the live definition matches the previous part first, apply with
