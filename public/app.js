@@ -922,7 +922,6 @@
     if (r.early) return r.est_at || r.called_at || r.early_at || "9";
     return r.est_at || r.sched_at || r.return_at || r.called_at || "9";
   }
-  function yardOf(r) { return r.yard || ""; }
 
   // ── PICKS categories: where to park the car ──
   // A return up to the day-end (06:00) belongs to the day before, so a 22nd
@@ -4312,7 +4311,6 @@
     return h + "</div>";
   }
 
-  // ── import ────────────────────────────────
   // ── whose app this is ─────────────────────────────────────────────────────
   // One codebase, several parking companies. Each carries its own name, colour
   // and logo in companies.brand, and the page wears them the moment someone
@@ -4325,14 +4323,6 @@
     try {
       var c = JSON.parse(localStorage.getItem(BRAND_KEY) || "null");
       if (c) return String((c.brand && c.brand.short) || c.name || PRODUCT);
-    } catch (e) {}
-    return PRODUCT;
-  }
-  function brandFullName() {
-    if (S.company) return String((S.company.brand && S.company.brand.name) || S.company.name || PRODUCT);
-    try {
-      var c = JSON.parse(localStorage.getItem(BRAND_KEY) || "null");
-      if (c) return String((c.brand && c.brand.name) || c.name || PRODUCT);
     } catch (e) {}
     return PRODUCT;
   }
@@ -4437,6 +4427,7 @@
     if (!dt.time || cutoff === "00:00" || dt.time > cutoff) return dt.key;
     return addDaysKey(dt.key, -1);
   }
+  // ── import ────────────────────────────────
   // Booking import, "Auto import" tab: bookings from the connected booking site, by hand only.
   // "Check bookings" shows what would change and writes nothing; "Import N bookings" then imports
   // exactly that (same hash check as before). Shown only for a company that has it set up on the
