@@ -136,6 +136,32 @@ function keysDb(theme = "ops") {
     .concat([{ id: "k99", sheet_id: "d0", company_id: "c1", kind: "drops", ref: "K99", reg: "EF12GHJ", yard: "Y", num: 40, name: "GONE MR", flight: "W40001", return_at: iso(day, "06:20"), sent_at: iso(day, "06:00"), cleared_at: iso(day, "06:30"), note: "" }]);
   return db;
 }
+// System health (part 100) as the product owner sees it: one thing to look at, one client with phone errors.
+function healthData(over = {}) {
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  return {
+    at: ago(0),
+    warnings: [{ key: "aerodata:80", text: "AeroDataBox: about 82% of this month's units used (32,800 of 40,000, estimated)." }],
+    backup: { last: ago(19 * 60), count: 14 },
+    timers: [
+      { name: "health-warning", schedule: "*/15 * * * *", active: true, last_ok: ago(6), failed_24h: 0 },
+      { name: "parking-ops-backups", schedule: "15 3 * * *", active: true, last_ok: ago(19 * 60), failed_24h: 0 },
+      { name: "takeoff-flights", schedule: "* * * * *", active: true, last_ok: ago(0.2), failed_24h: 2, last_error: "timeout" },
+    ],
+    calls: { ok: 118, failed: 0 },
+    aerodata: { calls: 16400, units: 32800, cap: 40000, pct: 82, counted_from: ago(60 * 24 * 19), per_call: 2 },
+    push_failed_24h: 0,
+    clients: [
+      { id: "c2", name: "Airport Parking Bay", live_last: ago(4), live_error: "", timetable_last: ago(50), timetable_error: "", aerodata_calls_month: 5200,
+        import_last: ago(60 * 9), auto_import: null, phones_push: 6, online: 2, last_activity: ago(3), errors_24h: 0, errors: [] },
+      { id: "c1", name: "TAKEOFF", live_last: ago(2), live_error: "", timetable_last: ago(35), timetable_error: "", aerodata_calls_month: 11200,
+        import_last: ago(80), auto_import: { enabled: false, last_run: ago(80), last_ok: ago(80), last_error: null }, phones_push: 14, online: 4, last_activity: ago(1), errors_24h: 3,
+        errors: [{ at: ago(42), n: 2, m: "TypeError: Cannot read properties of undefined (reading 'reg') @2214:31", view: "board", device: "Android 14 · Chrome", version: "81afa64", who: "SUGU" },
+          { at: ago(300), n: 1, m: "NotAllowedError: play() failed", view: "pt", device: "iPhone iOS 17 · Safari · Home Screen app", version: "81afa64", who: "TERRY" }] },
+    ],
+    ...over,
+  };
+}
 function rpc(db, fn, a) {
   const row = (id) => db.bookings.find((x) => x.id === id);
   // EARLY RETURN's night (part 75): tonight, or that day's DROPS sheet, made if missing.
@@ -189,6 +215,8 @@ function rpc(db, fn, a) {
     }
     case "set_swipe_only": db.company.swipe_only = !!a.p_on; return !!a.p_on;
     case "admin_clients": return [{ id: "c1", name: "TAKEOFF", slug: "takeoff", yards: ["NB", "S"], brand: { colour: "#F59E0B", host: "takeoff-ops.vercel.app" }, staff: 14, has_owner: true, sheets_7d: 18, cars_7d: 2074, last_activity: now() }];
+    case "admin_health": return db.health === undefined ? healthData() : db.health;
+    case "report_errors": return (a.p_list || []).length;
     case "admin_usage": return { db_bytes: 25709715, store_bytes: 0, store_files: 0, clients: [{ id: "c1", name: "TAKEOFF", cars_30d: 2074, sheets_30d: 18, pt_sets_30d: 134, pt_photos_30d: 4277, fr24_calls_30d: 209, fr24_calls_today: 46, timetable_runs_30d: 148, timetable_last_ok: now(), timetable_last_error: "", activity_30d: 5805 }] };
     case "set_handover_note": { db.handover = { note: a.p_note, at: now(), by: "RAKESH" }; return db.handover; }
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
@@ -521,4 +549,4 @@ function dashSheets(db) {
     { id: "q5", sheet_id: "d0", kind: "drops", ref: "Q5", reg: "DONE01", num: 5, name: "DONE MR", return_at: inH(-1), called_at: inH(-2), sent_at: inH(-1.5), cleared_at: inH(-1), note: "" }]);
 }
 
-export { chromium, http, fs, path, fileURLToPath, ROOT, TYPES, passed, check, cspBlocked, sleep, SITE_HEADERS, server, BASE, lon, L, addDays, TONIGHT, TOMORROW, iso, makeDb, now, lonIso, deskDb, keysDb, rpc, R2, backend, b64, JWT, phone, open, text, noSideScroll, toast, pickKind, scenario, browser, failed, apbBrand, apbDb, biDb, db0Yard, dashData, dashExit, dashSheets };
+export { chromium, http, fs, path, fileURLToPath, ROOT, TYPES, passed, check, cspBlocked, sleep, SITE_HEADERS, server, BASE, lon, L, addDays, TONIGHT, TOMORROW, iso, makeDb, now, lonIso, deskDb, keysDb, rpc, R2, backend, b64, JWT, phone, open, text, noSideScroll, toast, pickKind, scenario, browser, failed, apbBrand, apbDb, biDb, db0Yard, dashData, dashExit, dashSheets, healthData };

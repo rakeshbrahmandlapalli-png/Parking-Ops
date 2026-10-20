@@ -453,6 +453,16 @@ table.usage th{text-align:left;font-weight:500;color:var(--muted,#5b6472);paddin
 table.usage td{text-align:right;padding:5px 0;font-weight:600;}
 table.usage tr+tr{border-top:1px solid #e5e7eb;}
 .warnt{color:#b42318;font-weight:600;}
+.hwarn{border:1px solid #f1b5ae;background:#fdf1ef;color:#7a1a12;border-radius:8px;padding:10px 12px;margin:8px 0 4px;font-size:14px;}
+.hwarn ul{margin:6px 0 0 18px;padding:0;}
+.hok{color:#18794e;font-weight:600;margin:8px 0;}
+table.usage.health td{text-align:right;font-weight:500;white-space:normal;overflow-wrap:anywhere;}
+table.usage.health th{white-space:normal;}
+.herr summary{cursor:pointer;font-size:14px;margin:6px 0;}
+.herr ul{list-style:none;padding:0;margin:0;font-size:13px;}
+.herr li{padding:6px 0;border-top:1px solid #e5e7eb;word-break:break-word;}
+.herr .note{display:block;margin-top:2px;}
+.hwarnline{display:block;width:100%;text-align:left;margin:0 0 12px;padding:10px 12px;border:1px solid #f1b5ae;background:#fdf1ef;color:#7a1a12;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;}
 .clienthead .title{margin-right:auto;}
 /* Bottom of the menu: this phone's app version, or "New version ready". */
 .appver{margin:14px 0 2px;text-align:center;font-size:12px;color:#80868b;}

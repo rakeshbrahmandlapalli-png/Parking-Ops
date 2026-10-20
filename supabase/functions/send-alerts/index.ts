@@ -24,6 +24,12 @@
 //       the x-timer header. If usage_status() finds a free-plan limit getting
 //       close (or no backup last night), the owners and managers of the
 //       companies in private.settings 'usage_alert_to' are told, once a day.
+//   { type: "health" }  by the 15-minute timer (setup/100-health-and-errors.sql),
+//       with the x-timer header. Each warning from health_status() (a timer
+//       failing, no backup, AeroDataBox units, a failed scheduled import, many
+//       phone errors) goes once a day to the product owner, never to clients.
+//   A push that fails for any reason but "phone gone" is noted (note_push_failure)
+//   for Clients → Health.
 //
 // Secrets (Edge Functions → Secrets):
 //   VAPID_PUBLIC_KEY   same value as VAPID_PUBLIC_KEY in public/app.js
@@ -66,7 +72,7 @@ async function pushTo(staffIds: string[], kind: Kind | null, note: Note) {
   const off = new Set((prefs ?? []).filter((p) => kind && p[kind] === false).map((p) => p.staff_id));
   const wanted = staffIds.filter((id) => !off.has(id));
   if (!wanted.length) return 0;
-  const { data: subs } = await db.from("push_subscriptions").select("id, endpoint, p256dh, auth").in("staff_id", wanted);
+  const { data: subs } = await db.from("push_subscriptions").select("id, company_id, endpoint, p256dh, auth").in("staff_id", wanted);
   let sent = 0;
   await Promise.all((subs ?? []).map(async (s) => {
     try {
@@ -75,7 +81,11 @@ async function pushTo(staffIds: string[], kind: Kind | null, note: Note) {
     } catch (e) {
       const code = (e as { statusCode?: number }).statusCode;
       if (code === 404 || code === 410) await db.from("push_subscriptions").delete().eq("id", s.id);   // phone gone
-      else console.error("push failed", code, (e as { body?: string }).body ?? String(e));
+      else {
+        const detail = String((e as { body?: string }).body ?? e);
+        console.error("push failed", code, detail);
+        await db.rpc("note_push_failure", { p_company: s.company_id, p_code: code ?? null, p_detail: detail });
+      }
     }
   }));
   return sent;
@@ -208,6 +218,28 @@ async function onUsage(req: Request) {
   return reply(200, { warnings: warnings.length, sent });
 }
 
+// Platform warnings for the product owner only (they can name any client).
+async function onHealth(req: Request) {
+  if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
+  const { data: h, error } = await db.rpc("health_status");
+  if (error) throw error;
+  const day = new Date().toISOString().slice(0, 10);
+  const fresh: string[] = [];
+  for (const w of (h?.warnings ?? []) as { key: string; text: string }[]) {
+    if (await once(`health:${w.key}:${day}`)) fresh.push(w.text);
+  }
+  if (!fresh.length) return reply(200, { warnings: (h?.warnings ?? []).length, sent: 0 });
+  const title = "⚠️ Parking Ops: needs a look";
+  const body = fresh.join(" ") + " Details: Clients → Health.";
+  const sent = await pushTo((h?.to ?? []) as string[], null, { title, body, url: "/", tag: "health" });
+  const hook = String(h?.discord ?? "");
+  if (/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(hook)) {
+    try { await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: `**${title}**\n${body}`, allowed_mentions: { parse: [] } }) }); }
+    catch (e) { console.error("discord failed", String(e)); }
+  }
+  return reply(200, { warnings: fresh.length, sent });
+}
+
 async function onTest(req: Request, body: Record<string, unknown>) {
   const asCaller = createClient(URL_, Deno.env.get("SUPABASE_ANON_KEY")!, {
     auth: { persistSession: false }, global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
@@ -238,6 +270,7 @@ Deno.serve(async (req) => {
     if (msg.type === "test") return await onTest(req, msg);
     if (msg.type === "longwait") return await onLongWait(req);
     if (msg.type === "usage") return await onUsage(req);
+    if (msg.type === "health") return await onHealth(req);
     if (msg.type === "import_held") return await onImportHeld(req, msg);
     return reply(400, { error: "Unknown message." });
   } catch (e) {

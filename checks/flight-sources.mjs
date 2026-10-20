@@ -130,6 +130,7 @@ check("Check flights: FR24 only, no AeroData", r.status === 200 && r.aero === 0 
 fresh(); db.bookings[0].sched_at = null;   // not matched yet: every chunk
 r = await post({ action: "timetable", day });
 check("Fill times: AeroData only (3 calls for the day), no FR24", r.status === 200 && r.aero === 3 && r.fr24 === 0, r);
+check("the timetable run records the AeroData calls it made (part 100: units estimate)", db.flight_runs.filter((x) => x.source === "schedule").pop()?.result.calls === 3, db.flight_runs.filter((x) => x.source === "schedule").pop());
 r = await post({ action: "timetable", day });
 check("office: Fill times again straight away is allowed (no limit)", r.status === 200 && r.aero === 3 && r.json.left === null, r);
 addSheet2();
@@ -139,6 +140,7 @@ check("Fill times for another sheet: allowed", r.status === 200 && r.aero === 3,
 fresh(); aeroAnswer = "quota"; db.bookings[0].sched_at = null;
 r = await post({ action: "timetable", day });
 check("monthly quota spent: one call, no retries, the error is shown", r.aero === 1 && /MONTHLY quota/.test(r.json.schedule.error), r);
+check("a failed call still counts as a call", r.json.schedule.calls === 1, r.json.schedule);
 addSheet2();
 r = await post({ action: "timetable", day: "2026-01-02" });
 check("after a spent quota: Fill times doesn't call AeroData for 6 h", r.aero === 0 && /used up/.test(r.json.schedule.skipped), r);

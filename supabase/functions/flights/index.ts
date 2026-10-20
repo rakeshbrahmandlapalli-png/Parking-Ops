@@ -147,7 +147,8 @@ async function aeroFetch(key: string, airport: string, from: string, to: string)
 // Every arrival from 05:00 on the sheet's day for 26 hours, in 12-hour chunks
 // (the API refuses longer ranges). Times asked for are the airport's local time.
 // want(from, to) false skips a chunk (no car still waiting on a flight in it).
-async function aeroDay(key: string, c: Company, day: string, want: (from: string, to: string) => boolean = () => true) {
+// spent.n counts the requests made (part 100: the AeroDataBox units estimate), failed ones too.
+async function aeroDay(key: string, c: Company, day: string, want: (from: string, to: string) => boolean = () => true, spent = { n: 0 }) {
   const next = addDays(day, 1);
   const windows = [[`${day}T05:00`, `${day}T17:00`], [`${day}T17:00`, `${next}T05:00`], [`${next}T05:00`, `${next}T07:00`]];
   const out: Arrival[] = [];
@@ -155,6 +156,7 @@ async function aeroDay(key: string, c: Company, day: string, want: (from: string
   for (let i = 0; i < windows.length; i++) {
     if (!want(windows[i][0], windows[i][1])) { skipped++; continue; }
     if (calls++) await sleep(AERO_GAP_MS);
+    spent.n++;
     for (const f of await aeroFetch(key, c.airport_iata, windows[i][0], windows[i][1])) {
       const leg = f.movement ?? f.arrival ?? {};
       const num = String(f.number ?? "");
@@ -238,7 +240,8 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
   if (!key) return { skipped: "No AeroDataBox key yet" };
   const now = new Date(), tz = c.time_zone;
   if (await quotaGone(admin, now)) return { skipped: "AeroData's monthly allowance is used up. Try Fill times again later." };
-  const tally = { filled: 0, moved: 0, expected: 0, landed: 0, cancelled: 0, notfound: 0, sheets: 0, done: 0, error: "" };
+  const tally = { filled: 0, moved: 0, expected: 0, landed: 0, cancelled: 0, notfound: 0, sheets: 0, done: 0, calls: 0, error: "" };
+  const spent = { n: 0 };
   let fetchedDays = 0;
 
   for (const day of days) {
@@ -271,8 +274,9 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
     // The API allows about one request a second: the gap between days too, not
     // just between one day's three windows (two back to back drew a 429).
     if (fetchedDays++) await sleep(AERO_GAP_MS);
-    try { ({ arrivals, partial } = await aeroDay(key, c, day, want)); }
+    try { ({ arrivals, partial } = await aeroDay(key, c, day, want, spent)); }
     catch (err) { tally.error = (err as Error).message; if (QUOTA_GONE.test(tally.error)) break; continue; }
+    finally { tally.calls = spent.n; }
 
     // Keep the day's arrivals, so a car with no flight number can be offered
     // the flights landing near its booked time (part 7; skipped if not run).
