@@ -21,6 +21,12 @@ const check = (name, cond, detail) => {
   console.log((cond ? "PASS " : "FAIL ") + name + (cond || detail === undefined ? "" : "   -> " + JSON.stringify(detail).slice(0, 300)));
 };
 const cspBlocked = [];
+// The app is built from its parts in src/app (node src/build.mjs): what is tested and deployed is those parts joined.
+if (!process.env.APP_ROOT) {
+  const appParts = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../src/app");
+  const joined = fs.readdirSync(appParts).filter((f) => /^\d\d-.+\.js$/.test(f)).sort().map((f) => fs.readFileSync(path.join(appParts, f), "utf8")).join("");
+  check("public/app.js is src/app's parts joined (run node src/build.mjs after editing a part)", joined === fs.readFileSync(path.join(ROOT, "app.js"), "utf8"));
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── the app, served like Vercel does (/p/<token> → pt.html), with the same
