@@ -192,8 +192,11 @@ function rpc(db, fn, a) {
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
     case "my_permissions": return db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]));
     case "tap_drop": {
+      // part 98: the name picked on a shared login rides with the stamp.
+      function byName(b, c) { b.by_name = { ...(b.by_name || {}) }; if (b[c] && db.me && db.me.acting) b.by_name[c] = db.me.acting; else delete b.by_name[c]; }
       const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared" }[a.p_action];
       b[f + "_at"] = a.p_on ? now() : null; b[f + "_by"] = a.p_on ? "s1" : null;
+      byName(b, f + "_by");
       if (a.p_action === "called" && !a.p_on && b.called_word === "Overstay" && !b.early) { const sh = db.sheets.find((x) => x.id === b.sheet_id); if (b.return_at && sh && b.return_at.slice(0, 10) >= sh.day) b.overstay = false; }
       if (a.p_action === "called") b.called_word = a.p_on ? a.p_word || "Called" : "";
       if (a.p_action === "called" && a.p_on && a.p_word === "Overstay") b.overstay = true;
@@ -201,9 +204,10 @@ function rpc(db, fn, a) {
       return b;
     }
     case "tap_pick": {
+      function byName(b, c) { b.by_name = { ...(b.by_name || {}) }; if (b[c] && db.me && db.me.acting) b.by_name[c] = db.me.acting; else delete b.by_name[c]; }
       const b = row(a.p_booking);
-      if (a.p_key === "intake") { b.intake = a.p_value; b.intake_at = a.p_value ? now() : null; b.intake_by = a.p_value ? "s1" : null; }
-      else if (a.p_key === "pt") { b.pt_at = a.p_value ? now() : null; b.pt_by = a.p_value ? "s1" : null; }
+      if (a.p_key === "intake") { b.intake = a.p_value; b.intake_at = a.p_value ? now() : null; b.intake_by = a.p_value ? "s1" : null; byName(b, "intake_by"); }
+      else if (a.p_key === "pt") { b.pt_at = a.p_value ? now() : null; b.pt_by = a.p_value ? "s1" : null; byName(b, "pt_by"); }
       else { b.pick_called = a.p_value; b.pick_called_at = a.p_value ? now() : null; }
       return b;
     }
@@ -461,6 +465,17 @@ await scenario(async () => {
   check("names: the name working now is marked", await page.locator('#panel [data-acting="RAKESH.O"][aria-pressed="true"]').count() === 1);
   await page.click('#panel [data-acting="SUGU.O"]'); await sleep(500);
   check("names: switching again", (await page.locator("#who").innerText()) === "SUGU.O");
+  // part 98: the button stamps carry the picked name, not the login's.
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(300);
+  await page.click('[data-id="b1"] [data-act="sent"]'); await sleep(500);
+  check("names: SENT stamps the picked name, not the login's", (await page.locator('[data-id="b1"] [data-act="sent"] .by').innerText()).trim() === "SUGU.O" && db.bookings.find((b) => b.id === "b1").by_name.sent_by === "SUGU.O",
+    await page.locator('[data-id="b1"] [data-act="sent"]').innerText());
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/stamp-phone.png" });
+  await page.click('[data-id="b1"] [data-act="called"]'); await sleep(500);
+  check("names: CALLED stamps it too", /SUGU\.O/.test(await page.locator('[data-id="b1"] [data-act="called"]').innerText()));
+  await page.click('[data-id="b1"] [data-act="sent"]'); await sleep(500);
+  check("names: undoing SENT clears its name", !db.bookings.find((b) => b.id === "b1").by_name.sent_by);
+  await page.setViewportSize({ width: 1280, height: 800 }); await sleep(300);
   await page.setViewportSize({ width: 390, height: 844 }); await sleep(300);
   await page.click('#bnav [data-bn="menuBtn"]'); await sleep(300);
   check("names: on a phone Switch name is in the menu", await page.locator("#menu [data-switchname]").isVisible());

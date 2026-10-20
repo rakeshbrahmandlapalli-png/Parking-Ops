@@ -135,6 +135,9 @@
   function can(a) { return !!S.perms[a]; }
   function sheet() { if (S.switching && S.switching.sheet && !S.switching.o.stay) return S.switching.sheet; return S.sheets.concat(S.archiveSheet ? [S.archiveSheet] : []).filter(function (s) { return s.id === S.sheetId; })[0] || null; }
   function staffName(id) { return id && S.staff[id] ? S.staff[id].name : ""; }
+  // Who pressed it: the name picked on a shared login (database part 98) or the login's own name.
+  function byName(r, col) { return (r && r.by_name && r.by_name[col]) || staffName(r && r[col]); }
+  function markBy(x, col) { var n = Object.assign({}, x.by_name || {}); if (x[col] && S.me && S.me.acting) n[col] = S.me.acting; else delete n[col]; x.by_name = n; }
 
   // ── sign-in ───────────────────────────────
   var linkFromHash = (location.hash.match(/^#t=([A-Za-z0-9_-]{32,64})$/) || [])[1];
@@ -1275,7 +1278,7 @@
     if (pro && PRO_WORDS[label]) label = PRO_WORDS[label];
     // Premium Board's pick rows have narrow buttons: the short word, as the old rows had.
     if (label === "Collected" && isBoard()) label = "Coll";
-    var name = on && at ? nice(staffName(who).trim().split(/\s+/)[0]) : "";
+    var name = on && at ? nice(String(who || "").trim().split(/\s+/)[0]) : "";
     return '<button type="button" class="' + cls + (on ? " on" : "") + (label.length > 7 ? " lng" : "") + '" ' + attrs + (allowed ? "" : " disabled") + ">" +
       (pro ? '<span class="w">' + label + "</span>" : label) + (on && at ? '<small class="num">' + esc(hhmm(at)) + "</small>" : "") + (name ? '<em class="by">' + esc(name) + "</em>" : "") + "</button>";
   }
@@ -1336,7 +1339,7 @@
     var h = "<label>" + (d && d.calc ? "OVERSTAY CHARGE" : "CHARGE") + "</label>";
     if (r.charge_method) {
       h += '<div class="chgbox pd"><b>' + (r.charge_method === "waived" ? "Waived " + money(r.charge_amount) : money(r.charge_amount) + " paid by " + r.charge_method) + "</b><span>" +
-        esc(staffName(r.charge_by)) + (r.charge_at ? " · " + esc(dayShort(r.charge_at) + " " + hhmm(r.charge_at)) : "") + "</span>" +
+        esc(byName(r, "charge_by")) + (r.charge_at ? " · " + esc(dayShort(r.charge_at) + " " + hhmm(r.charge_at)) : "") + "</span>" +
         (can("clear") ? '<button type="button" class="link" data-chargeundo>Undo</button>' : "") + "</div>";
       return h;
     }
@@ -1354,7 +1357,7 @@
     if (method && (isNaN(amt) || amt < 0)) return toast("Check the amount.", true);
     if (method === "waived") { var d = chargeDue(r); amt = d ? d.amount : amt; }
     run("set_overstay_paid", { p_booking: r.id, p_amount: amt, p_method: method }, r, function (x) {
-      x.charge_amount = method ? amt : null; x.charge_method = method; x.charge_at = method ? nowIso() : null; x.charge_by = method ? S.me.id : null;
+      x.charge_amount = method ? amt : null; x.charge_method = method; x.charge_at = method ? nowIso() : null; x.charge_by = method ? S.me.id : null; markBy(x, "charge_by");
     });
     toast(method === "" ? "Charge cleared" : method === "waived" ? "Waived" : money(amt) + " " + method + " recorded");
   }
@@ -1424,9 +1427,9 @@
   }
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
-      actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), r.sent_by) +
-      actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), r.called_by) +
-      actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), r.cleared_by) +
+      actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
+      actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by")) +
+      actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
   function dropRow(r) {
@@ -1502,7 +1505,7 @@
     if (r.kind !== "drops" || !(exitFee() > 0) || exitFree(r)) return "";
     var h = "<label>" + L("EXIT FEE") + "</label>";
     if (r.exit_method) return h + '<div class="chgbox pd exitbox"><b>' + money(r.exit_amount) + " paid by " + esc(r.exit_method) + "</b><span>" +
-      esc(staffName(r.exit_by)) + (r.exit_at ? " · " + esc(dayShort(r.exit_at) + " " + hhmm(r.exit_at)) : "") + "</span>" +
+      esc(byName(r, "exit_by")) + (r.exit_at ? " · " + esc(dayShort(r.exit_at) + " " + hhmm(r.exit_at)) : "") + "</span>" +
       (can("clear") ? '<button type="button" class="link" data-exitundo>Undo</button>' : "") + "</div>" +
       (r.exit_photo ? '<div class="docbox"><a class="docimg" id="exitImg" target="_blank" rel="noopener"><span class="note">Loading photo…</span></a></div>' : '<p class="hint">No photo of the payment.</p>');
     h += '<div class="chgbox exitbox"><b>' + money(exitFee()) + " due</b><span>Take a photo of the payment, then it's marked paid.</span></div>";
@@ -1524,7 +1527,7 @@
       } catch (e) { return toast("The photo didn't save: " + ((e && e.message) || e), true); }
     }
     run("set_exit_paid", { p_booking: r.id, p_method: method, p_photo: path }, r, function (x) {
-      x.exit_method = method; x.exit_amount = method ? exitFee() : null; x.exit_at = method ? nowIso() : null; x.exit_by = method ? S.me.id : null; x.exit_photo = path;
+      x.exit_method = method; x.exit_amount = method ? exitFee() : null; x.exit_at = method ? nowIso() : null; x.exit_by = method ? S.me.id : null; markBy(x, "exit_by"); x.exit_photo = path;
     });
     toast(method ? "Exit fee " + money(exitFee()) + " " + method + " recorded" : "Exit fee cleared");
     if (panelRow && panelRow.id === r.id && $("panel").open) openPanel(r);
@@ -1557,9 +1560,9 @@
   }
   // COLL, NO SHOW (or the car's location), RTC and PT: the same buttons on every layout.
   function pickActs(r) {
-    function b(v, c, label, perm) { return actBtn(r, 'data-pick="' + v + '"', c, label, r.intake === v, r.intake_at, can("intake") && (!perm || can(perm)), r.intake_by); }
+    function b(v, c, label, perm) { return actBtn(r, 'data-pick="' + v + '"', c, label, r.intake === v, r.intake_at, can("intake") && (!perm || can(perm)), byName(r, "intake_by")); }
     return '<div class="acts">' + b("Collected", "k", "COLL") + (picksYard() ? pickYardBtn(r) : b("No Show", "n", "NO SHOW")) + b("RTC", "r", "RTC", "rtc") +
-      actBtn(r, "data-pt", "p", "PT", !!r.pt_at, r.pt_at, can("intake"), r.pt_by) + "</div>";
+      actBtn(r, "data-pt", "p", "PT", !!r.pt_at, r.pt_at, can("intake"), byName(r, "pt_by")) + "</div>";
   }
 
   // The return flight the customer gave at drop-off (typed in the car), after the drop time.
@@ -1587,13 +1590,14 @@
       if (action === "sent") {
         if (on) { x.yard_before_t = x.yard; x.yard = "T"; x.sent_at = nowIso(); x.sent_by = S.me.id; }
         else { if (x.yard === "T" && x.yard_before_t) x.yard = x.yard_before_t; x.yard_before_t = ""; x.sent_at = null; x.sent_by = null; }
+        markBy(x, "sent_by");
       } else if (action === "called") {
         // OVERSTAY taken off a car due back on this sheet was a mis-tap (part 95).
         if (!on && x.called_word === "Overstay" && !x.early && returnDay(x) && returnDay(x) >= sheetDayOf(x)) x.overstay = false;
-        x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null;
+        x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null; markBy(x, "called_by");
         if (on && word === "Overstay") x.overstay = true;
       } else {
-        x.clear_word = on ? (word || "Collected") : ""; x.cleared_at = on ? nowIso() : null; x.cleared_by = on ? S.me.id : null;
+        x.clear_word = on ? (word || "Collected") : ""; x.cleared_at = on ? nowIso() : null; x.cleared_by = on ? S.me.id : null; markBy(x, "cleared_by");
       }
     });
     // CALLED on a car booked back on a later day: they're coming back early,
@@ -2636,8 +2640,8 @@
   function tapPick(r, key, value) {
     var v = key === "intake" ? (r.intake === value ? "" : value) : key === "pt" ? (r.pt_at ? "" : "Done") : (r.pick_called === value ? "" : value);
     run("tap_pick", { p_booking: r.id, p_key: key, p_value: v }, r, function (x) {
-      if (key === "intake") { x.intake = v; x.intake_at = v ? nowIso() : null; x.intake_by = v ? S.me.id : null; }
-      else if (key === "pt") { x.pt_at = v ? nowIso() : null; x.pt_by = v ? S.me.id : null; }
+      if (key === "intake") { x.intake = v; x.intake_at = v ? nowIso() : null; x.intake_by = v ? S.me.id : null; markBy(x, "intake_by"); }
+      else if (key === "pt") { x.pt_at = v ? nowIso() : null; x.pt_by = v ? S.me.id : null; markBy(x, "pt_by"); }
       else { x.pick_called = v; x.pick_called_at = v ? nowIso() : null; }
     });
   }
@@ -2734,7 +2738,7 @@
     if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
     panelRow = r;
     var drops = r.kind === "drops";
-    function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(staffName(who)) : "") : "—"; }
+    function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(who) : "") : "—"; }
     var det = [["NAME", esc(r.name) || "—"], ["CAR", /^[-\s.]*$/.test(r.make || "") ? "—" : esc(r.make)], ["REF", esc(r.ref) || "—"]];
     if (exitFee() > 0) det.push(["EXIT FEE", exitFree(r) ? "None for this booking" : r.exit_method ? money(r.exit_amount) + " paid, " + esc(r.exit_method) : money(exitFee())]);
     if (drops) {
@@ -2742,10 +2746,10 @@
       det.push(["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at)) + (r.orig_return_at ? ' <span class="hint">· was ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</span>" : "")]);
       det.push(["FLIGHT", esc(r.flight || "—") + (r.sched_time ? " · sched " + esc(r.sched_time) : "")]);
       if (r.est_time || r.flight_note) det.push(["ARRIVAL", (r.est_time ? "<b>" + esc(r.est_time) + "</b> " : "") + '<span class="hint">' + esc(r.flight_note) + "</span>"]);
-      det.push(["SENT", by(r.sent_at, r.sent_by)], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, r.called_by)], [r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, r.cleared_by)]);
+      det.push(["SENT", by(r.sent_at, byName(r, "sent_by"))], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, byName(r, "called_by"))], [r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, byName(r, "cleared_by"))]);
     } else {
       det.push(["DROP-OFF", esc(dayShort(r.drop_at) + " " + hhmm(r.drop_at))], ["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at))]);
-      if (r.intake) det.push([esc(r.intake.toUpperCase()), by(r.intake_at, r.intake_by)]);
+      if (r.intake) det.push([esc(r.intake.toUpperCase()), by(r.intake_at, byName(r, "intake_by"))]);
     }
     // Operations: "Booking details" with the reg under it, the details in two
     // columns, and the boxes in sections, each with a plain name.
@@ -3004,7 +3008,7 @@
     var list = (S.removed || []).slice().sort(function (a, b) { return a.removed_at < b.removed_at ? 1 : -1; });
     $("panelBody").innerHTML = '<h2 id="panelTitle">Removed cars <small>' + esc(sheetName()) + "</small></h2>" +
       (list.length ? '<div class="rmlist">' + list.map(function (r) {
-        return '<div><span><b>' + esc(r.reg || "NO REG") + "</b> " + esc(r.name) + '<small>' + esc(r.removed_reason) + " · " + esc(staffName(r.removed_by) || "") + " · " + esc(dayShort(r.removed_at) + " " + hhmm(r.removed_at)) +
+        return '<div><span><b>' + esc(r.reg || "NO REG") + "</b> " + esc(r.name) + '<small>' + esc(r.removed_reason) + " · " + esc(byName(r, "removed_by") || "") + " · " + esc(dayShort(r.removed_at) + " " + hhmm(r.removed_at)) +
           '</small></span><button type="button" data-restore="' + r.id + '">Put back</button></div>';
       }).join("") + "</div>" : '<p class="sub">Nothing removed from this sheet.</p>') +
       '<div class="pbtns"><button type="button" data-close>Close</button></div>';
@@ -3362,10 +3366,10 @@
     return ["Arrival", "Registration · vehicle", "Customer · ref", "Return", "Return flight", "Status", "Actions"].map(function (x) { return "<span>" + x + "</span>"; }).join("");
   }
   function opsDeskPickRow(r, cls) {
-    var mk = String(r.make || "").trim(), by = function (id) { var n = nice(staffName(id).trim().split(/\s+/)[0]); return n ? " · " + esc(n) : ""; };
+    var mk = String(r.make || "").trim(), by = function (who) { var n = nice(String(who || "").trim().split(/\s+/)[0]); return n ? " · " + esc(n) : ""; };
     var state = !r.intake ? '<span class="st-n">Not in yet</span>' : r.intake === "Collected" ? '<b class="st-s">Taken in <span class="num">' + esc(hhmm(r.intake_at)) + "</span></b>"
       : r.intake === "No Show" ? '<b class="st-x">No show</b>' : r.intake === "RTC" ? '<b class="st-o">RTC</b>' : "<b>" + esc(r.intake) + "</b>";
-    var extra = [r.intake === "Collected" ? (r.pt_at ? '<span class="fx ok">PT done <span class="num">' + esc(hhmm(r.pt_at)) + "</span>" + by(r.pt_by) + "</span>" : '<span class="fx warn">PT photos to take</span>') : "",
+    var extra = [r.intake === "Collected" ? (r.pt_at ? '<span class="fx ok">PT done <span class="num">' + esc(hhmm(r.pt_at)) + "</span>" + by(byName(r, "pt_by")) + "</span>" : '<span class="fx warn">PT photos to take</span>') : "",
       S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "",
       r.pick_called ? '<span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span>" : "",
       r.doc_path ? '<span class="fx">Docket photo</span>' : ""].filter(Boolean);
@@ -3582,7 +3586,7 @@
       return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div>' +
         '<div class="kc-fl">' + flightCell(r) + (r.name ? '<span class="kc-meta kc-flcu" title="' + esc(r.name) + '">' + esc(nice(r.name)) + '</span>' : '') + '</div>' +
         '<div class="kc-cu"><div class="kc-name" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="kc-meta num">' + esc(r.ref || "") + '</div></div>' +
-        '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(staffName(r.sent_by) || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
+        '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(byName(r, "sent_by") || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
     }).join("") : '<div class="msg">No keys match this view.</div>') + '<div class="kc-foot">Showing ' + rows.length + ' of ' + keyCars().length + ' cars on this shift.</div>';
   }
 
@@ -6088,7 +6092,7 @@
   function stepStatus(r) {
     var parts = [["sent_at", "sent_by", "Sent", "s"], ["called_at", "called_by", r.called_word === "Overstay" ? "Overstay" : "Called", "c"], ["cleared_at", "cleared_by", r.clear_word === "COMPLAINT" ? "Complaint" : "Clear", "x"]]
       .filter(function (p) { return r[p[0]]; }).map(function (p) {
-        var who = nice(staffName(r[p[1]]).trim().split(/\s+/)[0]);
+        var who = nice(byName(r, p[1]).trim().split(/\s+/)[0]);
         return '<span class="st ' + p[3] + '"><b>' + p[2] + '</b><small class="num">' + esc(hhmm(r[p[0]])) + "</small>" + (who ? "<em>" + esc(who) + "</em>" : "") + "</span>";
       });
     return '<div class="acts steps" data-open>' + (parts.join("") || '<span class="st none">Swipe ›</span>') + "</div>";
