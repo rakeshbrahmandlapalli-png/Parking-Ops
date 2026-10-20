@@ -36,7 +36,6 @@
     <input id="linkPaste" type="text" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste your link" aria-label="Personal link">
     <button class="btn brand" id="linkGo">Continue</button>
     <p class="err" id="linkErr" role="alert"></p>
-    <button type="button" class="link hidden" id="linkBack">Back</button>
   </form>
 </section>
 
@@ -44,21 +43,12 @@
 <section class="gate hidden" id="pinGate">
   <form class="gate-box" id="pinForm" novalidate>
     <span class="brand">Parking Ops</span>
-    <div id="whoStep" class="gate-step hidden">
-      <h1>Who's signing in?</h1>
-      <div id="pinNames" class="who-list"></div>
-      <button type="button" class="link" id="pinAdd">Add someone</button>
-    </div>
-    <div id="pinStep" class="gate-step">
-      <h1>Enter your PIN</h1>
-      <p class="who-name hidden" id="pinWho"></p>
-      <p>The 4 numbers the office gave you with your link.</p>
-      <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="\d{4}" placeholder="• • • •" aria-label="PIN">
-      <button class="btn brand" id="pinGo">Sign in</button>
-      <p class="err" id="pinErr" role="alert"></p>
-      <button type="button" class="link hidden" id="pinNot">Someone else</button>
-      <button type="button" class="link" id="forget">Not your phone? Remove the link</button>
-    </div>
+    <h1>Enter your PIN</h1>
+    <p>The 4 numbers the office gave you with your link.</p>
+    <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="\d{4}" placeholder="• • • •" aria-label="PIN">
+    <button class="btn brand" id="pinGo">Sign in</button>
+    <p class="err" id="pinErr" role="alert"></p>
+    <button type="button" class="link" id="forget">Not your phone? Remove the link</button>
   </form>
 </section>
 

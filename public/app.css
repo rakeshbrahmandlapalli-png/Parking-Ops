@@ -31,10 +31,6 @@ h1,h2,h3,p{margin:0;}
 .gate p{color:var(--ink-2);font-size:15px;}
 .gate span.brand{align-self:flex-start;}
 .gate .err{color:var(--bad);}
-.gate-step{display:flex;flex-direction:column;gap:12px;}
-.who-list{display:flex;flex-direction:column;gap:8px;}
-.who-list .who-pick{width:100%;min-height:52px;justify-content:flex-start;font-size:17px;font-weight:600;}
-.gate p.who-name{color:var(--ink);font-weight:700;font-size:17px;}
 .gate label{display:flex;flex-direction:column;gap:6px;color:var(--ink-2);font-size:14px;}
 .gate input{min-height:52px;padding:0 14px;border:1px solid #9AA0AA;border-radius:var(--r);font-size:18px;background:#fff;}
 .gate input:focus{outline:0;border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
