@@ -80,7 +80,7 @@ The user wants looks kept **separate** (a change to one must not change another)
   force-push it (it only carries merged history).
 - Keep UI text short; the user removed explanatory notes in the menu (keep only
   the Display note).
-- Tests: `cd checks/e2e && timeout 580 node run.mjs` — **949 passing, 0 failing** on the PR #89 branch as of 14 Oct (main had 4 dashboard date-dependent failures)
+- Tests: `cd checks/e2e && timeout 580 node run.mjs` — **1023 passing, 0 failing** on 19 Oct (each section closes its pages after it runs)
   2026. Add tests for every change. Write output to a file and grep `FAIL|passed`.
   The mock Supabase lives in run.mjs (`rpc()` cases, REST routes).
   Previews: `SHOTS=<dir> node run.mjs` screenshots TakeOff's look (phone and desktop).
@@ -104,7 +104,7 @@ The user wants looks kept **separate** (a change to one must not change another)
   password in chat (Supabase secrets `TAKEOFF_BOOKING_LOGIN` / `_PASSWORD` only).
   Known from the user's photos (14 Oct): every booking on that site is TakeOff's; pages
   `bookinglist-parkandride.php` and `arrival_report_parkandride.php`; flights come from the Return
-  Report's HTML table. Pagination is not an issue at one day per search. The user turns the schedule on themselves in the app.
+  Report's HTML table. Pagination is not an issue at one day per search. Held for the office and Needs review rows (19 Oct) show the reg beside the reference, Open (the car's night, booking details or Removed cars) and, for a DROPS car moved to tonight or a later night, Move (EARLY RETURN for an earlier night, `set_return` for a later one; a moved hold is marked Done); test `HELD_ONLY=1 node run.mjs`. The user turns the schedule on themselves in the app.
 - Unused: `companies.swipe_only` / `set_swipe_only()` (setup 64, superseded by
   per-person choice).
 

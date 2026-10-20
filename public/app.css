@@ -679,6 +679,9 @@ html body .row.kc-row-missing{background:var(--bad-soft);}
 .bi-held h3{margin:0 0 4px;}
 .bi-held div > div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line-soft);}
 .bi-held small{display:block;color:var(--ink-2);}
+.bi-hreg{font-weight:700;}
+.bi-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex:none;}
+.bi-racts{display:flex;flex-wrap:wrap;gap:6px;}
 .bi-recent{margin:6px 0 20px;}
 .bi-rh{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 6px;}
 .bi-rh .link{min-height:32px;font-size:14px;}
@@ -701,6 +704,8 @@ span.bi-undo{color:var(--ink-2);}
   .bi-ref{grid-area:r;font-size:13px;color:var(--ink-2);} .bi-reg{grid-area:g;justify-self:start;} .bi-chg{grid-area:c;margin-top:2px;}
   .bi-row:not(.open) .bi-more{display:none;}
   .bi-ex{padding:0 12px 10px;}
+  .bi-held div > div.bi-hr{flex-wrap:wrap;}
+  .bi-hr .bi-acts{flex:1 1 100%;justify-content:flex-start;}
   .bi-search{max-width:none;flex-basis:100%;margin-left:0;}
   .bi-rr{grid-template-columns:auto 1fr auto;grid-template-areas:"t by ud" "bd bd ud" "sr rs rs";gap:2px 10px;padding:8px 12px;}
   .bi-t{grid-area:t;font-weight:700;} .bi-by{grid-area:by;} .bi-undo{grid-area:ud;} .bi-bd{grid-area:bd;font-weight:600;} .bi-src{grid-area:sr;color:var(--ink-2);} .bi-res{grid-area:rs;}
