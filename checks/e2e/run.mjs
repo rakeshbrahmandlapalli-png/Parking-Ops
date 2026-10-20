@@ -265,6 +265,13 @@ async function backend(ctx, db) {
     const reply = (status, body) => route.fulfill({ status, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
     if (req.method() === "OPTIONS") return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" } });
     if (p.startsWith("/realtime/")) return route.abort();
+    if (p.startsWith("/functions/v1/staff-login")) {
+      const a = JSON.parse(req.postData() || "{}"), who = (db.links || {})[a.token];
+      if (!who || who.pin !== a.pin) return reply(400, { error: "Wrong PIN." });
+      db.me = { ...db.me, ...who.me }; (db.logins = db.logins || []).push(who.me.name);
+      return reply(200, { token_hash: "h" });
+    }
+    if (p.startsWith("/auth/v1/verify")) return reply(200, { access_token: JWT, refresh_token: "r", expires_in: 3600, expires_at: 4102444800, token_type: "bearer", user: { id: "u1", aud: "authenticated" } });
     if (p.startsWith("/auth/")) return reply(200, {});
     if (db.down) return route.fulfill({ status: 503, contentType: "text/plain", body: "upstream connect error" });
     if (p.startsWith("/rest/v1/rpc/")) {
@@ -438,6 +445,50 @@ await scenario(async () => {
   await page.goto(BASE + "/"); await sleep(800);
   check("no personal link: shows the 'ask for your link' screen", await page.isVisible("#noLink"));
 });
+
+// 1-pc. One office PC, several people (20 Oct): each opens their own link once; the PIN screen asks who's signing in.
+await scenario(async () => {
+  const A = "a".repeat(40), B = "b".repeat(40), db = makeDb();
+  db.links = { [A]: { pin: "1111", me: { id: "s2", name: "SUGU", role: "office" } }, [B]: { pin: "2222", me: { id: "s1", name: "RAKESH", role: "owner" } } };
+  const page = await phone(browser, db, { signedIn: false, width: 1280 });
+  await page.goto(BASE + "/"); await page.evaluate((a) => { localStorage.setItem("takeoff_link", a); }, A);
+  await page.goto(BASE + "/"); await sleep(600);
+  check("pc: one link on the device asks for the PIN straight away", await page.isVisible("#pinStep") && !(await page.isVisible("#whoStep")) && !(await page.isVisible("#pinNot")));
+  await page.fill("#pin", "1111"); await page.waitForSelector("#app:not(.hidden)", { timeout: 6000 }); await sleep(500);
+  check("pc: SUGU signs in with their PIN", db.logins.join() === "SUGU");
+  check("pc: the device remembers SUGU's name for their link", await page.evaluate(() => localStorage.getItem("takeoff_links")).then((v) => /"n":"SUGU"/.test(v || "")));
+  // A second person opens their own link on the same PC.
+  await page.goto(BASE + "/#t=" + B); await sleep(900);
+  check("pc: a second person's link asks who's signing in", await page.isVisible("#whoStep") && /SUGU/.test(await page.locator("#pinNames").innerText()) && /New link/.test(await page.locator("#pinNames").innerText()), await page.locator("#pinNames").innerText().catch(() => ""));
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/who-desktop.png" });
+  await page.click('#pinNames [data-who="' + B + '"]'); await sleep(200);
+  check("pc: picking a name asks for that person's PIN", await page.isVisible("#pinStep") && await page.isVisible("#pinNot"));
+  await page.fill("#pin", "2222"); await page.waitForSelector("#app:not(.hidden)", { timeout: 6000 }); await sleep(500);
+  check("pc: RAKESH signs in with their own PIN", db.logins.join() === "SUGU,RAKESH");
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="me"]'); await sleep(300);
+  await page.click("[data-signout]"); await sleep(600);
+  const names = await page.locator("#pinNames").innerText();
+  check("pc: Sign out goes back to the list of names", await page.isVisible("#whoStep") && /RAKESH/.test(names) && /SUGU/.test(names) && !/New link/.test(names), names);
+  await page.click('#pinNames [data-who="' + A + '"]'); await sleep(200);
+  check("pc: the PIN screen says whose PIN it is", (await page.locator("#pinWho").innerText()) === "SUGU");
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/pin-desktop.png" });
+  await page.fill("#pin", "9999"); await sleep(600);
+  check("pc: a wrong PIN doesn't sign in", /Wrong PIN/.test(await page.locator("#pinErr").innerText()) && db.logins.length === 2);
+  await page.click("#pinNot"); await sleep(200);
+  check("pc: Someone else goes back to the names", await page.isVisible("#whoStep"));
+  await page.click("#pinAdd"); await sleep(200);
+  check("pc: Add someone asks for their link, with a way back", await page.isVisible("#noLink") && await page.isVisible("#linkBack"));
+  await page.click("#linkBack"); await sleep(200);
+  check("pc: Back returns to the names", await page.isVisible("#whoStep"));
+  await page.setViewportSize({ width: 390, height: 844 }); await sleep(200);
+  if (process.env.HELD_SHOTS) await page.screenshot({ path: process.env.HELD_SHOTS + "/who-phone.png" });
+  await page.click('#pinNames [data-who="' + A + '"]'); await sleep(200);
+  check("pc: removing is per person", (await page.locator("#forget").innerText()) === "Remove SUGU from this device");
+  await page.click("#forget"); await sleep(300);
+  check("pc: with one person left it asks for their PIN straight away", await page.isVisible("#pinStep") && !(await page.isVisible("#pinNot")) && await page.evaluate(() => localStorage.getItem("takeoff_link")) === "b".repeat(40));
+  check("pc: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, 'held');
 
 // 1a. iPhone: the page can't zoom in (Safari zooms on a search box under 16px and
 // stays zoomed, which slid the bottom bar over the last cars, 13 Oct), and the

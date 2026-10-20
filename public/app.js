@@ -18,6 +18,7 @@
   };
   var TZ = "Europe/London";
   var LINK_KEY = "takeoff_link";
+  var LINKS_KEY = "takeoff_links";   // everyone who signs in on this device (the office PC), with their names
 
   // ── helpers ───────────────────────────────
   var $ = function (id) { return document.getElementById(id); };
@@ -139,7 +140,9 @@
   // ── sign-in ───────────────────────────────
   var linkFromHash = (location.hash.match(/^#t=([A-Za-z0-9_-]{32,64})$/) || [])[1];
   if (linkFromHash) {
+    keepLinks(savedLinks());                                 // whoever used this device before stays on its list
     try { localStorage.setItem(LINK_KEY, linkFromHash); } catch (e) {}
+    addLink(linkFromHash);
     history.replaceState(null, "", location.pathname);
   }
 
@@ -158,10 +161,57 @@
     showSignIn();
   }
   function storedLink() { try { return localStorage.getItem(LINK_KEY) || ""; } catch (e) { return ""; } }
-  function showSignIn(message) {
-    if (storedLink()) { only("pinGate"); $("pinErr").textContent = message || ""; $("pin").value = ""; $("pin").focus(); }
-    else only("noLink");
+  // One device, several people (the office PC, 20 Oct): each opens their own link
+  // here once; the PIN screen then asks who's signing in. A phone with one link
+  // works as before.
+  function savedLinks() {
+    var l = [];
+    try { l = JSON.parse(localStorage.getItem(LINKS_KEY) || "[]") || []; } catch (e) {}
+    l = (Array.isArray(l) ? l : []).filter(function (x) { return x && /^[A-Za-z0-9_-]{32,64}$/.test(x.t || ""); });
+    var cur = storedLink();
+    if (cur && !l.some(function (x) { return x.t === cur; })) l.push({ t: cur, n: "" });
+    return l;
   }
+  function keepLinks(l) { try { localStorage.setItem(LINKS_KEY, JSON.stringify(l)); } catch (e) {} }
+  function addLink(t) { var l = savedLinks(); if (!l.some(function (x) { return x.t === t; })) l.push({ t: t, n: "" }); keepLinks(l); }
+  function dropLink(t) {
+    var l = savedLinks().filter(function (x) { return x.t !== t; });
+    keepLinks(l);
+    try { if (l.length) localStorage.setItem(LINK_KEY, l[0].t); else localStorage.removeItem(LINK_KEY); } catch (e) {}
+    return l;
+  }
+  // After signing in: the link gets the person's name; an older link of theirs on this device goes.
+  function nameLink(name) {
+    var cur = storedLink(); if (!cur || !name) return;
+    keepLinks(savedLinks().filter(function (x) { return x.t === cur || x.n !== name; }).map(function (x) { return x.t === cur ? { t: x.t, n: name } : x; }));
+  }
+  var pickWho = true;
+  function showSignIn(message) {
+    var l = savedLinks();
+    if (!storedLink() || !l.length) { $("linkBack").classList.add("hidden"); return only("noLink"); }
+    only("pinGate");
+    var who = l.length > 1 && pickWho, cur = l.filter(function (x) { return x.t === storedLink(); })[0];
+    $("whoStep").classList.toggle("hidden", !who); $("pinStep").classList.toggle("hidden", who);
+    $("pinErr").textContent = who ? "" : message || "";
+    if (who) {
+      $("pinNames").innerHTML = l.slice().sort(function (a, b) { return (a.n || "~") < (b.n || "~") ? -1 : 1; }).map(function (x) {
+        return '<button type="button" class="btn ghost who-pick" data-who="' + esc(x.t) + '">' + esc(x.n || "New link") + "</button>";
+      }).join("");
+      return;
+    }
+    $("pinWho").textContent = l.length > 1 ? (cur && cur.n) || "New link" : "";
+    $("pinWho").classList.toggle("hidden", l.length < 2); $("pinNot").classList.toggle("hidden", l.length < 2);
+    $("forget").textContent = l.length > 1 ? "Remove " + ((cur && cur.n) || "this link") + " from this device" : "Not your phone? Remove the link";
+    $("pin").value = ""; $("pin").focus();
+  }
+  $("pinNames").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-who]"); if (!b) return;
+    try { localStorage.setItem(LINK_KEY, b.dataset.who); } catch (err) {}
+    pickWho = false; showSignIn();
+  });
+  $("pinNot").addEventListener("click", function () { pickWho = true; showSignIn(); });
+  $("pinAdd").addEventListener("click", function () { $("linkBack").classList.remove("hidden"); only("noLink"); $("linkPaste").focus(); });
+  $("linkBack").addEventListener("click", function () { showSignIn(); });
 
   $("pinForm").addEventListener("submit", async function (e) {
     e.preventDefault();
@@ -190,13 +240,16 @@
     e.preventDefault();
     var token = linkFromPaste($("linkPaste").value);
     if (!token) { $("linkErr").textContent = "That isn't a " + brandName() + " link. Copy the whole link the office sent you."; return; }
+    keepLinks(savedLinks());
     try { localStorage.setItem(LINK_KEY, token); } catch (err) { $("linkErr").textContent = "This phone won't let " + brandName() + " save your link. Turn off private browsing and try again."; return; }
+    addLink(token);
     $("linkErr").textContent = ""; $("linkPaste").value = "";
-    showSignIn();
+    pickWho = false; showSignIn();
   });
   $("forget").addEventListener("click", function () {
     if (!confirm("Remove your " + brandName() + " link from this phone? You'll need the office to send it again.")) return;
-    try { localStorage.removeItem(LINK_KEY); localStorage.removeItem(BRAND_KEY); } catch (e) {}
+    if (dropLink(storedLink()).length) { pickWho = true; return showSignIn(); }
+    try { localStorage.removeItem(BRAND_KEY); } catch (e) {}
     only("noLink");
   });
 
@@ -251,6 +304,7 @@
     S.bootFailed = false; clearTimeout(S.bootRetry);
     if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
     S.me = me.data;
+    nameLink(S.me.name);
     var res = await Promise.all([
       sb.rpc("my_permissions"),
       sb.from("companies").select("*").eq("id", S.me.company_id).single(),
@@ -5832,7 +5886,8 @@
     }
     if (t.dataset.signout !== undefined || t.dataset.forget !== undefined) {
       if (S.queue.length && !confirm(S.queue.length + " change(s) haven't saved yet. Sign out anyway?")) return;
-      if (t.dataset.forget !== undefined) { try { localStorage.removeItem(LINK_KEY); localStorage.removeItem(BRAND_KEY); } catch (err) {} }
+      if (t.dataset.forget !== undefined && !dropLink(storedLink()).length) { try { localStorage.removeItem(BRAND_KEY); } catch (err) {} }
+      pickWho = true;
       await turnOffNotifications(true);
       // "Sign out anyway" drops the unsaved changes (notes can hold customer details).
       try { localStorage.removeItem(queueKey()); } catch (err) {}
