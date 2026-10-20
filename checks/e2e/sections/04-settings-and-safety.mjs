@@ -49,6 +49,22 @@ await scenario(async () => {
   await page.click("#tabAll"); await sleep(200);
   check("…and the app keeps working afterwards", await page.locator(".row").count() === 3);
 });
+// 10b. Phone error reports (part 100): the error reaches the server once, with the screen, phone and version; signal trouble doesn't.
+await scenario(async () => {
+  const db = makeDb();
+  const page = await phone(browser, db, { ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36" });
+  await open(page);
+  await page.evaluate(() => { setTimeout(() => { throw new Error("test boom"); }, 0); setTimeout(() => { throw new Error("test boom"); }, 10); setTimeout(() => { throw new Error("Failed to fetch"); }, 20); });
+  await sleep(1500);
+  check("error reports wait a few seconds and go in one call", db.calls.filter((c) => c.fn === "report_errors").length === 0);
+  await sleep(5000);
+  const sent = db.calls.filter((c) => c.fn === "report_errors");
+  const l = sent[0]?.args.p_list || [];
+  check("both errors sent in one call, the signal error left out", sent.length === 1 && l.length === 2 && l.every((x) => /^test boom/.test(x.m)), sent);
+  check("each says which screen it was on", l.every((x) => x.view === "board"), l);
+  check("the phone and browser are named", sent[0]?.args.p_device === "Android 14 · Chrome", sent[0]?.args);
+  check("and nothing is shown for the report itself", page.__errors.filter((e) => !/test boom|Failed to fetch/.test(e)).length === 0, page.__errors);
+});
 
 // 11. hostile booking data never runs as code (names, notes, regs come from outside)
 await scenario(async () => {

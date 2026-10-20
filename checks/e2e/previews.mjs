@@ -1,4 +1,4 @@
-import { fs, path, ROOT, check, sleep, addDays, TONIGHT, iso, makeDb, deskDb, keysDb, phone, open, text, pickKind, browser, apbDb, biDb, dashData, dashExit, dashSheets } from "./harness.mjs";
+import { healthData, BASE, fs, path, ROOT, check, sleep, addDays, TONIGHT, iso, makeDb, deskDb, keysDb, phone, open, text, pickKind, browser, apbDb, biDb, dashData, dashExit, dashSheets } from "./harness.mjs";
 
 // ── previews (SHOTS=dir) ─────────────────────────────────────────────────
 export async function shots(dir) {
@@ -112,6 +112,24 @@ export async function shots(dir) {
     return;
   }
   // SHOTS_ONLY=exit: the exit fee on Airport Parking Bay's look (part 76).
+  // SHOTS_ONLY=health: Clients and Clients → Health on the platform page (part 100), desktop and phone, sample data.
+  if (process.env.SHOTS_ONLY === "health") {
+    for (const [width, height, name] of [[1280, 900, "desktop"], [390, 844, "phone"]]) {
+      const db = makeDb();
+      db.clientCompany = db.company;
+      db.company = { id: "c0", name: "Parking Ops", slug: "platform", yards: [], drops_day_end: "06:00:00", brand: {}, time_zone: "Europe/London" };
+      db.me = { ...db.me, company_id: "c0", name: "Rakesh" };
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await page.goto(BASE + "/"); await page.waitForSelector("[data-clientopen]", { timeout: 8000 }); await sleep(400);
+      await page.screenshot({ path: path.join(dir, "clients-" + name + ".png") });
+      await page.click(".hwarnline"); await page.waitForSelector("table.usage.health"); await sleep(300);
+      await page.screenshot({ path: path.join(dir, "health-" + name + ".png") });
+      await page.click("#panelBody details.herr summary"); await page.locator("#panelBody details.herr").scrollIntoViewIfNeeded(); await sleep(300);
+      await page.screenshot({ path: path.join(dir, "health-errors-" + name + ".png") });
+      await page.context().close();
+    }
+    return;
+  }
   if (process.env.SHOTS_ONLY === "exit") {
     // apbDb is defined after the SHOTS exit, so it's built here.
     const apbDb = (theme) => { const d = makeDb(); d.company = { ...d.company, name: "Airport Parking Bay", slug: "airport-parking-bay", yards: ["GS", "MY", "T"],

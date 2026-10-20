@@ -1,4 +1,4 @@
-import { path, check, cspBlocked, sleep, BASE, TONIGHT, iso, makeDb, now, R2, phone, open, text, noSideScroll, scenario, browser, failed } from "../harness.mjs";
+import { healthData, path, check, cspBlocked, sleep, BASE, TONIGHT, iso, makeDb, now, R2, phone, open, text, noSideScroll, scenario, browser, failed } from "../harness.mjs";
 
 // 7. PT three ways
 // A phone that refuses createImageBitmap (like the iPhone did): copies still small.
@@ -240,6 +240,19 @@ await scenario(async () => {
   await page.click("[data-usage]"); await page.waitForSelector("table.usage", { timeout: 5000 });
   const use = await page.textContent("#panelBody");
   check("Parking Ops: Usage shows the database, PT photos, FR24 and AeroDataBox", /24\.5 MB of 8 GB/.test(use) && /134 \/ 4277/.test(use) && /46 · about 1,794 credits/.test(use) && /AeroDataBox now\s*working/.test(use), use.slice(0, 400));
+  await page.click("#panelBody [data-close]");
+  check("Parking Ops: Clients says how many things need a look, and links to Health", /1 thing needs a look/.test(await text(page, ".hwarnline")));
+  await page.click(".hwarnline"); await page.waitForSelector("table.usage.health", { timeout: 5000 });
+  const hl = await page.textContent("#panelBody");
+  check("Health: the warning first, then backups, server calls, AeroDataBox units and failed notifications", /Needs a look\s*AeroDataBox: about 82%/.test(hl) && /Last backup\s*19 h ago/.test(hl) && /118 worked/.test(hl) && /units this month\s*about 32,800 of 40,000 \(82%\)/.test(hl) && /calls this month\s*16,400 since/.test(hl) && /Notifications that failed, 24 h\s*0/.test(hl), hl.slice(0, 600));
+  check("Health: timers with their last run, failures in red", /takeoff-flights\s*2 failed in 24 h · last ran just now/.test(hl) && await page.locator("table.health .warnt", { hasText: "2 failed in 24 h" }).count() === 1, hl);
+  check("Health: each client with flights, import, phones and app errors", /TAKEOFF\s*Live flight times \(FR24\)\s*last 2 min ago/.test(hl) && /Phones online now\s*4/.test(hl) && /App errors, 24 h\s*3/.test(hl) && /scheduled off/.test(hl), hl);
+  await page.click("#panelBody details.herr summary");
+  const errs = await text(page, "#panelBody details.herr");
+  check("Health: a client's latest errors with who, screen, phone and version", /×2 TypeError: Cannot read properties/.test(errs) && /SUGU · board · Android 14 · Chrome · app 81afa64/.test(errs), errs);
+  db.health = healthData({ warnings: [] });
+  await page.click("#panelBody [data-health]"); await sleep(400);
+  check("Health: Refresh reads it again; all well says so and the Clients line goes", /Nothing needs a look/.test(await page.textContent("#panelBody")) && await page.locator(".hwarnline").count() === 0);
   await page.click("#panelBody [data-close]");
   check("Parking Ops: each client card says which look it has", /Standard/.test(await text(page, ".client")));
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");

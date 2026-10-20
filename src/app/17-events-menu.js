@@ -12,7 +12,34 @@
     var m = String((err && (err.message || err.reason)) || err || "").slice(0, 300);
     try { console.error(err); } catch (e) {}
     try { var list = JSON.parse(localStorage.getItem("takeoff_errors") || "[]"); list.push({ at: new Date().toISOString(), view: S.view, m: m }); localStorage.setItem("takeoff_errors", JSON.stringify(list.slice(-30))); } catch (e) {}
+    queueError(m, err);
     return m;
+  }
+  // Phone error reports (database part 100): what went wrong also goes to the
+  // server, a few seconds later and in one go, for Clients → Health. Signal
+  // trouble isn't an error. Sending never shows anything, and a failed send
+  // isn't tried again (it could be the thing that's broken).
+  var errOut = [], errTimer = 0;
+  function queueError(m, err) {
+    if (!m || isNetwork({ message: m }) || /ResizeObserver|Script error/i.test(m)) return;
+    var at = /app\.js:(\d+):(\d+)/.exec(String((err && err.stack) || ""));
+    if (errOut.length < 20) errOut.push({ m: m + (at ? " @" + at[1] + ":" + at[2] : ""), view: String(S.view || "") });
+    if (!errTimer) errTimer = setTimeout(sendErrors, 5000);
+  }
+  function sendErrors() {
+    errTimer = 0;
+    if (!errOut.length) return;
+    if (!S.me) { errOut = []; return; }
+    if (!navigator.onLine) { errTimer = setTimeout(sendErrors, 60000); return; }
+    var list = errOut.splice(0, 20);
+    try { sb.rpc("report_errors", { p_list: list, p_device: deviceName(), p_version: String(appTag || "").replace(/\W/g, "").slice(0, 8) }).then(function () {}, function () {}); } catch (e) {}
+  }
+  function deviceName() {
+    var ua = navigator.userAgent, v;
+    var os = IS_IOS ? "iPhone" + ((v = /OS (\d+)_/.exec(ua)) ? " iOS " + v[1] : "") : (v = /Android (\d+)/.exec(ua)) ? "Android " + v[1] : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "other";
+    var br = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Firefox|FxiOS/.test(ua) ? "Firefox" : /Safari/.test(ua) ? "Safari" : "";
+    var home = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+    return os + (br ? " · " + br : "") + (home ? " · Home Screen app" : "");
   }
   function oops(err) {
     if (!err) return;
@@ -94,6 +121,7 @@
     if (t.dataset.clientsuspend && S.platform) return suspendClient(t);
     if (t.dataset.clientopen && S.platform) return openClientBoard(t);
     if (t.dataset.usage !== undefined && S.platform) return openUsage();
+    if (t.dataset.health !== undefined && S.platform) return openHealth();
     if (t.id === "homeBtn") return backToPlatform();
     if (t.dataset.clientowner && S.platform) return askClientOwner(t.dataset.clientowner);
     if (t.id === "qClear") { S.q = ""; S.other = null; $("q").value = ""; show("qClear", false); setMain(renderBoard(), "board"); $("q").focus(); return; }

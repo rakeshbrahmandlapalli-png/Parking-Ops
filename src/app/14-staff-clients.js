@@ -14,7 +14,9 @@
   function renderClients() {
     if (S.clients === undefined) { S.clients = null; loadClients(); }
     var list = S.clients;
-    var h = '<div class="clienthead"><h2 class="title">Clients</h2><button type="button" class="btn ghost" data-usage>Usage</button><button type="button" class="btn brand" data-clientedit="new">Add a client</button></div>';
+    var hw = (S.health && S.health.warnings) || [];
+    var h = '<div class="clienthead"><h2 class="title">Clients</h2><button type="button" class="btn ghost" data-health>Health</button><button type="button" class="btn ghost" data-usage>Usage</button><button type="button" class="btn brand" data-clientedit="new">Add a client</button></div>' +
+      (hw.length ? '<button type="button" class="hwarnline" data-health>' + hw.length + (hw.length === 1 ? " thing needs" : " things need") + " a look · Health</button>" : "");
     if (list === null) return h + '<p class="note">Loading…</p>';
     if (list === false) return h + '<div class="msg">Couldn\'t load the clients. Refresh to try again.</div>';
     if (!list.length) return h + '<p class="note">No clients yet.</p>';
@@ -32,8 +34,9 @@
     }).join("") + "</div>";
   }
   async function loadClients() {
-    var r = await sb.rpc("admin_clients");
-    S.clients = r.error ? false : r.data || [];
+    var both = await Promise.all([sb.rpc("admin_clients"), sb.rpc("admin_health")]);
+    S.clients = both[0].error ? false : both[0].data || [];
+    S.health = both[1].error ? null : both[1].data;
     if (S.view === "clients") render();
   }
   function hexMix(hex, withHex, amt) {
@@ -193,6 +196,53 @@
           ["AeroDataBox (30 days)", c.timetable_runs_30d + " checks"], ["AeroDataBox now", tt],
           ["Taps and changes (30 days)", c.activity_30d]]) + "</table>";
       }).join("") + '<div class="pbtns"><button type="button" data-close>Close</button></div>';
+  }
+
+  // ── Health (database part 100): what runs on its own, and errors on phones ──
+  function agoText(iso) {
+    if (!iso) return "never";
+    var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : dayShort(iso) + " " + hhmm(iso);
+  }
+  async function openHealth() {
+    $("panelBody").innerHTML = '<h2 id="panelTitle">Health</h2><p class="note">Loading…</p>';
+    if (!$("panel").open) $("panel").showModal();
+    var r = await sb.rpc("admin_health");
+    if (r.error) { $("panelBody").innerHTML = '<h2 id="panelTitle">Health</h2><div class="msg">' + esc(r.error.message) + '</div><div class="pbtns"><button type="button" data-close>Close</button></div>'; return; }
+    S.health = r.data || {};
+    if (S.view === "clients") render();
+    var h = S.health, w = h.warnings || [], ad = h.aerodata || {}, calls = h.calls || {}, bk = h.backup || {};
+    var bad = function (t) { return '<span class="warnt">' + t + "</span>"; };
+    var n = function (x) { return Number(x || 0).toLocaleString("en-GB"); };
+    var rows = function (list) { return list.map(function (x) { return "<tr><th>" + x[0] + "</th><td>" + x[1] + "</td></tr>"; }).join(""); };
+    var oldBackup = !bk.last || Date.now() - new Date(bk.last).getTime() > 30 * 3600000;
+    $("panelBody").innerHTML = '<h2 id="panelTitle">Health</h2>' +
+      (w.length ? '<div class="hwarn"><strong>Needs a look</strong><ul>' + w.map(function (x) { return "<li>" + esc(x.text) + "</li>"; }).join("") + "</ul></div>"
+        : '<p class="hok">Nothing needs a look.</p>') +
+      '<h3 class="usehead">Everyone</h3><table class="usage health">' + rows([
+        ["Last backup", oldBackup ? bad(esc(agoText(bk.last))) : esc(agoText(bk.last))],
+        ["Server calls, last hour", n(calls.ok) + " worked" + (calls.failed ? " · " + bad(n(calls.failed) + " failed") : "")],
+        ["AeroDataBox units this month", "about " + n(ad.units) + " of " + n(ad.cap) + " (" + n(ad.pct) + "%)"],
+        ["AeroDataBox calls this month", n(ad.calls) + (ad.counted_from ? " since " + esc(dayShort(ad.counted_from)) : "")],
+        ["Notifications that failed, 24 h", h.push_failed_24h ? bad(n(h.push_failed_24h)) : "0"]]) + "</table>" +
+      '<h3 class="usehead">Timers</h3><table class="usage health">' + rows((h.timers || []).map(function (t) {
+        return [esc(t.name), (t.failed_24h ? bad(n(t.failed_24h) + " failed in 24 h") + " · " : "") + (t.active ? "last ran " + esc(agoText(t.last_ok)) : "switched off")];
+      })) + "</table>" +
+      (h.clients || []).map(function (c) {
+        var ai = c.auto_import, aiBad = ai && ai.last_error && (!ai.last_ok || ai.last_ok < ai.last_run);
+        return '<h3 class="usehead">' + esc(c.name) + '</h3><table class="usage health">' + rows([
+          ["Live flight times (FR24)", c.live_error ? bad(esc(c.live_error.slice(0, 90))) : "last " + esc(agoText(c.live_last))],
+          ["Timetable (AeroDataBox)", c.timetable_error ? bad(esc(c.timetable_error.slice(0, 90))) : "last " + esc(agoText(c.timetable_last))],
+          ["AeroDataBox calls this month", n(c.aerodata_calls_month)],
+          ["Booking import", "last " + esc(agoText(c.import_last)) + (ai ? " · scheduled " + (ai.enabled ? "on" : "off") + (aiBad ? " · " + bad(esc(ai.last_error)) : "") : "")],
+          ["Phones online now", n(c.online)], ["Phones with notifications", n(c.phones_push)],
+          ["Last tap or change", esc(agoText(c.last_activity))],
+          ["App errors, 24 h", c.errors_24h ? bad(n(c.errors_24h)) : "0"]]) + "</table>" +
+          ((c.errors || []).length ? '<details class="herr"><summary>Latest app errors (' + c.errors.length + ")</summary><ul>" + c.errors.map(function (e) {
+            return "<li><b>" + esc(dayShort(e.at) + " " + hhmm(e.at)) + (e.n > 1 ? " ×" + e.n : "") + "</b> " + esc(e.m) +
+              '<span class="note">' + esc([e.who, e.view, e.device, e.version ? "app " + e.version : ""].filter(Boolean).join(" · ")) + "</span></li>";
+          }).join("") + "</ul></details>" : "");
+      }).join("") + '<div class="pbtns"><button type="button" data-health>Refresh</button><button type="button" data-close>Close</button></div>';
   }
 
   // Mirrors can() in database part 3: what each role gets before any per-person change.
