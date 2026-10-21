@@ -3,6 +3,21 @@ import { healthData, BASE, fs, path, ROOT, check, sleep, addDays, TONIGHT, iso, 
 // ── previews (SHOTS=dir) ─────────────────────────────────────────────────
 export async function shots(dir) {
   fs.mkdirSync(dir, { recursive: true });
+  // SHOTS_ONLY=bsite: Settings → Booking website on Airport Parking Bay's look (phone) and the Operations desk, empty and saved.
+  if (process.env.SHOTS_ONLY === "bsite") {
+    for (const [theme, width, height, name] of [["premium", 390, 844, "apb-phone"], ["ops", 1440, 1000, "ops-desktop"]]) for (const saved of [false, true]) {
+      const db = apbDb(theme);
+      if (saved) db.bsite = { url: "https://bookings.example.co.uk/admin", login: "apb.office", has_pass: true, saved_by: "RAKESH", saved_at: new Date().toISOString() };
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await open(page); await sleep(300);
+      await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+      await page.click('#menuBody [data-view="settings"]'); await sleep(700);
+      await page.evaluate(() => { const b = document.querySelector("[data-bssave]"); if (b) b.closest(".box").scrollIntoView({ block: "center" }); }); await sleep(400);
+      await page.screenshot({ path: path.join(dir, "booking-website-" + name + (saved ? "-saved" : "-empty") + ".png") });
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=import: the Booking import page on TakeOff's look, desktop and phone, with sample data only.
   if (process.env.SHOTS_ONLY === "import") {
     for (const [width, height, name] of [[1440, 1000, "desktop"], [390, 844, "phone"]]) {

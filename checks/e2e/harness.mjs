@@ -262,6 +262,9 @@ function rpc(db, fn, a) {
       if (a.p.desk && n.kind === "picks") Object.assign(n, { pick_called: "New Booking", pick_called_at: now(), intake: a.p.taken_in ? "Collected" : "", intake_at: a.p.taken_in ? now() : null, yard: a.p.yard || "" });
       db.bookings.push(n); return n; }
     case "set_doc": { const b = row(a.p_booking); b.doc_path = a.p_path; b.doc_at = now(); return b; }
+    case "booking_site_status": return db.bsite || { url: "", login: "", has_pass: false, saved_by: "", saved_at: null };
+    case "booking_site_set": { const clear = !a.p_url && !a.p_login && !a.p_password, prev = db.bsite || {};
+      db.bsite = clear ? { url: "", login: "", has_pass: false, saved_by: "", saved_at: null } : { url: a.p_url, login: a.p_login, has_pass: a.p_password == null ? !!prev.has_pass : a.p_password !== "", saved_by: "RAKESH", saved_at: now() }; return db.bsite; }
     case "set_exit_fee": db.company.exit_fee = a.p_fee; db.company.exit_free = a.p_free.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")); return { exit_fee: a.p_fee, exit_free: db.company.exit_free };
     case "set_exit_paid": { const b = row(a.p_booking); Object.assign(b, { exit_method: a.p_method, exit_amount: a.p_method ? db.company.exit_fee : null, exit_at: a.p_method ? new Date().toISOString() : null, exit_by: a.p_method ? "s1" : null, exit_photo: a.p_photo || "" }); return b; }
     case "set_overstay_paid": { const b = row(a.p_booking); Object.assign(b, { charge_amount: a.p_amount, charge_method: a.p_method, charge_at: a.p_method ? new Date().toISOString() : null, charge_by: a.p_method ? "s1" : null }); return b; }

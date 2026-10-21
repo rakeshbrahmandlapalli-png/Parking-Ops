@@ -335,6 +335,28 @@ for (const role of ["owner", "manager"]) await scenario(async () => {
   await page.click("#menuBtn"); await sleep(300); await page.click('#menuBody [data-view="board"]').catch(() => {}); await sleep(300);
 });
 
+// Booking website login in Settings (database part 101): owners only; the password is never shown back.
+for (const role of ["owner", "manager"]) await scenario(async () => {
+  const db = makeDb(); db.me = { ...db.me, role };
+  if (role === "manager") db.perms = Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "note", "intake", "settings"].map((k) => [k, true]));
+  const page = await phone(browser, db);
+  await open(page); await sleep(300);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menuBody [data-view="settings"]'); await sleep(500);
+  if (role === "manager") return check("Booking website: a manager doesn't get it", await page.locator("[data-bssave]").count() === 0 && !db.calls.some((c) => c.fn === "booking_site_status"));
+  check("Booking website: the owner gets it, not set to start", await page.locator("[data-bssave]").count() === 1 && await page.locator("[data-bsclear]").count() === 0 && /not set/.test(await page.locator("#bsPass").evaluate((e) => e.parentElement.innerText)));
+  await page.fill("#bsUrl", "https://bookings.example.co.uk/admin"); await page.fill("#bsLogin", "apb.office"); await page.fill("#bsPass", "s3cret!"); await page.click("[data-bssave]"); await sleep(500);
+  const c = db.calls.filter((x) => x.fn === "booking_site_set").pop();
+  check("Booking website: saving sends the address, login and password", c && c.args.p_url === "https://bookings.example.co.uk/admin" && c.args.p_login === "apb.office" && c.args.p_password === "s3cret!", c);
+  check("Booking website: after saving the password box is empty and says saved", await page.inputValue("#bsPass") === "" && /✓ saved/.test(await page.locator("#bsPass").evaluate((e) => e.parentElement.innerText)) && await page.inputValue("#bsLogin") === "apb.office");
+  check("Booking website: the password is nowhere on the page", !(await page.content()).includes("s3cret!"));
+  await page.fill("#bsLogin", "apb.desk"); await page.click("[data-bssave]"); await sleep(500);
+  const c2 = db.calls.filter((x) => x.fn === "booking_site_set").pop();
+  check("Booking website: an empty password box keeps the saved one", c2.args.p_password === null && c2.args.p_login === "apb.desk");
+  await page.click("[data-bsclear]"); await sleep(500);
+  const c3 = db.calls.filter((x) => x.fn === "booking_site_set").pop();
+  check("Booking website: Remove login clears all three", c3.args.p_url === "" && c3.args.p_login === "" && c3.args.p_password === "" && await page.locator("[data-bsclear]").count() === 0);
+});
+
 // 18a3d3. Yard colours (companies.yard_colours, database part 77): each yard's tag on DROPS, the PICKS location button and the car's yard buttons
 const YC = { MY: "#2E7D32", GS: "#EF6C00", T: "#FBC02D" };
 const rgb = (h) => "rgb(" + [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(", ") + ")";

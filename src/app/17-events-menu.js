@@ -134,6 +134,8 @@
     if (t.dataset.notifytest !== undefined) return sendTest(t, false);
     if (t.dataset.discordtest !== undefined) return sendTest(t, true);
     if (t.dataset.discordpause) return setDiscordPaused(t, t.dataset.discordpause === "1");
+    if (t.dataset.bssave !== undefined) return saveBookingSite(t, false);
+    if (t.dataset.bsclear !== undefined) { if (confirm("Remove the booking website login?")) saveBookingSite(t, true); return; }
     if (t.dataset.discordsave !== undefined) return saveDiscord(t, false);
     if (t.dataset.discordclear !== undefined) { if (confirm("Stop posting " + brandName() + " alerts to Discord?")) saveDiscord(t, true); return; }
     if (t.dataset.resetsettings !== undefined) { S.settingsDraft = Object.assign({}, TIMING_DEFAULT); render(); return; }

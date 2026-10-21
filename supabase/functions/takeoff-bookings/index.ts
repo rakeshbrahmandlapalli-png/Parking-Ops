@@ -26,7 +26,8 @@
 //     "drops_search": "…{FROM}…{TO}…", "picks_search": "…{FROM}…{TO}…", "flights_search": "…",
 //     "scope": { "column": "<supplier column in the report>", "values": ["<TakeOff's supplier name>"] },
 //     "drops_days": 2, "picks_days": 3, "page_size": 0 }
-// The login is NOT here: it's the Supabase secrets TAKEOFF_BOOKING_LOGIN and
+// The login is NOT here: it's what the owner saved in Settings → Booking website
+// (part 101, password in Vault), else the Supabase secrets TAKEOFF_BOOKING_LOGIN and
 // TAKEOFF_BOOKING_PASSWORD. The service-role key is a function secret too.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
@@ -63,6 +64,13 @@ function fFieldsScripts(cfg: Record<string, unknown>, flightsSearch: string, bas
 
 type Co = { id: string; slug: string; drops_day_end?: string };
 
+// The login the owner saved in Settings → Booking website (part 101, password in Vault), else the secrets.
+async function loginFor(company: Co): Promise<{ user: string; pass: string }> {
+  const { data } = await admin.rpc("booking_site_login", { p_company: company.id });
+  if (data && data.login && data.password) return { user: String(data.login), pass: String(data.password) };
+  return { user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" };
+}
+
 // Sign in once, read the approved reports, compare with what the app holds.
 async function collect(company: Co, cfg: Record<string, unknown>, range?: { from: string; to: string }) {
   const base = String(cfg.base ?? "");
@@ -78,7 +86,7 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
   const client = makeClient({
     base, max_requests: range ? requestBudget(spanDays(dw)) : undefined, max_search_posts: spanDays(dw) + 2, hosts: cfg.hosts as string[] | undefined, login_path: cfg.login_path as string | undefined, login_fields: cfg.login_fields as never, post_scripts: fFieldsScripts(cfg, flightsSearch, base),
     scripts: [dropsSearch, picksSearch, flightsSearch, cancelledSearch, exportPath, String(cfg.flights_export_path ?? exportPath)].filter(Boolean).map((p) => scriptOf(new URL(p, base))),
-  }, { fetch, user: Deno.env.get("TAKEOFF_BOOKING_LOGIN") ?? "", pass: Deno.env.get("TAKEOFF_BOOKING_PASSWORD") ?? "" });
+  }, { fetch, ...(await loginFor(company)) });
   await client.login();
   const opts = { pageSize: Number(cfg.page_size ?? 0) || undefined };
   // The site's export comes back cut short for a multi-day search (14 Oct: 72 rows for three days that hold
