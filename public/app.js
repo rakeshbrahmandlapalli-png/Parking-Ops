@@ -4531,7 +4531,7 @@
       : last.outcome === "held" ? "Last run " + last.slot.slice(11) + ": not imported, " + last.why + "."
       : "Last run " + last.slot.slice(11) + ": didn't run, " + last.why;
     var h = '<details class="bi-sched" data-bisched' + (D ? " open" : "") + '><summary><span>Scheduled import</span><span class="bi-chk' + (on ? "" : " off") + '">' + (on ? "On · " + esc(times.join(", ")) : "Off") + "</span></summary>";
-    h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision. Otherwise it waits, and the owner, managers and office are notified.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
+    h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
     if (lastTxt) h += '<p class="bi-hint" data-bischedlast>' + esc(lastTxt) + "</p>";
     if (edit) {
       var d = D || { on: on, times: times.slice() };
