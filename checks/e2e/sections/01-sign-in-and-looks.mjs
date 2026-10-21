@@ -673,7 +673,7 @@ await scenario(async () => {
   await go("settings");
   const deskSet = await ctl();
   const st = await page.evaluate(() => ({ nav: [...document.querySelectorAll(".set-nav [data-setgo]")].map((b) => b.textContent).join("|"), groups: [...document.querySelectorAll(".set-group > h2.set-gh")].map((h) => h.textContent).join("|") }));
-  check("Ops wide Settings: grouped with a section list", st.nav === "Parking & yards|Flight checks|Exit fees & charges|Alerts & photos|Backup" && st.groups === st.nav, st);
+  check("Ops wide Settings: grouped with a section list", st.nav === "Parking & yards|Flight checks|Exit fees & charges|Alerts & photos|Booking website|Backup" && st.groups === st.nav, st);
   await page.click('.set-nav [data-setgo="alerts"]'); await sleep(900);
   check("Ops wide Settings: a section button scrolls to its group", await page.evaluate(() => { const t = document.getElementById("set-alerts").getBoundingClientRect().top; return scrollY > 0 && t > -5 && t < 200; }));
   check("Ops wide Settings: no sideways scrolling", await noSide());

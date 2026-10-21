@@ -4531,7 +4531,7 @@
       : last.outcome === "held" ? "Last run " + last.slot.slice(11) + ": not imported, " + last.why + "."
       : "Last run " + last.slot.slice(11) + ": didn't run, " + last.why;
     var h = '<details class="bi-sched" data-bisched' + (D ? " open" : "") + '><summary><span>Scheduled import</span><span class="bi-chk' + (on ? "" : " off") + '">' + (on ? "On · " + esc(times.join(", ")) : "Off") + "</span></summary>";
-    h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision. Otherwise it waits, and the owner, managers and office are notified.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
+    h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
     if (lastTxt) h += '<p class="bi-hint" data-bischedlast>' + esc(lastTxt) + "</p>";
     if (edit) {
       var d = D || { on: on, times: times.slice() };
@@ -5406,10 +5406,10 @@
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
       "";
-    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + backupHtml();
+    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + bookingSiteHtml() + backupHtml();
     // A wide screen: the same boxes in groups, with a list of them on the left.
     var groups = [["parking", "Parking & yards", capacityHtml() + yardColoursHtml()], ["flights", "Flight checks", flights], ["charges", "Exit fees & charges", exitFeeHtml() + overstayRateHtml()],
-      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
+      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["bookings", "Booking website", bookingSiteHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
   }
@@ -5529,6 +5529,28 @@
     return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Backup</strong>' +
       '<p class="note">A copy of everything is kept automatically every night for 7 days. To keep one of your own as well, download it and save it somewhere safe, like OneDrive. PINs, links and Discord links are not included.</p>' +
       '<div class="row-actions"><button type="button" class="btn ghost" data-backup>Download a backup</button></div></div>';
+  }
+  // Booking website (database part 101): owners only. The address and login the automatic
+  // import signs in with; the password is never sent back, only whether one is saved.
+  function bookingSiteHtml() {
+    if (!S.me || S.me.role !== "owner") return "";
+    if (S.bsite === undefined) { S.bsite = null; sb.rpc("booking_site_status").then(function (r) { S.bsite = r.error ? false : r.data; if (S.view === "settings") render(); }); }
+    if (S.bsite === false) return "";
+    var B = S.bsite || {}, set = !!(B.login && B.has_pass);
+    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Booking website", !S.bsite ? "" : set ? "Saved" : "Not set") +
+      '<label class="field">Website address<input id="bsUrl" type="url" autocomplete="off" placeholder="https://" value="' + esc(B.url || "") + '"></label>' +
+      '<label class="field">Login name<input id="bsLogin" autocomplete="off" autocapitalize="none" spellcheck="false" value="' + esc(B.login || "") + '"></label>' +
+      '<label class="field">Password <span class="note">' + (S.bsite ? (B.has_pass ? "✓ saved" : "not set") : "…") + '</span><input id="bsPass" type="password" autocomplete="new-password" placeholder="' + (B.has_pass ? "Type a new one to replace it" : "") + '"></label>' +
+      (set && B.saved_at ? '<p class="note">Saved by ' + esc(B.saved_by) + " " + esc(dayShort(B.saved_at)) + " " + esc(hhmm(B.saved_at)) + ".</p>" : "") +
+      '<div class="row-actions">' + (set ? '<button type="button" class="btn ghost small" data-bsclear>Remove login</button>' : "") + '<button type="button" class="btn brand" data-bssave>Save login</button></div></div>';
+  }
+  async function saveBookingSite(btn, clear) {
+    var u = clear ? "" : $("bsUrl").value.trim(), l = clear ? "" : $("bsLogin").value.trim(), p = clear ? "" : ($("bsPass").value || null);
+    btn.disabled = true;
+    var r = await sb.rpc("booking_site_set", { p_url: u, p_login: l, p_password: p });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
   }
   async function downloadBackup(btn) {
     btn.disabled = true;
@@ -5893,6 +5915,8 @@
     if (t.dataset.notifytest !== undefined) return sendTest(t, false);
     if (t.dataset.discordtest !== undefined) return sendTest(t, true);
     if (t.dataset.discordpause) return setDiscordPaused(t, t.dataset.discordpause === "1");
+    if (t.dataset.bssave !== undefined) return saveBookingSite(t, false);
+    if (t.dataset.bsclear !== undefined) { if (confirm("Remove the booking website login?")) saveBookingSite(t, true); return; }
     if (t.dataset.discordsave !== undefined) return saveDiscord(t, false);
     if (t.dataset.discordclear !== undefined) { if (confirm("Stop posting " + brandName() + " alerts to Discord?")) saveDiscord(t, true); return; }
     if (t.dataset.resetsettings !== undefined) { S.settingsDraft = Object.assign({}, TIMING_DEFAULT); render(); return; }
