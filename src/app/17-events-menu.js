@@ -89,6 +89,8 @@
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
+    if (t.dataset.lpcar) { LP.selected = t.dataset.lpcar; render(); var detail = document.querySelector(".lp-detail"); if (detail && window.innerWidth < 761) detail.scrollIntoView({block:"start"}); return; }
+    if (t.dataset.lpreload !== undefined) return loadLanes();
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
@@ -317,7 +319,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", true], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -336,6 +338,7 @@
   // Premium looks: the menu in sections with icons (Today, Office, This sheet,
   // Display, You), and "Delete this sheet" alone at the bottom, in red.
   var MENU_ICON = {
+    lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     flights: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
     summary: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
@@ -361,7 +364,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "flights", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "flights", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

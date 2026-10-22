@@ -275,6 +275,8 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "sheets", filter: "company_id=eq." + S.company.id }, function () {
         loadSheets().then(function () { var had = S.sheetId; pickDefaultSheet(); return had === S.sheetId ? null : loadRows(); }).then(function () { if (!$("panel").open && !yardOpen()) render(); });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "parking_lanes", filter: "company_id=eq." + S.company.id }, laneChanged)
+      .on("postgres_changes", { event: "*", schema: "public", table: "parking_positions", filter: "company_id=eq." + S.company.id }, laneChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_sessions", filter: "company_id=eq." + S.company.id }, keyChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged)
       .subscribe(function (status) {
@@ -291,7 +293,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
