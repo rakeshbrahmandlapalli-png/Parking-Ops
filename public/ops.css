@@ -7,7 +7,11 @@
    and the car panel's fields. The job rows (.row, .acts, .sec, the column
    head) are left exactly as Standard's; a browser test checks that.
    Everything here sits under html.ops, so no other look changes. */
-html.ops{--op-ink:#18283b;--op-deep:#0f1c2e;--op-mut:#526174;--op-line:#dce2e9;--op-field:#d5dde7;--op-bg:#f5f7fa;}
+html.ops{--op-ink:#18283b;--op-deep:#0f1c2e;--op-mut:#526174;--op-line:#dce2e9;--op-field:#d5dde7;--op-bg:#f5f7fa;--bp-selected:#18283b;--bp-selected-ink:#fff;}
+html.ops #boardPayments{order:6;border-color:var(--op-line);}
+html.ops .drow .bpay-row{grid-column:1/-1;padding:5px 12px;margin:0;border-color:var(--op-line);}
+/* The connection warning otherwise pushes Refresh beyond a narrow screen. */
+@media(max-width:430px){html.ops body.on-board:has(#boardPayments:not(.hidden)) .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}}
 /* During a phone key check, retain the sync status as an accessible dot so
    the brand, shift and refresh control fit on narrow screens. */
 @media(max-width:430px){html.ops body.keychecking .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}html.ops body.keychecking .bar #sheetPick{min-width:0;flex-shrink:1;}}

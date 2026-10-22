@@ -220,7 +220,18 @@ function rpc(db, fn, a) {
     case "admin_usage": return { db_bytes: 25709715, store_bytes: 0, store_files: 0, clients: [{ id: "c1", name: "TAKEOFF", cars_30d: 2074, sheets_30d: 18, pt_sets_30d: 134, pt_photos_30d: 4277, fr24_calls_30d: 209, fr24_calls_today: 46, timetable_runs_30d: 148, timetable_last_ok: now(), timetable_last_error: "", activity_30d: 5805 }] };
     case "set_handover_note": { db.handover = { note: a.p_note, at: now(), by: "RAKESH" }; return db.handover; }
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
-    case "my_permissions": return db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]));
+    case "my_permissions": {
+      const extra = db.me.extra || [];
+      const collections = !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
+      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
+    }
+    case "set_staff_access": {
+      if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
+      const p = db.staff.find((p) => p.id === a.p_staff && (!p.company_id || p.company_id === db.me.company_id) && !p.removed_at);
+      if (!p) throw new Error("Person not found.");
+      if (p.id === db.me.id || (p.role === "owner" && db.me.role !== "owner")) throw new Error("You cannot change that person's access.");
+      p.extra = a.p_extra || []; return p;
+    }
     case "tap_drop": {
       // part 98: the name picked on a shared login rides with the stamp.
       function byName(b, c) { b.by_name = { ...(b.by_name || {}) }; if (b[c] && db.me && db.me.acting) b.by_name[c] = db.me.acting; else delete b.by_name[c]; }

@@ -18,6 +18,7 @@
 
 /* ── tokens: light (A) ── */
 html.premium{
+  --bp-selected:var(--call-tx);--bp-selected-ink:var(--card);
   /* Navy for every client unless its brand names a header colour (brand.chrome);
      the brand colour is the accent. Not --chrome: app.js sets that one inline. */
   --pchrome:var(--brand-chrome,#0E3F7E);

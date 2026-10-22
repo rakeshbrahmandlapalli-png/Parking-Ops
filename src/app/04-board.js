@@ -67,9 +67,11 @@
   }
   function dayWord(key) { var d = +key.slice(8, 10); return pad(d) + ordinal(d); }
 
-  function visibleRows() {
+  function visibleRows(withoutPayments) {
     var q = S.q.trim().toUpperCase().replace(/^#/, "").replace(/\s+/g, "");
+    var usePayments = !withoutPayments && S.paymentFilter && boardPaymentsAvailable();
     return S.rows.filter(function (r) {
+      if (usePayments && !paymentMatches(r, S.paymentFilter)) return false;
       // A search looks at the whole sheet: a car already done must still be findable from TO DO.
       if (q) return [r.reg, r.num, r.flight, r.name, r.phone, r.note, r.ref, r.make].join("").toUpperCase().replace(/\s+/g, "").indexOf(q) !== -1;
       if (QUEUES[S.boardQueue]) return QUEUES[S.boardQueue][1](r);
@@ -176,6 +178,7 @@
   }
 
   function renderBoard() {
+    renderBoardPayments();
     if (keyOn()) { boardChunks = null; sheetChunks = null; return renderKeyBoard(); }
     var n = backupNudge(), d = deskBtn() + keyStrip(); sheetChunks = null;
     var sh = renderSheet(), o = otherDaysHtml(), f = opsBoardFoot();
@@ -328,7 +331,7 @@
     }
     if (!S.rows.length) return '<div class="msg">No cars on this sheet.</div>';
     if (!rows.length) return queueBar() + '<div class="msg">' + (QUEUES[S.boardQueue] ? "Nothing in this queue now." : S.filter === "todo" && !S.q && !S.yardFilter ? "Nothing outstanding." : S.q ? (S.other && S.other.length ? "Not on this sheet. Found on another day below." : searchWords().tight.length >= 3 && S.other ? "Not found on any sheet." : "Not on this sheet.") : "Nothing matches.") + "</div>";
-    var draw = sh.kind === "picks" ? pickRow : dropRow;
+    var draw = sh.kind === "picks" ? pickRow : dropRow, paymentRows = boardPaymentsAvailable();
     var cardsLook = isCards() && !isBoard();   // Premium Board heads its sections like the old board
     var chunks = [], qb = queueBar();
     if (qb) chunks.push(["queue", qb]);
@@ -347,7 +350,7 @@
         }
       }
       chunks.push(["head:" + g.title, head]);
-      return head + g.rows.map(function (r) { var x = draw(r); chunks.push(["row:" + r.id, x]); return x; }).join("");
+      return head + g.rows.map(function (r) { var x = draw(r); if (paymentRows) x = withBoardPayments(r, x); chunks.push(["row:" + r.id, x]); return x; }).join("");
     }).join("");
     sheetChunks = chunks;
     return out;

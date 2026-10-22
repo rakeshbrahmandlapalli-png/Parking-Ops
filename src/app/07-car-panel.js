@@ -290,7 +290,7 @@
       return '<a class="ptset" href="/p/' + esc(x.token) + '" target="_blank" rel="noopener"><span><b>' + x.n + " photo" + (x.n === 1 ? "" : "s") + "</b> · " + esc(dayShort(x.at) + " " + hhmm(x.at)) + (x.by ? " · " + esc(x.by) : "") + "</span><i>View ›</i></a>";
     }).join("");
   }
-  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car"); var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
+  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car", "payment-sheet"); boardPaymentId = ""; var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
   // Closes on a tap outside only when the press started outside too: selecting
   // text in a box and letting go past the edge must not close it.
   var downOn = {};
