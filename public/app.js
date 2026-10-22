@@ -671,7 +671,7 @@
     if (premium && sh) $("cShift").innerHTML = cShiftHtml(sh);
     show("kindSeg", cardsLook && board && !!sh);
     // Operations: Drops | Picks in the top bar.
-    var opsLook = document.documentElement.classList.contains("ops");
+    var opsLook = isOps();
     show("kindBar", opsLook && !S.platform && !!sh);
     if (opsLook && sh) Array.prototype.forEach.call($("kindBar").querySelectorAll("[data-kind]"), function (b) { b.setAttribute("aria-pressed", b.dataset.kind === sh.kind); });
     if (cardsLook && sh) {
@@ -816,9 +816,9 @@
   function pickerHtml(shift) {
     // Operations: Drops | Picks sits beside the picker, so it lists only that
     // kind's days, without the word ("7TH OCT · today").
-    var cur = sheet(), oneKind = document.documentElement.classList.contains("ops") && cur ? cur.kind : "";
+    var cur = sheet(), oneKind = isOps() && cur ? cur.kind : "";
     var sheets = oneKind ? S.sheets.filter(function (s) { return s.kind === oneKind; }) : S.sheets;
-    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
+    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? (isRefined() && s.day ? refinedDay(s.day, s.day === shift) : sheetLabel(s).replace(/^\S+ /, "")) : sheetLabel(s)) + (s.day === shift && !(isRefined() && oneKind && s.day) ? " · today" : "") + "</option>"; }
     var ahead = sheets.filter(function (s) { return s.day >= shift; }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.kind < b.kind ? -1 : 1; });
     var h = ahead.length ? '<optgroup label="TODAY AND COMING UP">' + ahead.map(opt).join("") + "</optgroup>" : "";
     var months = {};
@@ -1263,7 +1263,16 @@
   function isPremium() { return document.documentElement.classList.contains("premium"); }
   // Premium Board: Premium with two-line rows (board.css).
   function isBoard() { return document.documentElement.classList.contains("pboard"); }
-  function isOps() { return document.documentElement.classList.contains("ops"); }
+  // Operations and Operations Refined (html.ops-refined, ops-refined.css) share the Operations pages and features.
+  function isOps() { var c = document.documentElement.classList; return c.contains("ops") || c.contains("ops-refined"); }
+  function isRefined() { return document.documentElement.classList.contains("ops-refined"); }
+  // Operations Refined's day words: "Thu 22 Oct" ("Today 22 Oct" for the shift on now), and "Drops · Thu 22 Oct" for a sheet.
+  function refinedDay(key, today) {
+    if (!key) return "";
+    var d = new Date(key + "T12:00:00Z"), o = function (x) { x.timeZone = "UTC"; return d.toLocaleDateString("en-GB", x); };
+    return (today ? "Today" : o({ weekday: "short" })) + " " + d.getUTCDate() + " " + o({ month: "short" });
+  }
+  function refinedSheetLabel(s) { var k = s.kind === "picks" ? "Picks" : "Drops"; return s.day ? k + " · " + refinedDay(s.day) : k; }
   function isStdPlus() { return document.documentElement.classList.contains("stdplus"); }
   // The working features (swipe, pull to refresh, the number fold, the menu in
   // sections, the Summary upgrades): Premium looks and Standard with features.
@@ -2736,6 +2745,8 @@
   function canReturn(r) { return can("import") && (r.kind === "picks" || (r.kind === "drops" && !r.early && !r.cleared_at)); }
   function openPanel(r) {
     if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
+    // Operations Refined: drawn again after a tap that saves at once (yard, charge), it keeps what was typed.
+    var draft = isRefined() && $("panel").open && panelRow && panelRow.id === r.id && $("carState") ? carDraft() : null;
     panelRow = r;
     var drops = r.kind === "drops";
     function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(who) : "") : "—"; }
@@ -2753,48 +2764,51 @@
     }
     // Operations: "Booking details" with the reg under it, the details in two
     // columns, and the boxes in sections, each with a plain name.
-    var o = isOps(), desk = o && opsDesk(), R = "";
+    var o = isOps(), desk = o && opsDesk(), R = "", rf = isRefined();
     var h = o ? '<button type="button" class="ops-x" data-close aria-label="Close">&times;</button><h2 id="panelTitle">Booking details</h2>' +
-        '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+        (rf ? '<p class="sub"><b class="rf-reg">' + esc(r.reg || "NO REG") + "</b>" + (r.num ? ' <span class="rf-num">#' + r.num + "</span>" : "") + " · " + esc(refinedSheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+          : '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>")
       : '<h2 id="panelTitle">' + esc(r.reg || "NO REG") + (r.num ? " <small>#" + r.num + "</small>" : "") + "</h2>" +
       '<p class="sub">' + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>";
     var headEnd = h.length;
-    h += (r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "") + opsSec("Customer & vehicle") +
-      '<div class="det">' + det.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
+    var tel = r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "";
+    function detList(list) { return '<div class="det">' + list.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>"; }
+    // Operations Refined: a tap here saves at once, unlike the boxes saved by Save changes.
+    var NOW = rf ? '<small class="rf-now">Saves when tapped</small>' : "";
     // A booking can come with no reg: the office can type or correct it, a
     // driver can fill in a missing one when the car comes in.
     var canReg = can("import") || (can("intake") && !r.reg);
     // Swipe instead of buttons: the buttons live here, to undo or fix a swipe.
-    if (drops && swipeOnly()) { var steps = '<label>' + L("STEPS") + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts"); if (desk) R += opsSec("Status") + steps; else h += steps; }
+    var steps = drops && swipeOnly() ? '<label>' + L("STEPS") + NOW + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts") : "";
     var parking = canReg || canReturn(r) || (drops ? can("yard") : picksYard() && can("intake")) || (drops ? can("flights") : canPickFlight());
-    if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
-    if (canReg) h += fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true);
+    var regF = canReg ? fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true) : "";
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
     // finds this car rather than adding it again (database part 48).
     // The booking site moved the drop-off: the office moves the car to that day (part 102).
+    var dropF = "", retF = "", yardF = "", flightF = "", pickFlightF = "";
     if (!drops && can("import") && !r.removed_at) {
       var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-      h += fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+      dropF = fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
     }
     if (canReturn(r)) {
       var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-      h += fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
+      retF = fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
     }
     if (drops ? can("yard") : picksYard() && can("intake")) {
-      h += fld('<label>' + L(drops ? "YARD" : "LOCATION") + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
-        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '">' + esc(YARD_LABEL[y] || y) + "</button>";
+      yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
+        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '"' + (rf ? ' aria-pressed="' + (r.yard === y) + '"' : "") + ">" + esc(YARD_LABEL[y] || y) + "</button>";
       }).join("") + "</div>", true);
     }
     if (drops && can("flights")) {
-      h += fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
-      if (r.flight === "NO FLIGHT") h += fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
-      else h += fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightF = fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
+      if (r.flight === "NO FLIGHT") flightF += fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
+      else flightF += fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
     }
     // The return flight, when the booking came without one: it goes on to the DROPS car (database part 78).
-    if (!drops && canPickFlight()) h += fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
-    var docs = docBlockHtml(r); if (!desk) h += docs;
-    if (can("note")) h += opsSec("Notes & status") + fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true);
+    if (!drops && canPickFlight()) pickFlightF = fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
+    var docs = docBlockHtml(r);
+    var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
     var extra = "";
     if (drops) {
       if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">OVERSTAY</button>';
@@ -2804,23 +2818,36 @@
       extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">NEW BOOKING</button>';
       if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">NO SHOW</button>';
     }
-    // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
-    var side = "";
-    if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + fld('<label>' + L("MARK AS") + '</label><div class="pseg">' + extra + "</div>", true);
-    if (drops) side += chargePanelHtml(r) + exitPanelHtml(r);
-    side += drops ? earlyHtml(r) : pickEarlyHtml(r);
+    var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
+    var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
+    var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    side += '<div id="ptPhotos"></div>';
-    if (can("import")) side += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
-    if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+    var photos = '<div id="ptPhotos"></div>';
+    var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
-    var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
     var hist = can("log") ? '<div id="carHist"></div>' : "";
-    // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
-    h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
-      : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, pickFlightF: pickFlightF,
+      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
+    else {
+      h += tel + opsSec("Customer & vehicle") + detList(det);
+      if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
+      if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
+      h += regF + dropF + retF + yardF + flightF + pickFlightF;
+      if (!desk) h += docs;
+      if (can("note")) h += opsSec("Notes & status") + noteF;
+      // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
+      var side = "";
+      if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
+      side += pay + early + photos + rm;
+      if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+      var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
+      // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
+      h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
+        : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    }
     $("panelBody").innerHTML = h;
     $("panel").classList.toggle("ops-car", o);
+    if (rf) { carInit = carFieldVals(); if (draft) Object.keys(draft).forEach(function (k) { if ($(k)) $(k).value = draft[k]; }); carState(); }
     if (o) opsMenuPlace();
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
@@ -2828,6 +2855,49 @@
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
+  // ── Operations Refined: Booking details in sections ──
+  // Customer & vehicle, Return & parking, Notes & status, then payments,
+  // documents and photos; the read-only details as text, the boxes Save changes
+  // saves as fields, and what saves on a tap marked "Saves when tapped". The same
+  // fields, buttons and saves as Operations; only where they sit changes.
+  var CAR_CUST = { NAME: 1, CAR: 1, REF: 1 }, CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 };
+  function refinedCar(r, head, P) {
+    // A detail that has its own box below shows once, in the box.
+    var skip = {}; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
+    var cust = [], park = [], stat = [], fee = [];
+    P.det.forEach(function (x) { if (skip[x[0]]) return; (CAR_CUST[x[0]] ? cust : CAR_PARK[x[0]] ? park : x[0] === "EXIT FEE" ? fee : stat).push(x); });
+    var was = P.retF && r.orig_return_at ? '<p class="rf-hint">First booked back ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</p>" : "";
+    function sec(cls, title, body, aside) { return body ? '<section class="rf-sec ' + cls + '"><h3 class="rf-h">' + esc(title) + (aside ? "<small>" + esc(aside) + "</small>" : "") + '</h3><div class="ops-sheet rf-grid">' + body + "</div></section>" : ""; }
+    // A wide screen: the booking and its return on the left; status, notes, payments and photos on the right.
+    var A = sec("rf-cust", "Customer & vehicle", P.detList(cust) + P.regF + (P.tel ? '<div class="rf-tel">' + P.tel + "</div>" : "")) +
+      sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", (park.length ? P.detList(park) : "") + P.dropF + P.retF + was + P.flightF + P.pickFlightF + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
+    var B = sec("rf-notes", "Notes & status", (stat.length ? P.detList(stat) : "") + P.steps + P.noteF + P.markF) +
+      sec("rf-pay", "Payments", (fee.length ? P.detList(fee) : "") + P.pay, P.pay ? "Saves when tapped" : "") +
+      sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
+      (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
+    var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
+      : '<button type="button" data-close>Close</button>') + "</div>";
+    return head + (P.desk ? '<div class="ops-2col rf-2col"><div class="rf-col">' + A + '</div><div class="rf-col">' + B + "</div></div>" : A + B) +
+      (P.hist ? '<section class="rf-sec rf-hist">' + P.hist + "</section>" : "") + foot;
+  }
+  // What's typed in the car's boxes and not saved yet (Operations Refined).
+  var CAR_FIELDS = ["regText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
+  function carFieldVals() { var v = {}; CAR_FIELDS.forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
+  function carDraft() { var v = carFieldVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
+  function carState(msg) {
+    var el = $("carState"); if (!el) return;
+    var n = Object.keys(carDraft()).length;
+    el.textContent = msg || (n ? "Unsaved changes" : "No unsaved changes");
+    el.className = "rf-state" + (msg ? " bad" : n ? " dirty" : "");
+  }
+  // A box Save changes can't take: said in the footer too (Operations Refined), always as a message.
+  function saveErr(m) { if (isRefined()) carState(m); return toast(m, true); }
+  ["input", "change"].forEach(function (ev) { $("panelBody").addEventListener(ev, function (e) { if (isRefined() && $("carState") && e.target.id && CAR_FIELDS.indexOf(e.target.id) >= 0) carState(); }); });
+  // A phone keyboard: the box being typed in stays above Cancel / Save changes.
+  $("panelBody").addEventListener("focusin", function (e) {
+    var t = e.target; if (!isRefined() || !$("carState") || !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    setTimeout(function () { if (document.activeElement === t) t.scrollIntoView({ block: "nearest" }); }, 350);
+  });
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
@@ -2894,27 +2964,27 @@
       var saved = false;
       // Check everything first: nothing is queued while any field is invalid.
       var pf = $("pickFlightText") ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
-      if (pf && pf.length > 10) return toast("That does not look like a flight number.", true);
+      if (pf && pf.length > 10) return saveErr("That does not look like a flight number.");
       var g = null;
       if ($("regText")) {
         g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
-        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return toast("Check the reg: letters and numbers only.", true);
+        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
       }
       var rl = null;
       if ($("retD")) {
         var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-        if (rt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (rt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("retD").value !== old.key || (rt || "") !== old.time) {
-          if (!$("retD").value || !rt) return toast("Enter when the car is back: the date and the time.", true);
+          if (!$("retD").value || !rt) return saveErr("Enter when the car is back: the date and the time.");
           rl = $("retD").value + " " + rt;
         }
       }
       var dl = null;
       if ($("dropD")) {
         var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-        if (dt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("dropD").value !== od.key || (dt || "") !== od.time) {
-          if (!$("dropD").value || !dt) return toast("Enter the drop-off: the date and the time.", true);
+          if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
           dl = $("dropD").value + " " + dt;
           if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
         }
@@ -2922,7 +2992,7 @@
       var f = null, ct, st;
       if ($("flightText")) {
         f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
-        if (ct === null || st === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
@@ -3271,7 +3341,8 @@
   }
   // ── Operations: Hourly stats and Shift summary as pages (ops.css) ──
   function opsSub(sh) {
-    if (opsDesk()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
+    // Operations Refined names the shift and its hours on a phone too.
+    if (opsDesk() || isRefined()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
@@ -3305,7 +3376,7 @@
   // sheet, its full date and the hours it covers (the company's day end), London time.
   function opsScope(sh) {
     if (!sh || !sh.day) return "";
-    var bits = [longDate(sh.day)];
+    var bits = [isRefined() && !opsDesk() ? refinedDay(sh.day) : longDate(sh.day)];
     if (sh.kind === "drops") {
       var end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5), last = (minsOf(end) + 1439) % 1440;
       var lastDay = end === "00:00" ? sh.day : addDaysKey(sh.day, 1);
@@ -3833,9 +3904,10 @@
       var tone = st === "landed" ? "ok" : st === "cancelled" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
       return '<div class="ops-fl fs-' + esc(st || "none") + '" data-id="' + r.id + '"><div class="ops-flin" data-open>' +
         '<b class="num">' + esc(r.flight) + '</b><span class="ops-flcar"><span class="num">' + esc(r.reg) + "</span><small>" + esc(nice(r.name)) + "</small></span>" +
-        '<span class="ops-flt"><small>Scheduled</small><span class="num">' + esc(sched || "—") + "</span></span>" +
-        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
-        '<em class="ops-badge ' + tone + '">' + esc(word) + (r.flight_note && st !== "landed" ? " · " + esc(r.flight_note) : "") + "</em></div></div>";
+        // Operations Refined: a flight per line on a phone, in the board's words (Sch, Est).
+        '<span class="ops-flt"><small>' + (isRefined() ? "Sch" : "Scheduled") + '</small><span class="num">' + esc(sched || "—") + "</span></span>" +
+        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : isRefined() ? "Est" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
+        '<em class="ops-badge ' + tone + '">' + (isRefined() && r.flight_note && st !== "landed" && r.flight_note.indexOf(word) === 0 ? "" : esc(word) + (r.flight_note && st !== "landed" ? " · " : "")) + (r.flight_note && st !== "landed" ? esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
     return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
   }
@@ -4018,7 +4090,7 @@
   function progressBar(done, all) {
     if (!hasFeatures() || !all) return "";
     var pc = Math.round(done / all * 100);
-    return '<div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + all + '" aria-valuenow="' + done + '"><i style="width:' + pc + '%"></i></div><small class="pbar-pc">' + pc + '% done</small><div class="pring" aria-hidden="true" style="--pc:' + pc + '" data-pc="' + pc + '%"></div>';
+    return '<div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + all + '" aria-valuenow="' + done + '"><i style="width:' + pc + '%"></i></div><small class="pbar-pc">' + pc + "% done" + (isRefined() ? " · " + (all - done) + " to go" : "") + '</small><div class="pring" aria-hidden="true" style="--pc:' + pc + '" data-pc="' + pc + '%"></div>';
   }
   // Which part of the work an activity line is about, for the filter chips.
   var PICK_ACTIONS = { INTAKE: 1, PT: 1, "PT PHOTOS": 1, "PT COPY": 1, "SHORT DATES": 1, "COLLECTION TIME": 1 };
@@ -4391,8 +4463,11 @@
     document.documentElement.classList.toggle("pboard", board);
     // Standard with features: Standard plus the bottom bar (stdplus.css).
     // Operations is Standard with features plus its own chrome (ops.css): html.stdplus + html.ops.
-    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops");
+    // Operations Refined is Standard with features plus ops-refined.css only (html.stdplus + html.ops-refined):
+    // the Operations pages and features (isOps), never ops.css.
+    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops" || b.theme === "ops-refined");
     document.documentElement.classList.toggle("ops", b.theme === "ops");
+    document.documentElement.classList.toggle("ops-refined", b.theme === "ops-refined");
     var mark = String(b.mark || short.charAt(0) || "P").slice(0, 2);
     // Only the wordmark and the board button. NOT ".brand" on its own: the
     Array.prototype.forEach.call(document.querySelectorAll("span.brand, .tobrand"), function (el) {
@@ -4923,7 +4998,7 @@
   // ── Clients (product owner only, database part 19) ──
   // Counts only: this page never sees a client's customers.
   // The looks a client's app can wear (brand.theme): "pro" is pro.css, "cards" is cards.css, "premium" is premium.css, "board" is premium.css + board.css.
-  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"]];
+  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"], ["ops-refined", "Operations Refined"]];
   function lookName(b) { var l = LOOKS.filter(function (x) { return x[0] === ((b && b.theme) || ""); })[0]; return l ? l[1] : "Standard"; }
   function renderClients() {
     if (S.clients === undefined) { S.clients = null; loadClients(); }
@@ -4971,8 +5046,8 @@
       var ink = lightColour(c) ? "#1F1A00" : "#FFFFFF", line = hexMix(c, "#000000", 0.15);
       css += "html body .code." + y + ",html body select.code.pick." + y + ",html body .acts .pyard.on.y-" + y + ",html body .pseg.yard button.on.y-" + y +
         "{background:" + c + ";border-color:" + line + ";color:" + ink + ";}";
-      // Operations on a wide screen: a dot of the yard's colour by its count.
-      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
+      // Operations (and Operations Refined) on a wide screen: a dot of the yard's colour by its count.
+      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before,html.ops-refined body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
     });
     var el = document.getElementById("yardColours");
     if (!el) { el = document.createElement("style"); el.id = "yardColours"; document.head.appendChild(el); }
@@ -5417,7 +5492,8 @@
     // Operations: shorter words, so two boxes fit side by side; a note when there are unsaved changes.
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
-    var unsaved = dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
+    // Operations Refined says it in the Flight checks box itself, beside its Save.
+    var rf = isRefined(), unsaved = dirty && !rf ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
     var flights = '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
       sel("enabled", [["true", "On"], ["false", o ? "Off" : "Off: no automatic checks"]], "Automatic checks") +
@@ -5428,12 +5504,23 @@
         sel("before_min", o ? [[30, "30 min before"], [60, "1 hour before"], [90, "90 min before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]]
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
+      '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
       "";
-    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + bookingSiteHtml() + backupHtml();
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
-    var groups = [["parking", "Parking & yards", capacityHtml() + yardColoursHtml()], ["flights", "Flight checks", flights], ["charges", "Exit fees & charges", exitFeeHtml() + overstayRateHtml()],
-      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["bookings", "Booking website", bookingSiteHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
+    var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+    // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
+    // (the others stay on the page, hidden, so nothing typed is lost by switching).
+    if (!opsDesk()) {
+      var cur = groups.some(function (g) { return g[0] === S.setTab; }) ? S.setTab : groups[0][0];
+      return unsaved + '<div class="set-tabs" role="tablist" aria-label="Settings sections">' + groups.map(function (g) {
+        return '<button type="button" role="tab" id="settab-' + g[0] + '" data-settab="' + g[0] + '" aria-controls="set-' + g[0] + '" aria-selected="' + (g[0] === cur) + '">' + esc(g[3]) + "</button>";
+      }).join("") + "</div>" + groups.map(function (g) {
+        return '<section class="set-group" id="set-' + g[0] + '" role="tabpanel" aria-labelledby="settab-' + g[0] + '"' + (g[0] === cur ? "" : " hidden") + ">" + g[2] + "</section>";
+      }).join("");
+    }
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
   }
@@ -5893,6 +5980,12 @@
     if (t.dataset.keyretry !== undefined) return loadKeys(S.sheetId);
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
+    if (t.dataset.settab) {
+      S.setTab = t.dataset.settab;
+      document.querySelectorAll("[data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b === t); });
+      document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      return;
+    }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();

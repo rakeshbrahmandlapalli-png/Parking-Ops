@@ -117,7 +117,8 @@
     // Operations: shorter words, so two boxes fit side by side; a note when there are unsaved changes.
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
-    var unsaved = dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
+    // Operations Refined says it in the Flight checks box itself, beside its Save.
+    var rf = isRefined(), unsaved = dirty && !rf ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
     var flights = '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
       sel("enabled", [["true", "On"], ["false", o ? "Off" : "Off: no automatic checks"]], "Automatic checks") +
@@ -128,12 +129,23 @@
         sel("before_min", o ? [[30, "30 min before"], [60, "1 hour before"], [90, "90 min before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]]
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
+      '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
       "";
-    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + bookingSiteHtml() + backupHtml();
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
-    var groups = [["parking", "Parking & yards", capacityHtml() + yardColoursHtml()], ["flights", "Flight checks", flights], ["charges", "Exit fees & charges", exitFeeHtml() + overstayRateHtml()],
-      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["bookings", "Booking website", bookingSiteHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
+    var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+    // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
+    // (the others stay on the page, hidden, so nothing typed is lost by switching).
+    if (!opsDesk()) {
+      var cur = groups.some(function (g) { return g[0] === S.setTab; }) ? S.setTab : groups[0][0];
+      return unsaved + '<div class="set-tabs" role="tablist" aria-label="Settings sections">' + groups.map(function (g) {
+        return '<button type="button" role="tab" id="settab-' + g[0] + '" data-settab="' + g[0] + '" aria-controls="set-' + g[0] + '" aria-selected="' + (g[0] === cur) + '">' + esc(g[3]) + "</button>";
+      }).join("") + "</div>" + groups.map(function (g) {
+        return '<section class="set-group" id="set-' + g[0] + '" role="tabpanel" aria-labelledby="settab-' + g[0] + '"' + (g[0] === cur ? "" : " hidden") + ">" + g[2] + "</section>";
+      }).join("");
+    }
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
   }

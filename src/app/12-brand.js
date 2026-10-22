@@ -59,8 +59,11 @@
     document.documentElement.classList.toggle("pboard", board);
     // Standard with features: Standard plus the bottom bar (stdplus.css).
     // Operations is Standard with features plus its own chrome (ops.css): html.stdplus + html.ops.
-    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops");
+    // Operations Refined is Standard with features plus ops-refined.css only (html.stdplus + html.ops-refined):
+    // the Operations pages and features (isOps), never ops.css.
+    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops" || b.theme === "ops-refined");
     document.documentElement.classList.toggle("ops", b.theme === "ops");
+    document.documentElement.classList.toggle("ops-refined", b.theme === "ops-refined");
     var mark = String(b.mark || short.charAt(0) || "P").slice(0, 2);
     // Only the wordmark and the board button. NOT ".brand" on its own: the
     Array.prototype.forEach.call(document.querySelectorAll("span.brand, .tobrand"), function (el) {

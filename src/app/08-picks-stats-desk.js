@@ -128,7 +128,8 @@
   }
   // ── Operations: Hourly stats and Shift summary as pages (ops.css) ──
   function opsSub(sh) {
-    if (opsDesk()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
+    // Operations Refined names the shift and its hours on a phone too.
+    if (opsDesk() || isRefined()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
@@ -162,7 +163,7 @@
   // sheet, its full date and the hours it covers (the company's day end), London time.
   function opsScope(sh) {
     if (!sh || !sh.day) return "";
-    var bits = [longDate(sh.day)];
+    var bits = [isRefined() && !opsDesk() ? refinedDay(sh.day) : longDate(sh.day)];
     if (sh.kind === "drops") {
       var end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5), last = (minsOf(end) + 1439) % 1440;
       var lastDay = end === "00:00" ? sh.day : addDaysKey(sh.day, 1);

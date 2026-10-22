@@ -88,6 +88,12 @@
     if (t.dataset.keyretry !== undefined) return loadKeys(S.sheetId);
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
+    if (t.dataset.settab) {
+      S.setTab = t.dataset.settab;
+      document.querySelectorAll("[data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b === t); });
+      document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      return;
+    }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();

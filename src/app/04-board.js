@@ -375,7 +375,16 @@
   function isPremium() { return document.documentElement.classList.contains("premium"); }
   // Premium Board: Premium with two-line rows (board.css).
   function isBoard() { return document.documentElement.classList.contains("pboard"); }
-  function isOps() { return document.documentElement.classList.contains("ops"); }
+  // Operations and Operations Refined (html.ops-refined, ops-refined.css) share the Operations pages and features.
+  function isOps() { var c = document.documentElement.classList; return c.contains("ops") || c.contains("ops-refined"); }
+  function isRefined() { return document.documentElement.classList.contains("ops-refined"); }
+  // Operations Refined's day words: "Thu 22 Oct" ("Today 22 Oct" for the shift on now), and "Drops · Thu 22 Oct" for a sheet.
+  function refinedDay(key, today) {
+    if (!key) return "";
+    var d = new Date(key + "T12:00:00Z"), o = function (x) { x.timeZone = "UTC"; return d.toLocaleDateString("en-GB", x); };
+    return (today ? "Today" : o({ weekday: "short" })) + " " + d.getUTCDate() + " " + o({ month: "short" });
+  }
+  function refinedSheetLabel(s) { var k = s.kind === "picks" ? "Picks" : "Drops"; return s.day ? k + " · " + refinedDay(s.day) : k; }
   function isStdPlus() { return document.documentElement.classList.contains("stdplus"); }
   // The working features (swipe, pull to refresh, the number fold, the menu in
   // sections, the Summary upgrades): Premium looks and Standard with features.
