@@ -36,7 +36,7 @@
     if (premium && sh) $("cShift").innerHTML = cShiftHtml(sh);
     show("kindSeg", cardsLook && board && !!sh);
     // Operations: Drops | Picks in the top bar.
-    var opsLook = document.documentElement.classList.contains("ops");
+    var opsLook = isOps();
     show("kindBar", opsLook && !S.platform && !!sh);
     if (opsLook && sh) Array.prototype.forEach.call($("kindBar").querySelectorAll("[data-kind]"), function (b) { b.setAttribute("aria-pressed", b.dataset.kind === sh.kind); });
     if (cardsLook && sh) {
@@ -181,9 +181,9 @@
   function pickerHtml(shift) {
     // Operations: Drops | Picks sits beside the picker, so it lists only that
     // kind's days, without the word ("7TH OCT · today").
-    var cur = sheet(), oneKind = document.documentElement.classList.contains("ops") && cur ? cur.kind : "";
+    var cur = sheet(), oneKind = isOps() && cur ? cur.kind : "";
     var sheets = oneKind ? S.sheets.filter(function (s) { return s.kind === oneKind; }) : S.sheets;
-    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
+    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? (isRefined() && s.day ? refinedDay(s.day, s.day === shift) : sheetLabel(s).replace(/^\S+ /, "")) : sheetLabel(s)) + (s.day === shift && !(isRefined() && oneKind && s.day) ? " · today" : "") + "</option>"; }
     var ahead = sheets.filter(function (s) { return s.day >= shift; }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.kind < b.kind ? -1 : 1; });
     var h = ahead.length ? '<optgroup label="TODAY AND COMING UP">' + ahead.map(opt).join("") + "</optgroup>" : "";
     var months = {};

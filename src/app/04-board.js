@@ -115,8 +115,11 @@
     renderTallyFold(cells);
     renderKeyBtn();
     var cardsWords = pro && !isPremium();
-    $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
-    $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    if (isRefined()) { $("tabTodo").innerHTML = 'To do <b class="num">' + S.rows.filter(waiting).length + "</b>"; $("tabAll").innerHTML = 'All <b class="num">' + S.rows.length + "</b>"; }
+    else {
+      $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
+      $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    }
     $("tabTodo").classList.toggle("on", !keyOn() && S.filter === "todo");
     $("tabAll").classList.toggle("on", !keyOn() && S.filter === "all");
     $("tabTodo").setAttribute("aria-pressed", !keyOn() && S.filter === "todo");
@@ -369,27 +372,41 @@
   function noteLine(r) { return r.note ? '<div class="l3' + (/^!/.test(r.note) ? " bang" : "") + '">' + esc(r.note.replace(/^!\s*/, "")) + "</div>" : ""; }
   // A pressed button shows the time and the first name of whoever pressed it.
   // The Cards look's buttons are big enough for words, not codes.
+  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   // A card per car (Cards or Premium look); isPremium tells the two apart.
   function isCards() { var c = document.documentElement.classList; return c.contains("cards") || c.contains("premium"); }
   function isPremium() { return document.documentElement.classList.contains("premium"); }
   // Premium Board: Premium with two-line rows (board.css).
   function isBoard() { return document.documentElement.classList.contains("pboard"); }
-  function isOps() { return document.documentElement.classList.contains("ops"); }
+  // Operations and Operations Refined (html.ops-refined, ops-refined.css) share the Operations pages and features.
+  function isOps() { var c = document.documentElement.classList; return c.contains("ops") || c.contains("ops-refined"); }
+  function isRefined() { return document.documentElement.classList.contains("ops-refined"); }
+  // Operations Refined's day words: "Thu 22 Oct" ("Today 22 Oct" for the shift on now), and "Drops · Thu 22 Oct" for a sheet.
+  function refinedDay(key, today) {
+    if (!key) return "";
+    var d = new Date(key + "T12:00:00Z"), o = function (x) { x.timeZone = "UTC"; return d.toLocaleDateString("en-GB", x); };
+    return (today ? "Today" : o({ weekday: "short" })) + " " + d.getUTCDate() + " " + o({ month: "short" });
+  }
+  function refinedSheetLabel(s) { var k = s.kind === "picks" ? "Picks" : "Drops"; return s.day ? k + " · " + refinedDay(s.day) : k; }
   function isStdPlus() { return document.documentElement.classList.contains("stdplus"); }
   // The working features (swipe, pull to refresh, the number fold, the menu in
   // sections, the Summary upgrades): Premium looks and Standard with features.
   function hasFeatures() { return isPremium() || isStdPlus(); }
   // Booking sites send names in capitals; the Cards look shows them as written ("Senior Miss").
-  function niceMake(m) { return m.length <= 3 ? m : nice(m); }
+  // Operations Refined keeps the short model codes in capitals ("BMW 3 Series", "Audi Q5 S Line").
+  var RF_CAPS = /^(bmw|mg|vw|ds|byd|amg|gti|gtd|tdi|tsi|suv|ev|hev|phev|gt|rs|st|se|sr|xe|xf|xj|ii|iii|iv|vi|[a-z]\d{1,2}|id\.?\d?)$/i;
+  function niceMake(m) { return m.length <= 3 ? m : isRefined() ? nice(m).split(" ").map(function (w) { return RF_CAPS.test(w) ? w.toUpperCase() : w; }).join(" ") : nice(m); }
   function sentence(t) { t = String(t || ""); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase(); }
-  // Card looks tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
-  function nice(t) { t = String(t || ""); return isCards() && !isBoard() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
+  // Card looks and Operations Refined tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
+  function nice(t) { t = String(t || ""); return (isCards() && !isBoard()) || isRefined() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
   function actBtn(r, attrs, cls, label, on, at, allowed, who) {
     var pro = isCards() && !isBoard();   // Premium Board's buttons read like Standard's (COLL, NO SHOW)
     if (pro && PRO_WORDS[label]) label = PRO_WORDS[label];
     // Premium Board's pick rows have narrow buttons: the short word, as the old rows had.
     if (label === "Collected" && isBoard()) label = "Coll";
+    // Operations Refined: the words in sentence case, easier to read at a glance.
+    if (isRefined() && RF_WORDS[label]) label = RF_WORDS[label];
     var name = on && at ? nice(String(who || "").trim().split(/\s+/)[0]) : "";
     return '<button type="button" class="' + cls + (on ? " on" : "") + (label.length > 7 ? " lng" : "") + '" ' + attrs + (allowed ? "" : " disabled") + ">" +
       (pro ? '<span class="w">' + label + "</span>" : label) + (on && at ? '<small class="num">' + esc(hhmm(at)) + "</small>" : "") + (name ? '<em class="by">' + esc(name) + "</em>" : "") + "</button>";

@@ -256,7 +256,7 @@ await scenario(async () => {
   await page.click("#panelBody [data-close]");
   check("Parking Ops: each client card says which look it has", /Standard/.test(await text(page, ".client")));
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
-  check("Parking Ops: the client editor offers the seven looks", (await page.locator("#clLook option").allInnerTexts()).join("|") === "Standard|Airport Parking Bay UI|Cards (light and dark)|Premium UI|Premium Board|Standard with features|Operations");
+  check("Parking Ops: the client editor offers the eight looks", (await page.locator("#clLook option").allInnerTexts()).join("|") === "Standard|Airport Parking Bay UI|Cards (light and dark)|Premium UI|Premium Board|Standard with features|Operations|Operations Refined");
   await page.selectOption("#clLook", "premium"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: choosing Premium UI saves theme premium", (db.clientSaves || []).some((x) => x.id === "c1" && x.brand.theme === "premium"), db.clientSaves);
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
@@ -268,6 +268,9 @@ await scenario(async () => {
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
   await page.selectOption("#clLook", "ops"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: choosing Operations saves theme ops", (db.clientSaves || []).some((x) => x.id === "c1" && x.brand.theme === "ops"), db.clientSaves);
+  await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
+  await page.selectOption("#clLook", "ops-refined"); await page.click("#clGo"); await sleep(400);
+  check("Parking Ops: choosing Operations Refined saves theme ops-refined", (db.clientSaves || []).some((x) => x.id === "c1" && x.brand.theme === "ops-refined"), db.clientSaves);
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
   await page.selectOption("#clLook", "pro"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: choosing Airport Parking Bay UI saves theme pro", (db.clientSaves || []).some((x) => x.id === "c1" && x.brand.theme === "pro"), db.clientSaves);

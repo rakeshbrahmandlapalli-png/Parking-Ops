@@ -106,9 +106,10 @@
       var tone = st === "landed" ? "ok" : st === "cancelled" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
       return '<div class="ops-fl fs-' + esc(st || "none") + '" data-id="' + r.id + '"><div class="ops-flin" data-open>' +
         '<b class="num">' + esc(r.flight) + '</b><span class="ops-flcar"><span class="num">' + esc(r.reg) + "</span><small>" + esc(nice(r.name)) + "</small></span>" +
-        '<span class="ops-flt"><small>Scheduled</small><span class="num">' + esc(sched || "—") + "</span></span>" +
-        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
-        '<em class="ops-badge ' + tone + '">' + esc(word) + (r.flight_note && st !== "landed" ? " · " + esc(r.flight_note) : "") + "</em></div></div>";
+        // Operations Refined: a flight per line on a phone, in the board's words (Sch, Est).
+        '<span class="ops-flt"><small>' + (isRefined() ? "Sch" : "Scheduled") + '</small><span class="num">' + esc(sched || "—") + "</span></span>" +
+        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : isRefined() ? "Est" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
+        '<em class="ops-badge ' + tone + '">' + (isRefined() && r.flight_note && st !== "landed" && r.flight_note.indexOf(word) === 0 ? "" : esc(word) + (r.flight_note && st !== "landed" ? " · " : "")) + (r.flight_note && st !== "landed" ? esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
     return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
   }
