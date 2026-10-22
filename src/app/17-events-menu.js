@@ -64,6 +64,11 @@
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
+    if ((t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
+    if (t.dataset.paydetails) { var pr = S.rows.find(function (x) { return x.id === t.dataset.paydetails; }); if (pr) openBoardPayment(pr); return; }
+    if (t.dataset.paybooking) { var pb = S.rows.find(function (x) { return x.id === t.dataset.paybooking; }); if (pb) { boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); openPanel(pb); } return; }
+    if (t.dataset.payproof) { var pp = S.rows.find(function (x) { return x.id === t.dataset.payproof; }); if (pp) fillBoardPaymentProof(pp); return; }
     // The link opens WhatsApp by itself; just remember it was sent.
     // The link opens WhatsApp by itself; PT is done.
     if (t.dataset.ptlink !== undefined) { if (panelRow) ptSent(panelRow); return; }

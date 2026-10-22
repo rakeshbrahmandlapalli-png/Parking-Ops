@@ -16,6 +16,7 @@
 
 /* ── tokens: light (A) ── */
 html.cards{
+  --bp-selected:var(--call-tx);--bp-selected-ink:var(--card);
   --chrome:#0E3F7E;
   --head:var(--chrome);--head-ink:#fff;--head-2:rgb(255 255 255 / .62);--head-tile:rgb(255 255 255 / .09);--head-line:rgb(255 255 255 / .16);
   --bg:#F2F4F7;--card:#fff;--card-line:rgb(16 24 40 / .06);--card-shadow:0 1px 2px rgb(16 24 40 / .06);
