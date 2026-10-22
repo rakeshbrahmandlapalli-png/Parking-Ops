@@ -218,6 +218,7 @@ html.ops .ops-dd summary{display:flex;align-items:center;gap:8px;height:36px;pad
 html.ops .ops-dd summary::-webkit-details-marker{display:none;}
 html.ops .ops-dd summary::after{content:"";width:5px;height:5px;margin-top:-3px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);}
 html.ops .ops-dd > div{position:absolute;right:0;top:calc(100% + 4px);z-index:5;display:flex;flex-direction:column;min-width:170px;padding:4px;border:1px solid var(--op-line);border-radius:6px;background:#fff;box-shadow:0 8px 24px rgb(15 28 46 / .16);}
+html.ops .ops-dd.up > div{top:auto;bottom:calc(100% + 4px);}
 html.ops .ops-dd > div button{padding:11px 12px;border:0;border-radius:4px;background:none;color:var(--op-ink);font-size:13.5px;text-align:left;}
 html.ops .ops-dd > div button:hover{background:var(--op-bg);}
 html.ops .ops-add .ops-fields{padding:4px 14px 0;}
