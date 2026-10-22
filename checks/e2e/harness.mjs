@@ -527,8 +527,8 @@ function dashData() {
     early: 2, changed: 3,
     handover: { note: "Gate 2 key is in the safe", at: new Date(Date.now() - 3600000).toISOString(), by: "SUGU" },
     onsite: (() => { const lp = new Date().toLocaleString("sv-SE", { timeZone: "Europe/London" }); const base = new Date(lp.slice(0, 10) + "T12:00:00Z"); if (lp.slice(11, 16) <= "06:00") base.setUTCDate(base.getUTCDate() - 1); return [38, 45, 30, 12].map((n, i) => ({ day: new Date(base.getTime() + i * 864e5).toISOString().slice(0, 10), here: n, in: 4 + i, out: 6 + i })); })(),
-    parked: { total: 30, late: 2, late_cars: [{ reg: "LATE1", name: "Old Car", return_at: new Date(Date.now() - 2.5 * 86400000).toISOString(), yard: "NB" }, { reg: "LATE2", name: "New Car", return_at: new Date(Date.now() - 3600000).toISOString(), yard: "" }], days: [{ day: new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 8 }, { day: new Date(Date.now() + 2 * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 20 }],
-      yards: [{ yard: "", n: 12, days: [{ day: null, n: 2 }, { day: new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 10 }] }, { yard: db0Yard || "NB", n: 18, days: [{ day: new Date(Date.now() + 2 * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/London" }), n: 18 }] }] }
+    parked: { total: 30, late: 2, late_cars: [{ reg: "LATE1", name: "Old Car", return_at: new Date(Date.now() - 2.5 * 86400000).toISOString(), yard: "NB" }, { reg: "LATE2", name: "New Car", return_at: new Date(Date.now() - 3600000).toISOString(), yard: "" }], days: [{ day: TONIGHT, n: 8 }, { day: addDays(TONIGHT, 2), n: 20 }],
+      yards: [{ yard: "", n: 12, days: [{ day: null, n: 2 }, { day: TONIGHT, n: 10 }] }, { yard: db0Yard || "NB", n: 18, days: [{ day: addDays(TONIGHT, 2), n: 18 }] }] }
   };
 }
 
