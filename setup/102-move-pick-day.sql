@@ -1,4 +1,5 @@
 -- Parking Ops — database part 102: the office moves a PICKS car to another day.
+-- APPLIED by Claude on 22 Oct at the user's request ("merge it").
 --
 -- 22 Oct: CN25VCF's drop-off moved from 21 to 22 Oct on the booking site. The
 -- import can't move a PICKS car (it puts it in Needs review) and nothing in the
