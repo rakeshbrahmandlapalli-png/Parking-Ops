@@ -124,6 +124,11 @@
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
     // finds this car rather than adding it again (database part 48).
+    // The booking site moved the drop-off: the office moves the car to that day (part 102).
+    if (!drops && can("import") && !r.removed_at) {
+      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
+      h += fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+    }
     if (canReturn(r)) {
       var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
       h += fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
@@ -178,7 +183,7 @@
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
-    "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
+    "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", "DROP-OFF DATE AND TIME": "Drop-off date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
     "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
   function L(t) { return isOps() && OPS_LABEL[t] || t; }
   function opsSec(t) { return isOps() ? '<div class="ops-psec">' + esc(t) + "</div>" : ""; }
@@ -256,6 +261,16 @@
           rl = $("retD").value + " " + rt;
         }
       }
+      var dl = null;
+      if ($("dropD")) {
+        var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
+        if (dt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if ($("dropD").value !== od.key || (dt || "") !== od.time) {
+          if (!$("dropD").value || !dt) return toast("Enter the drop-off: the date and the time.", true);
+          dl = $("dropD").value + " " + dt;
+          if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
+        }
+      }
       var f = null, ct, st;
       if ($("flightText")) {
         f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
@@ -263,6 +278,10 @@
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
+      if (dl) {
+        run("move_pick", { p_booking: r.id, p_drop_local: dl }, r, function (x) { x.drop_at = londonIso(dl); });
+        saved = true;
+      }
       if (rl) {
         if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
         else run("set_return", { p_booking: r.id, p_return_local: rl }, r);

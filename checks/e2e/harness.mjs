@@ -278,6 +278,9 @@ function rpc(db, fn, a) {
     case "set_flight": { const b = row(a.p_booking); if (b.flight !== a.p_flight) Object.assign(b, { sched_at: null, sched_time: "", est_at: null, est_time: "", flight_status: a.p_flight === "NO FLIGHT" ? "noflight" : "", flight_note: "" }); b.flight = a.p_flight; return b; }
     case "set_pick_flight": { const b = row(a.p_booking); b.flight = a.p_flight; return b; }
     case "set_pick_return": { const b = row(a.p_booking); b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString(); return b; }
+    case "move_pick": { const b = row(a.p_booking); const day = a.p_drop_local.slice(0, 10), to = db.sheets.find((x) => x.kind === "picks" && x.day === day);
+      if (!to) throw new Error("The PICKS sheet for " + day + " is not in yet. Import it first.");
+      b.drop_at = new Date(a.p_drop_local.replace(" ", "T") + ":00+01:00").toISOString(); if (to.id !== b.sheet_id) { b.sheet_id = to.id; b.num = 99; } return b; }
     case "set_sched_time": { const b = row(a.p_booking); b.sched_time = a.p_time; return db.schedEcho === false ? null : b; }
     case "early_return": { const b = row(a.p_booking); b.moved_from = b.sheet_id; b.sheet_id = earlySheet(a.p_day); b.early = true; b.early_at = now(); b.num = 105; return b; }
     case "early_return_from_picks": { const p = row(a.p_picks); const n = { ...p, id: "de" + db.bookings.length, sheet_id: earlySheet(a.p_day), kind: "drops", num: 106, early: true, early_at: now(), moved_from: "d1", intake: "", called_at: null, sent_at: null, cleared_at: null }; db.bookings.push(n); return n; }
