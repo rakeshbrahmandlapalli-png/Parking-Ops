@@ -666,6 +666,7 @@ html.ops-refined .rf{border-color:var(--rf-line);}
  html.ops-refined .tfold .tf-act{text-decoration:underline;text-underline-offset:2px;}
  html.ops-refined #boardHead:has(#tallyFold.hidden) .tabs{border-right:0;}
  html.ops-refined body.tfolded .tfold{flex:1 1 0;min-width:0;padding:0 0 0 8px;text-align:right;}
+ html.ops-refined body.tfolded #catTally:not(.hidden){display:flex;}
  html.ops-refined #colHead{flex-basis:calc(100% + 24px);margin:0 -12px;padding:6px 10px 5px 12px;border-top:1px solid var(--rf-soft);background:#fff;color:var(--rf-faint);font-size:10.5px;font-weight:650;letter-spacing:.6px;}
  html.ops-refined #colHead .hr{gap:5px;}
  html.ops-refined #colHead .hr span{flex:1;text-align:center;}

@@ -150,6 +150,8 @@
     show("tallyFold", on);
     if (!on) return;
     $("tallyFold").setAttribute("aria-expanded", !folded);
+    // Operations Refined: the fold takes away the counts block only; SHORT / LONG and SHORT TO stay.
+    $("tallyFold").setAttribute("aria-controls", isRefined() ? "tally" : "tally catTally");
     if (!folded) { $("tallyFold").innerHTML = '<span class="tf-act">Hide numbers</span>'; return; }
     var sum = cells.map(function (x) { return '<b class="num">' + x[2] + "</b> <i>" + esc(x[0]) + "</i>"; }).join(" · ");
     var f = S.yardFilter ? (cells.filter(function (x) { return x[1] === S.yardFilter; })[0] || [S.yardFilter])[0]

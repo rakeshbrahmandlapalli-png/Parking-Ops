@@ -326,7 +326,7 @@
     rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
     var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]];
     el.innerHTML = '<div class="bpay-caption"><strong>Collections</strong><span>' + rows.length + ' bookings shown' + (total.saving ? " · Saving changes…" : "") + '</span></div><div class="bpay-totals">' +
-      [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v) { return '<div><span>' + v[0] + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
+      [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v, i) { return '<div><span>' + (i === 1 && isRefined() ? "Overstays" : v[0]) + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
       '</div><div class="bpay-filters" role="group" aria-label="Filter collections">' + filters.map(function (f) {
         var count = f[0] ? base.filter(function (r) { return paymentMatches(r, f[0]); }).length : base.length;
         return '<button type="button" data-payfilter="' + f[0] + '" aria-pressed="' + ((S.paymentFilter || "") === f[0]) + '">' + f[1] + ' <b class="num">' + count + "</b></button>";
