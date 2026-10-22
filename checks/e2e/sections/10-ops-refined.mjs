@@ -62,6 +62,17 @@ await scenario(async () => {
   check("Operations Refined: PICKS rows its own, Coll / Yard in words", await page.evaluate(() => !!document.querySelector("#main .row.rfr.rfp") && [...document.querySelectorAll("#main .row.rfp .acts")].some((a) => /Coll/.test(a.textContent) && /Yard/.test(a.textContent))));
   check("Operations Refined: a set yard keeps its yard colour on PICKS, as in Operations", !!ry && !!oy && ry.y === oy.y && ry.bg === oy.bg && ry.ink === oy.ink && ry.bg !== "rgb(255, 255, 255)", { ry, oy });
   check("Operations Refined: PICKS at 390 px, no sideways scrolling", await noSideScroll(page));
+  // Hide numbers folds the counts block (LEFT, COLL, NO SHOW, RTC, yards) away; SHORT / LONG and SHORT TO stay (the user, 22 Oct).
+  const vis = (p) => p.evaluate(() => ({ tally: getComputedStyle(document.getElementById("tally")).display !== "none", cats: getComputedStyle(document.getElementById("catTally")).display !== "none", top: Math.round(document.querySelector("#main .row").getBoundingClientRect().top), fold: document.getElementById("tallyFold").innerText.replace(/\s+/g, " "), ctl: document.getElementById("tallyFold").getAttribute("aria-controls") }));
+  const before = await vis(page);
+  await page.click("#tallyFold"); await ops.click("#tallyFold"); await sleep(300);
+  const after = await vis(page), oa = await vis(ops);
+  check("Operations Refined: PICKS Hide numbers folds the counts block, the SHORT / LONG strip stays", before.tally && before.cats && !after.tally && after.cats && after.ctl === "tally", { before, after });
+  check("Operations Refined: folded, the counts read on one line with Show, and the list starts higher", /LEFT/.test(after.fold) && /Show$/.test(after.fold) && after.top < before.top - 60, { before, after });
+  check("Operations: Hide numbers still folds both blocks", !oa.tally && !oa.cats && oa.ctl === "tally catTally", oa);
+  check("Operations Refined: the fold is remembered on the phone", await page.evaluate(() => localStorage.getItem("takeoff_tally_folded") === "1"));
+  await page.click("#tallyFold"); await sleep(300);
+  check("Operations Refined: Show brings the counts block back", (await vis(page)).tally);
 });
 
 // Staff & access, Booking import and Dashboard on a phone: their own arrangement (Operations keeps its own).

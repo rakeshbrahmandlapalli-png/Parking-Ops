@@ -19,13 +19,16 @@ for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premi
   const db = collectionsDb(theme), page = await phone(browser, db, { width: 390 }), look = theme || "standard";
   await open(page); await page.waitForSelector("#boardPayments:not(.hidden)");
   const totals = () => page.locator(".bpay-totals b").allTextContents();
-  check("Collections (" + look + "): exit and charge receipts stay separate; waiver excluded; discount settles", JSON.stringify(await totals()) === JSON.stringify(["£20", "£20", "£40"]), await totals());
+  // Operations Refined drops "& charges collected" from the middle label (the user, 22 Oct); the amount stays.
+  const tot = (exit, charge, due) => JSON.stringify([exit, charge, due]);
+  check("Collections (" + look + "): exit and charge receipts stay separate; waiver excluded; discount settles", JSON.stringify(await totals()) === tot("£20", "£20", "£40"), await totals());
+  check("Collections (" + look + "): " + (theme === "ops-refined" ? "the middle label says just Overstays" : "the Overstays & charges tile stays"), JSON.stringify(await page.locator(".bpay-totals span").allTextContents()) === JSON.stringify(theme === "ops-refined" ? ["Exit fees collected", "Overstays", "Outstanding"] : ["Exit fees collected", "Overstays & charges collected", "Outstanding"]));
   check("Collections (" + look + "): each visible car has one details button", await page.locator("#main .bpay-row").count() === 4);
   check("Collections (" + look + "): exempt and waived are explicit", /Exempt/.test(await page.locator('[data-paydetails="b3"]').innerText()) && /Waived/.test(await page.locator('[data-paydetails="b3"]').innerText()));
   check("Collections (" + look + "): missing proof is flagged separately from unpaid", /Needs checking/.test(await page.locator('[data-paydetails="b6"]').innerText()) && !/Due/.test(await page.locator('[data-paydetails="b6"]').innerText()));
   const todo = await page.locator("#tabTodo").innerText();
   await page.click('[data-payfilter="due"]');
-  check("Collections (" + look + "): outstanding filter and totals match the shown cars", await page.locator("#main .row").count() === 1 && await page.locator('[data-paydetails="b2"]').count() === 1 && JSON.stringify(await totals()) === JSON.stringify(["£0", "£0", "£40"]));
+  check("Collections (" + look + "): outstanding filter and totals match the shown cars", await page.locator("#main .row").count() === 1 && await page.locator('[data-paydetails="b2"]').count() === 1 && JSON.stringify(await totals()) === tot("£0", "£0", "£40"));
   check("Collections (" + look + "): payment filter does not change TO DO's operational count", await page.locator("#tabTodo").innerText() === todo);
   await page.click('[data-payfilter="check"]');
   check("Collections (" + look + "): needs-checking filter finds the collected exit fee without proof", await page.locator("#main .row").count() === 1 && await page.locator('[data-paydetails="b6"]').count() === 1);
@@ -33,7 +36,7 @@ for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premi
   check("Collections (" + look + "): collected filter excludes waivers", await page.locator("#main .row").count() === 2 && !await page.locator('[data-paydetails="b3"]').count());
   await page.click('[data-payfilter=""]');
   await page.fill("#q", "AB12CDE");
-  check("Collections (" + look + "): search updates the scoped collection totals", JSON.stringify(await totals()) === JSON.stringify(["£10", "£20", "£0"]), await totals());
+  check("Collections (" + look + "): search updates the scoped collection totals", JSON.stringify(await totals()) === tot("£10", "£20", "£0"), await totals());
   await page.fill("#q", "");
   await page.click('[data-paydetails="b1"]'); await page.waitForSelector("#panel.payment-sheet[open]");
   check("Collections (" + look + "): detail shows method, collector, shared-login name and timestamp", /Card[\s\S]*SUGU/.test(await page.locator(".bpay-sheet").innerText()) && /OFFICE TEST/.test(await page.locator(".bpay-sheet").innerText()) && await page.locator(".bpay-kv dt:text-is('Recorded')").count() === 2);

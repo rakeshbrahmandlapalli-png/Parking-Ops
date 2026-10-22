@@ -1038,6 +1038,8 @@
     show("tallyFold", on);
     if (!on) return;
     $("tallyFold").setAttribute("aria-expanded", !folded);
+    // Operations Refined: the fold takes away the counts block only; SHORT / LONG and SHORT TO stay.
+    $("tallyFold").setAttribute("aria-controls", isRefined() ? "tally" : "tally catTally");
     if (!folded) { $("tallyFold").innerHTML = '<span class="tf-act">Hide numbers</span>'; return; }
     var sum = cells.map(function (x) { return '<b class="num">' + x[2] + "</b> <i>" + esc(x[0]) + "</i>"; }).join(" · ");
     var f = S.yardFilter ? (cells.filter(function (x) { return x[1] === S.yardFilter; })[0] || [S.yardFilter])[0]
@@ -1639,7 +1641,7 @@
     rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
     var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]];
     el.innerHTML = '<div class="bpay-caption"><strong>Collections</strong><span>' + rows.length + ' bookings shown' + (total.saving ? " · Saving changes…" : "") + '</span></div><div class="bpay-totals">' +
-      [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v) { return '<div><span>' + v[0] + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
+      [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v, i) { return '<div><span>' + (i === 1 && isRefined() ? "Overstays" : v[0]) + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
       '</div><div class="bpay-filters" role="group" aria-label="Filter collections">' + filters.map(function (f) {
         var count = f[0] ? base.filter(function (r) { return paymentMatches(r, f[0]); }).length : base.length;
         return '<button type="button" data-payfilter="' + f[0] + '" aria-pressed="' + ((S.paymentFilter || "") === f[0]) + '">' + f[1] + ' <b class="num">' + count + "</b></button>";
