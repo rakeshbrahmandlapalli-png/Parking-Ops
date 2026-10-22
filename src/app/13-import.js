@@ -261,9 +261,14 @@
     var a = S.autoImport, m = ((a && a.reviews) || []).filter(function (r) { return r.ref === ref && (r.detail || {}).kind === kind && (!type || r.kind === type); })[0];
     return m ? m.id : "";
   }
-  // The move the app can make safely: DROPS only, a car not gone, not already early.
+  // The move the app can make safely: a car not gone; DROPS not already early;
+  // PICKS to the booking site's new drop-off, by the office (part 102).
   function revMove(kind, why, changes, b) {
     var m = /moved from sheet (\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)/.exec(why || "");
+    if (m && kind === "picks" && b && !b.removed_at && can("import") && (b.sheets || {}).day !== m[2]) {
+      var dr = (changes || []).filter(function (c) { return c.field === "drop"; })[0];
+      return dr && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(dr.to || "") && dr.to.slice(0, 10) === m[2] ? { day: m[2], drop: dr.to } : null;
+    }
     if (!m || kind !== "drops" || !b || b.cleared_at || b.removed_at || b.early) return null;
     var to = m[2], here = (b.sheets || {}).day || m[1];
     if (to < here) return to >= currentShiftKey() && can("called") ? { day: to } : null;
@@ -279,7 +284,7 @@
     if (!b) return "";
     var mv = revMove(kind, why, changes, b);
     S.revCtx[k] = { mv: mv, rid: rid };
-    return (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: "drops", day: mv.day }).replace(/^DROPS /, "")) + "</button>" : "") +
+    return (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: kind, day: mv.day }).replace(/^(DROPS|PICKS) /, "")) + "</button>" : "") +
       '<button type="button" class="btn ghost small" data-rvopen="' + esc(k) + '">' + (b.removed_at ? "Removed cars" : "Open") + "</button>";
   }
   async function revOpen(k) {
@@ -292,10 +297,10 @@
   }
   async function revMoveGo(k, btn) {
     var b = S.revCars[k], c = S.revCtx[k], mv = c && c.mv; if (!b || !mv) return;
-    var to = sheetLabel({ kind: "drops", day: mv.day });
-    if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
+    var to = sheetLabel({ kind: b.kind, day: mv.day });
+    if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.drop ? ", drop-off " + biWhen(mv.drop) + "?" : mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
     btn.disabled = true;
-    var x = mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
+    var x = mv.drop ? await sb.rpc("move_pick", { p_booking: b.id, p_drop_local: mv.drop }) : mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
     btn.disabled = false;
     if (x.error) return toast(x.error.message, true);
     if (c.rid) await sb.rpc("swift_review_resolve", { p_id: Number(c.rid) });

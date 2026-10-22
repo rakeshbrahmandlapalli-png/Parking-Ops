@@ -2772,6 +2772,11 @@
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
     // finds this car rather than adding it again (database part 48).
+    // The booking site moved the drop-off: the office moves the car to that day (part 102).
+    if (!drops && can("import") && !r.removed_at) {
+      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
+      h += fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+    }
     if (canReturn(r)) {
       var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
       h += fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
@@ -2826,7 +2831,7 @@
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
-    "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
+    "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", "DROP-OFF DATE AND TIME": "Drop-off date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
     "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
   function L(t) { return isOps() && OPS_LABEL[t] || t; }
   function opsSec(t) { return isOps() ? '<div class="ops-psec">' + esc(t) + "</div>" : ""; }
@@ -2904,6 +2909,16 @@
           rl = $("retD").value + " " + rt;
         }
       }
+      var dl = null;
+      if ($("dropD")) {
+        var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
+        if (dt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if ($("dropD").value !== od.key || (dt || "") !== od.time) {
+          if (!$("dropD").value || !dt) return toast("Enter the drop-off: the date and the time.", true);
+          dl = $("dropD").value + " " + dt;
+          if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
+        }
+      }
       var f = null, ct, st;
       if ($("flightText")) {
         f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
@@ -2911,6 +2926,10 @@
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
+      if (dl) {
+        run("move_pick", { p_booking: r.id, p_drop_local: dl }, r, function (x) { x.drop_at = londonIso(dl); });
+        saved = true;
+      }
       if (rl) {
         if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
         else run("set_return", { p_booking: r.id, p_return_local: rl }, r);
@@ -4690,9 +4709,14 @@
     var a = S.autoImport, m = ((a && a.reviews) || []).filter(function (r) { return r.ref === ref && (r.detail || {}).kind === kind && (!type || r.kind === type); })[0];
     return m ? m.id : "";
   }
-  // The move the app can make safely: DROPS only, a car not gone, not already early.
+  // The move the app can make safely: a car not gone; DROPS not already early;
+  // PICKS to the booking site's new drop-off, by the office (part 102).
   function revMove(kind, why, changes, b) {
     var m = /moved from sheet (\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)/.exec(why || "");
+    if (m && kind === "picks" && b && !b.removed_at && can("import") && (b.sheets || {}).day !== m[2]) {
+      var dr = (changes || []).filter(function (c) { return c.field === "drop"; })[0];
+      return dr && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(dr.to || "") && dr.to.slice(0, 10) === m[2] ? { day: m[2], drop: dr.to } : null;
+    }
     if (!m || kind !== "drops" || !b || b.cleared_at || b.removed_at || b.early) return null;
     var to = m[2], here = (b.sheets || {}).day || m[1];
     if (to < here) return to >= currentShiftKey() && can("called") ? { day: to } : null;
@@ -4708,7 +4732,7 @@
     if (!b) return "";
     var mv = revMove(kind, why, changes, b);
     S.revCtx[k] = { mv: mv, rid: rid };
-    return (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: "drops", day: mv.day }).replace(/^DROPS /, "")) + "</button>" : "") +
+    return (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: kind, day: mv.day }).replace(/^(DROPS|PICKS) /, "")) + "</button>" : "") +
       '<button type="button" class="btn ghost small" data-rvopen="' + esc(k) + '">' + (b.removed_at ? "Removed cars" : "Open") + "</button>";
   }
   async function revOpen(k) {
@@ -4721,10 +4745,10 @@
   }
   async function revMoveGo(k, btn) {
     var b = S.revCars[k], c = S.revCtx[k], mv = c && c.mv; if (!b || !mv) return;
-    var to = sheetLabel({ kind: "drops", day: mv.day });
-    if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
+    var to = sheetLabel({ kind: b.kind, day: mv.day });
+    if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.drop ? ", drop-off " + biWhen(mv.drop) + "?" : mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
     btn.disabled = true;
-    var x = mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
+    var x = mv.drop ? await sb.rpc("move_pick", { p_booking: b.id, p_drop_local: mv.drop }) : mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
     btn.disabled = false;
     if (x.error) return toast(x.error.message, true);
     if (c.rid) await sb.rpc("swift_review_resolve", { p_id: Number(c.rid) });
