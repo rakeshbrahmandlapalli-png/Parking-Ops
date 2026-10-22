@@ -1,4 +1,4 @@
-import { healthData, path, check, cspBlocked, sleep, BASE, TONIGHT, iso, makeDb, now, R2, phone, open, text, noSideScroll, scenario, browser, failed } from "../harness.mjs";
+import { healthData, deskDb, path, check, cspBlocked, sleep, BASE, TONIGHT, iso, makeDb, now, R2, phone, open, text, noSideScroll, scenario, browser, failed } from "../harness.mjs";
 
 // 7. PT three ways
 // A phone that refuses createImageBitmap (like the iPhone did): copies still small.
@@ -176,6 +176,31 @@ await scenario(async () => {
   const m = await staffScreen("manager");
   check("staff (manager): buttons on a bongo, not on the owner", m.bongo === 2 && m.owner === 0, m);
 });
+// A switched-off person can be switched back on in every look. In the Operations looks the
+// Actions menu of the last people opens upward, so Switch on isn't hidden under the bottom bar.
+for (const theme of ["standard", "stdplus", "premium", "board", "cards", "pro", "ops", "ops-refined"]) {
+  await scenario(async () => {
+    const db = deskDb(theme);
+    if (theme === "standard") delete db.company.brand.theme;
+    db.staff.push({ id: "s8", name: "MAHESH", role: "terminal", active: false }, { id: "s9", name: "SARFARAZ", role: "bongo", active: false });
+    const page = await phone(browser, db, { width: 390 });
+    await open(page);
+    const bnav = await page.evaluate(() => !document.getElementById("bnav").classList.contains("hidden") && getComputedStyle(document.getElementById("bnav")).display !== "none");
+    if (bnav) await page.click('#bnav [data-bn="menuBtn"]'); else await page.click("#menuBtn");
+    await sleep(300); await page.click('#menuBody [data-view="staff"]'); await sleep(500);
+    const dd = page.locator('#main .ops-person:has-text("SARFARAZ") .ops-dd summary');
+    await page.evaluate(() => window.scrollTo(0, 1e6)); await sleep(200);
+    if (await dd.count()) { await dd.click(); await sleep(250); }
+    const btn = page.locator('[data-onoff="s9"]');
+    const seen = await btn.evaluate((b) => { const r = b.getBoundingClientRect(), n = document.getElementById("bnav"), nb = n && getComputedStyle(n).display !== "none" && !n.classList.contains("hidden") ? n.getBoundingClientRect() : null;
+      const low = nb && nb.top > innerHeight / 2 ? nb.top : innerHeight, hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { text: b.textContent, inView: r.top >= 0 && r.bottom <= low, onTop: !!hit && (hit === b || b.contains(hit)) }; });
+    check("staff (" + theme + "): a switched-off person has Switch on, in view and tappable", seen.text === "Switch on" && seen.inView && seen.onTop, seen);
+    await btn.click(); await sleep(600);
+    check("staff (" + theme + "): Switch on turns them back on", db.staffCalls.some((c) => c.action === "on" && c.staff_id === "s9") && db.staff.find((x) => x.id === "s9").active === true &&
+      /Switch off/.test(await page.locator('[data-onoff="s9"]').evaluate((b) => b.textContent)) && page.__errors.length === 0, { calls: db.staffCalls, errors: page.__errors });
+  });
+}
 // "Tick PT without sending photos" is reported, so a car with no copy has a reason.
 await scenario(async () => {
   const db = makeDb();

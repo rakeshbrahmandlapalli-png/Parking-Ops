@@ -372,6 +372,16 @@
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }
+  // An Actions menu that would open under the bottom bar (the last people on a phone) opens upward,
+  // so Switch on / Switch off stays in view.
+  document.addEventListener("toggle", function (e) {
+    var d = e.target; if (!d || !d.classList || !d.classList.contains("ops-dd")) return;
+    d.classList.remove("up"); if (!d.open) return;
+    var m = d.querySelector(":scope > div"), bn = $("bnav"), low = innerHeight, b = bn && bn.getBoundingClientRect();
+    if (b && b.height && b.top > innerHeight / 2) low = Math.min(low, b.top);
+    var r = m.getBoundingClientRect();
+    if (r.bottom > low - 8 && d.getBoundingClientRect().top - r.height - 4 > 0) d.classList.add("up");
+  }, true);
   async function staffAction(body, busyEl) {
     if (busyEl) busyEl.disabled = true;
     try {

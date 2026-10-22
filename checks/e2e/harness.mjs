@@ -321,6 +321,7 @@ async function backend(ctx, db) {
       const a = JSON.parse(req.postData() || "{}"); (db.staffCalls = db.staffCalls || []).push(a);
       // Opening a client: from now on the phone is that client's owner.
       if (a.action === "client_open") { db.company = db.clientCompany; db.me = { ...db.me, company_id: db.company.id, name: "RAKESH (PARKING OPS)" }; return reply(200, { token_hash: "th", name: db.company.name }); }
+      if (a.action === "on" || a.action === "off") { const q = db.staff.find((x) => x.id === a.staff_id); q.active = a.action === "on"; return reply(200, { staff_id: q.id, active: q.active }); }
       return reply(400, { error: "not in the test" });
     }
     if (p.startsWith("/functions/v1/flights")) {
