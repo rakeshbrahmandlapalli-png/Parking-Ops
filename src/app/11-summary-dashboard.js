@@ -8,7 +8,8 @@
         var back = d.filter(function (r) { return r.cleared_at; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), "big") + "</div>" +
           opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length], ["Overstays", d.filter(function (r) { return r.overstay; }).length], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length]]) +
-          opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]]));
+          (isRefined() ? opsPanel("Shift progress", "Collected", opsTable(null, [rfPart("Morning", "06:00–17:30", D.morning), rfPart("Night", "17:31–05:59", D.night)]))
+            : opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])));
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), hasFeatures() ? "big" : "") +
           kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length) +
@@ -33,7 +34,12 @@
       }
     }
     var mid = h.length;
-    if (can("log")) {
+    // Operations Refined: the activity in its own panel, the filters in it.
+    if (can("log") && isRefined()) {
+      h += '<section class="ops-card rf-act"><header><strong>Activity</strong>' + (S.activity ? "<small>" + S.activity.length + " lines</small>" : "") + "</header>" +
+        (S.activity ? activityPremiumHtml() : '<div class="empty">Loading…</div>') + "</section>";
+      if (!S.activity) loadActivity();
+    } else if (can("log")) {
       h += '<div class="section-label">Activity</div>';
       if (!S.activity) { loadActivity(); h += '<div class="empty">Loading…</div>'; }
       else if (hasFeatures()) h += activityPremiumHtml();
@@ -98,6 +104,8 @@
     var zero = /^(0|£0|0 \/ 0)$/.test(String(value));
     return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + '"><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
   }
+  // Operations Refined's shift line: the part of the day and its hours, a thin bar, and "3 of 12".
+  function rfPart(name, hours, x) { return [name + "<small>" + hours + "</small>" + miniBar(x.done, x.due), x.done + " of " + x.due]; }
   function miniBar(done, all) { return '<span class="mbar" aria-hidden="true"><i style="width:' + (all ? Math.round(done / all * 100) : 0) + '%"></i></span>'; }
   function progressBar(done, all) {
     if (!hasFeatures() || !all) return "";

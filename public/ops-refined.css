@@ -630,39 +630,180 @@ html.ops-refined .rf{border-color:var(--rf-line);}
 @media(max-width:899px){html.ops-refined .bar #sheetPick{flex:1 1 0;min-width:0;max-width:max-content;margin-right:auto;}}
 @media(max-width:430px){html.ops-refined .bar{padding:7px 8px;}html.ops-refined .bar #sheetPick{font-size:13px;}}
 
-/* board head: the yard numbers as one strip, search, TO DO / ALL / K on one line */
-html.ops-refined .tally{border-color:var(--rf-line);background:var(--rf-line);}
-html.ops-refined .tally span{font-size:9.5px;font-weight:650;letter-spacing:.6px;color:var(--rf-mut);}
-html.ops-refined .tally b{font-size:17px;font-weight:700;}
-html.ops-refined .tally button.on{background:var(--op-deep);}
-html.ops-refined #boardHead .qwrap{border-color:var(--rf-line);}
-html.ops-refined #q{border-color:var(--rf-line);background:#fff;}
-html.ops-refined #boardHead .tabs{border-left-color:var(--rf-line);}
-html.ops-refined #boardHead .tabs button{border-color:var(--rf-line);}
-html.ops-refined #boardHead .tabs button.on{background:var(--op-deep);border-color:var(--op-deep);}
-html.ops-refined .tfold:not(.hidden){border-right-color:var(--rf-line);color:var(--rf-mut);}
-
-/* the jobs (phone and tablet): the same rows and buttons as ever, set in the
-   look's navy and slate; reg first, then yard, time and what has happened */
+/* board head (phone and tablet): one white block under the top bar: the yard
+   numbers in a ruled strip, the search box, then To do / All / Keys with
+   "Hide numbers" at the end, and the column names over the buttons */
 @media(max-width:899px){
- html.ops-refined #colHead{background:#f8fafc;border-bottom:1px solid var(--rf-line);color:var(--rf-mut);}
- html.ops-refined .sec{background:#eef2f6;border-color:var(--rf-line);color:#3e4f63;}
- html.ops-refined .sec span{color:var(--rf-mut);}
- html.ops-refined .row{border-bottom-color:#e6eaef;color:var(--op-ink);}
- html.ops-refined .reg{font-weight:750;color:var(--op-deep);}
- html.ops-refined .pin{font-size:10.5px;color:var(--rf-mut);}
- html.ops-refined .l2{color:var(--rf-mut);}
- html.ops-refined .l2 .mk{color:#34465c;}
- html.ops-refined .l2 .eta{color:var(--op-deep);}
- html.ops-refined .acts{gap:4px;}
- html.ops-refined .acts button{border-color:#cdd5df;border-radius:var(--rf-r);color:#34465c;}
- html.ops-refined .acts button:not(.on):not(:disabled):active{background:#eef2f6;}
- html.ops-refined .row.done .reg{color:#80868b;}
+ html.ops-refined{--actw:190px;--actwp:216px;}
+ html.ops-refined #boardHead:not(.hidden){padding:8px 12px 0;border-bottom:1px solid var(--rf-line);background:#fff;}
+ html.ops-refined .tally{display:flex;gap:0;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
+ html.ops-refined .tally > button,html.ops-refined .tally .tyards > button{flex:1 1 0;min-width:0;padding:6px 4px 7px;border:0;border-radius:0;background:#fff;text-align:center;}
+ html.ops-refined .tally > button + button,html.ops-refined .tally .tyards > button + button{border-left:1px solid var(--rf-soft);}
+ html.ops-refined .tally.has-yards{flex-wrap:wrap;}
+ html.ops-refined .tally .tyards{display:flex;flex:0 0 100%;border-top:1px solid var(--rf-soft);}
+ html.ops-refined .tally span{display:block;overflow:hidden;font-size:10.5px;font-weight:650;letter-spacing:.5px;line-height:1.2;color:var(--rf-mut);white-space:nowrap;text-overflow:ellipsis;}
+ html.ops-refined .tally b{display:block;margin-top:2px;font-size:19px;font-weight:700;line-height:1.1;color:var(--op-deep);}
+ html.ops-refined .tally button.on{background:var(--op-deep);}
+ html.ops-refined .tally button.on span,html.ops-refined .tally button.on b{color:#fff;}
+ html.ops-refined .tally button.warn:not(.on) b{color:#8a5a00;}
+ html.ops-refined .tally button.warn:not(.on){background:#fffaf0;}
+ html.ops-refined .tally.cats{margin-top:6px;}
+ html.ops-refined .tally.cats span{font-size:10px;letter-spacing:.2px;}
+ html.ops-refined #boardHead .qwrap{margin-top:8px;padding:0;border:0;border-radius:0;background:none;}
+ html.ops-refined #q{height:40px;padding:0 40px 0 36px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235b6b7e' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E") no-repeat 12px 50%;font-size:15px;}
+ html.ops-refined #boardHead .tabs{flex:1 1 auto;gap:6px;margin:0;padding:8px 0;border:0;background:none;}
+ html.ops-refined #boardHead .tabs button{height:34px;min-width:58px;padding:0 12px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;color:var(--op-ink);font-size:13px;font-weight:650;letter-spacing:0;text-transform:none;}
+ html.ops-refined #boardHead .tabs button b{margin-left:5px;font-weight:750;}
+ html.ops-refined #boardHead .tabs button.on{background:var(--op-deep);border-color:var(--op-deep);color:#fff;}
+ html.ops-refined #boardHead .tabs button.on b{padding:1px 6px;border-radius:9px;background:var(--brand);color:var(--brand-ink,#1a1a1a);}
+ html.ops-refined #boardHead .tabs .keybtn b{margin:0;font-weight:650;}
+ html.ops-refined #boardHead .tabs .keybtn .num{margin-left:5px;font-weight:750;}
+ html.ops-refined #boardHead .tabs .keybtn.on{background:#137A45;border-color:#137A45;color:#fff;}
+ html.ops-refined .tfold:not(.hidden){align-self:center;padding:0 0 0 8px;border:0;background:none;color:var(--rf-mut);font-size:12.5px;font-weight:600;}
+ html.ops-refined .tfold .tf-act{text-decoration:underline;text-underline-offset:2px;}
+ html.ops-refined #boardHead:has(#tallyFold.hidden) .tabs{border-right:0;}
+ html.ops-refined body.tfolded .tfold{flex:1 1 0;min-width:0;padding:0 0 0 8px;text-align:right;}
+ html.ops-refined #colHead{flex-basis:calc(100% + 24px);margin:0 -12px;padding:6px 10px 5px 12px;border-top:1px solid var(--rf-soft);background:#fff;color:var(--rf-faint);font-size:10.5px;font-weight:650;letter-spacing:.6px;}
+ html.ops-refined #colHead .hr{gap:5px;}
+ html.ops-refined #colHead .hr span{flex:1;text-align:center;}
 }
+@media(max-width:374px){html.ops-refined{--actw:178px;--actwp:206px;}html.ops-refined #boardHead .tabs button{min-width:0;padding:0 10px;}}
 
-/* "Next in queue": the one dark band on the board, with the brand line */
-html.ops-refined main .sec.hot{background:var(--op-deep);border-color:var(--op-deep);box-shadow:inset 3px 0 0 var(--brand);color:#fff;}
-html.ops-refined main .sec.hot span{color:#c4cfdd;}
+/* the jobs (phone and tablet): the reg on its own line with the yard and
+   number, then car and customer, then flight and times; what has happened is
+   on the buttons (word, time, who), waiting too long is a coloured edge */
+@media(max-width:899px){
+ html.ops-refined main .sec{gap:6px;padding:7px 12px 6px;border-top:1px solid var(--rf-line);border-bottom:1px solid var(--rf-line);background:#f5f7fa;color:#4a5a6c;font-size:11px;font-weight:700;letter-spacing:.7px;}
+ html.ops-refined main .sec b{min-width:20px;padding:1px 6px;border-radius:9px;background:#e3e8ee;color:var(--op-ink);font-size:11px;letter-spacing:0;text-align:center;}
+ html.ops-refined main .sec span{color:var(--rf-mut);font-size:11px;font-weight:500;letter-spacing:0;}
+ html.ops-refined main .sec.old{background:#fbf6ef;color:#7a4b12;}
+ html.ops-refined .row.rfr{align-items:center;gap:10px;min-height:64px;padding:7px 10px 7px 12px;border-bottom:1px solid #e8ecf1;background:#fff;color:var(--op-ink);contain-intrinsic-size:auto 72px;}
+ html.ops-refined .row.rfr .l1{gap:6px;min-width:0;overflow:hidden;white-space:nowrap;}
+ html.ops-refined .row.rfr .reg{flex:none;font-size:17px;font-weight:800;letter-spacing:.4px;line-height:1.2;color:var(--op-deep);}
+ html.ops-refined .row.rfr .code{flex:none;height:20px;padding:0 6px;border-radius:4px;font-size:11px;line-height:18px;}
+ html.ops-refined .row.rfr select.code.pick{height:22px;padding:0 6px;font-size:11px;}
+ html.ops-refined .row.rfr .dn{flex:none;font-size:12px;font-weight:600;color:var(--rf-faint);}
+ html.ops-refined .row.rfr .cat{flex:none;}
+ html.ops-refined .row.rfr .l2{display:block;margin-top:1px;overflow:hidden;font-size:13px;line-height:1.3;white-space:nowrap;text-overflow:ellipsis;color:#42546a;}
+ html.ops-refined .row.rfr .rfw .cat{margin-right:6px;vertical-align:1px;}
+ html.ops-refined .row.rfr .rft{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;margin-top:1px;font-size:12.5px;line-height:1.3;color:var(--rf-mut);}
+ html.ops-refined .row.rfr .rft > * + *::before{content:"·";margin-right:5px;font-weight:400;color:#a3aebb;}
+ html.ops-refined .row.rfr .rft > .eta::before{content:none;}
+ html.ops-refined .row.rfr .rft .flp{font-weight:600;color:#34465c;}
+ html.ops-refined .row.rfr .rft .flp.none{font-weight:500;color:var(--rf-faint);}
+ html.ops-refined .row.rfr .rft .tm{font-weight:650;color:var(--op-ink);}
+ html.ops-refined .row.rfr .rft .eta{margin-left:-2px;font-weight:750;color:var(--op-deep);}
+ html.ops-refined .row.rfr .rft .eta.exp{color:#9a5b00;}
+ html.ops-refined .row.rfr .rft .fw{font-weight:650;}
+ html.ops-refined .row.rfr .rft .fw.land{color:#137333;}
+ html.ops-refined .row.rfr .rft .fw.stop{color:#b42318;}
+ html.ops-refined .row.rfr .addflight{min-height:0;padding:1px 7px;border:1px dashed #b98a2e;border-radius:4px;background:#fffaf0;color:#7a5200;font-size:11.5px;font-weight:650;line-height:1.4;}
+ html.ops-refined .row.rfr .l2t{display:flex;margin-top:3px;}
+ html.ops-refined .row.rfr .l2t .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+ html.ops-refined .row.rfr .rfpc{white-space:nowrap;}
+ html.ops-refined .row.rfr .l3{margin-top:4px;padding:2px 7px;border-radius:4px;font-size:11.5px;font-weight:650;}
+ /* waiting and alerts: a coloured edge, a light tint only when it needs action */
+ html.ops-refined .row.rfr.called{background:#fff;box-shadow:inset 3px 0 0 #2f6fd6;}
+ html.ops-refined .row.rfr.warn{background:#fffbf1;box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined .row.rfr.late{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .row.rfr.ovst{background:#fffaf4;box-shadow:inset 3px 0 0 #b06000;}
+ html.ops-refined .row.rfr.cmpl{background:#fff5f4;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .row.rfr.done{background:#fafbfc;}
+ html.ops-refined .row.rfr.done .reg,html.ops-refined .row.rfr.done .l2{text-decoration:none;color:#8a96a6;}
+ html.ops-refined .row.rfr.coll{background:#fff;box-shadow:inset 3px 0 0 #1f9d5b;}
+ html.ops-refined .row.rfr.nosh{background:#fafbfc;}
+ html.ops-refined .row.rfr.rtc{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .row.rfr.flash{background:#fff4d6;}
+ /* the buttons: the word, and once done the time and who, on a quiet tint */
+ html.ops-refined .row.rfr .acts{gap:5px;}
+ html.ops-refined .row.rfr .acts button,html.ops-refined .row.rfr .acts .pyard{min-height:50px;padding:3px 0;border-radius:var(--rf-r);font-size:12.5px;font-weight:600;letter-spacing:0;line-height:1.15;}
+ /* a yard that is set keeps its yard colour (Settings → Yard colours) */
+ html.ops-refined .row.rfr .acts button:not(.pyard),html.ops-refined .row.rfr .acts .pyard:not(.on){border:1px solid #d3dbe5;background:#fff;color:var(--op-ink);}
+ html.ops-refined .row.rfr .acts button.lng{font-size:11.5px;letter-spacing:-.1px;}
+ html.ops-refined .row.rfr .acts button small{margin-top:2px;font-size:12px;font-weight:750;}
+ html.ops-refined .row.rfr .acts button em.by{margin-top:1px;font-size:9.5px;font-weight:650;letter-spacing:.2px;opacity:.8;}
+ html.ops-refined .row.rfr .acts button:disabled{border-color:#e2e7ed;background:#f8fafb;color:#9aa5b1;}
+ html.ops-refined .row.rfr .acts button:not(.on):not(:disabled):active{background:#eef2f6;}
+ html.ops-refined .row.rfr .acts button.on.s,html.ops-refined .row.rfr .acts button.on.k{border-color:#9ccfae;background:#e8f5ec;color:#13623a;}
+ html.ops-refined .row.rfr .acts button.on.c{border-color:#a6c2ee;background:#e8f0fc;color:#1b4f9c;}
+ html.ops-refined .row.rfr .acts button.on.x,html.ops-refined .row.rfr .acts button.on.n{border-color:#b9c3cf;background:#eef1f5;color:#33475b;}
+ html.ops-refined .row.rfr .acts button.on.r{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
+ html.ops-refined .row.rfr .acts button.on.p{border-color:#b4bdea;background:#eef0fb;color:#2b3a8f;}
+ html.ops-refined .row.rfr .acts button.on.c.ov{border-color:#e8b97f;background:#fdf1e3;color:#7a3e00;}
+ html.ops-refined .row.rfr .acts button.on.x.cm{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
+ html.ops-refined .row.rfr .acts .pyard{font-size:12px;}
+ html.ops-refined .row.rfr .acts .pyard.on{font-size:13px;font-weight:750;}
+ html.ops-refined .row.rfr .acts.steps .st{font-size:10px;}
+ html.ops-refined .row.rfp .acts{gap:4px;}
+}
+@media(max-width:374px){html.ops-refined .row.rfr .reg{font-size:16px;}html.ops-refined .row.rfr .acts button{font-size:12px;}html.ops-refined .row.rfr .rft{font-size:12px;}}
+
+/* "Next in queue": the brand edge and a navy count, not a heavy band */
+html.ops-refined main .sec.hot{background:#fff;border-color:var(--rf-line);box-shadow:inset 3px 0 0 var(--brand);color:var(--op-deep);}
+html.ops-refined main .sec.hot b{background:var(--op-deep);color:#fff;}
+html.ops-refined main .sec.hot span{color:var(--rf-mut);}
+
+/* the board on a wide screen: the same table, set like the phone: a ruled
+   strip of yard numbers, the search with its glass, the reg first, names as
+   written, what is waiting shown as a coloured edge, buttons in words */
+@media(min-width:900px){
+ html.ops-refined body.ops-desk #opsHead h1{font-size:24px;}
+ html.ops-refined body.ops-desk #q{padding-left:36px;border-color:var(--rf-line);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235b6b7e' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E") no-repeat 12px 50%;}
+ html.ops-refined body.ops-desk #boardHead .tabs button{border-color:var(--rf-line);font-size:13.5px;font-weight:650;letter-spacing:0;}
+ html.ops-refined body.ops-desk #boardHead .tabs button b{margin-left:5px;font-weight:750;}
+ html.ops-refined body.ops-desk #boardHead .tabs button.on{background:var(--op-deep);border-color:var(--op-deep);}
+ html.ops-refined body.ops-desk #boardHead .tabs button.on b{padding:1px 7px;border-radius:9px;background:var(--brand);color:var(--brand-ink,#1a1a1a);}
+ html.ops-refined body.ops-desk #boardHead .tabs .keybtn b{margin:0;}
+ html.ops-refined body.ops-desk #boardHead .tabs .keybtn.on{background:#137A45;border-color:#137A45;}
+ html.ops-refined body.ops-desk #tally,html.ops-refined body.ops-desk.tfolded #tally{flex:0 1 auto;gap:0;margin-left:auto;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
+ html.ops-refined body.ops-desk #tally button{flex-direction:column;align-items:center;gap:1px;min-width:62px;padding:5px 12px 6px;border-radius:0;}
+ html.ops-refined body.ops-desk #tally button + button,html.ops-refined body.ops-desk #tally .tyards button{border-left:1px solid var(--rf-soft);}
+ html.ops-refined body.ops-desk #tally button span{font-size:10.5px;font-weight:650;color:var(--rf-mut);white-space:nowrap;}
+ html.ops-refined body.ops-desk #tally button b{font-size:18px;line-height:1.1;font-weight:700;color:var(--op-deep);}
+ html.ops-refined body.ops-desk #tally button.on span,html.ops-refined body.ops-desk #tally button.on b{color:#fff;}
+ html.ops-refined body.ops-desk #tally button.warn:not(.on){background:#fffaf0;}
+ html.ops-refined body.ops-desk #tally button.warn:not(.on) b{color:#8a5a00;}
+ html.ops-refined body.ops-desk #colHead.dhead{border-color:var(--rf-line);border-radius:var(--rf-r) var(--rf-r) 0 0;background:#f8fafc;font-size:10.5px;color:var(--rf-faint);}
+ html.ops-refined body.ops-desk main .sec{gap:6px;border-color:var(--rf-line);background:#f5f7fa;color:#4a5a6c;font-size:11px;font-weight:700;letter-spacing:.7px;}
+ html.ops-refined body.ops-desk main .sec b{min-width:20px;padding:1px 6px;border-radius:9px;background:#e3e8ee;color:var(--op-ink);font-size:11px;letter-spacing:0;text-align:center;}
+ html.ops-refined body.ops-desk main .sec.hot{background:#fff;}
+ html.ops-refined body.ops-desk main .sec.hot b{background:var(--op-deep);color:#fff;}
+ html.ops-refined .drow{border-bottom-color:#e8ecf1;background:#fff;}
+ html.ops-refined .drow .dc-t b{font-size:18px;font-weight:750;color:var(--op-deep);}
+ html.ops-refined .drow .reg{font-size:17px;font-weight:800;letter-spacing:.4px;color:var(--op-deep);}
+ html.ops-refined .drow .dn{font-size:12px;font-weight:600;color:var(--rf-faint);}
+ html.ops-refined .drow .dc-r .sub{font-size:13px;color:#42546a;}
+ html.ops-refined .drow .dc-c .l1{font-size:14px;font-weight:600;}
+ html.ops-refined .drow .dc-c .sub{font-size:12px;color:var(--rf-faint);}
+ html.ops-refined .drow .dc-f .l1,html.ops-refined .drow .flno{font-weight:650;color:#34465c;}
+ html.ops-refined .drow .code{border-radius:4px;font-size:12px;font-weight:700;}
+ html.ops-refined .drow .st-n{color:var(--rf-faint);}
+ html.ops-refined .drow.called{background:#fff;box-shadow:inset 3px 0 0 #2f6fd6;}
+ html.ops-refined .drow.warn{background:#fffbf1;box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined .drow.late{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .drow.ovst{background:#fffaf4;box-shadow:inset 3px 0 0 #b06000;}
+ html.ops-refined .drow.cmpl{background:#fff5f4;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .drow.done{background:#fafbfc;}
+ html.ops-refined .drow.done .reg,html.ops-refined .drow.done .dc-c .l1{color:#8a96a6;}
+ html.ops-refined .drow.coll{background:#fff;box-shadow:inset 3px 0 0 #1f9d5b;}
+ html.ops-refined .drow.nosh{background:#fafbfc;}
+ html.ops-refined .drow.rtc{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .drow .acts{gap:6px;}
+ html.ops-refined .drow .acts button,html.ops-refined .drow .acts .pyard{min-height:44px;border-radius:var(--rf-r);font-size:13px;font-weight:600;letter-spacing:0;}
+ html.ops-refined .drow .acts button:not(.pyard),html.ops-refined .drow .acts .pyard:not(.on){border:1px solid #d3dbe5;background:#fff;color:var(--op-ink);}
+ html.ops-refined .drow .acts button.lng{font-size:12px;}
+ html.ops-refined .drow .acts button small{font-size:12px;font-weight:750;}
+ html.ops-refined .drow .acts button em.by{font-size:9.5px;font-weight:650;letter-spacing:.2px;}
+ html.ops-refined .drow .acts button:disabled{border-color:#e2e7ed;background:#f8fafb;color:#9aa5b1;}
+ html.ops-refined .drow .acts button.on.s,html.ops-refined .drow .acts button.on.k{border-color:#9ccfae;background:#e8f5ec;color:#13623a;}
+ html.ops-refined .drow .acts button.on.c{border-color:#a6c2ee;background:#e8f0fc;color:#1b4f9c;}
+ html.ops-refined .drow .acts button.on.x,html.ops-refined .drow .acts button.on.n{border-color:#b9c3cf;background:#eef1f5;color:#33475b;}
+ html.ops-refined .drow .acts button.on.r{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
+ html.ops-refined .drow .acts button.on.p{border-color:#b4bdea;background:#eef0fb;color:#2b3a8f;}
+ html.ops-refined .drow .acts button.on.c.ov{border-color:#e8b97f;background:#fdf1e3;color:#7a3e00;}
+ html.ops-refined .drow .acts button.on.x.cm{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
+ html.ops-refined .ops-bfoot{border-color:var(--rf-line);color:var(--rf-mut);}
+}
 
 /* Flights on a phone or tablet: a flight per line, its times and state under it */
 @media(max-width:899px){
@@ -698,58 +839,236 @@ html.ops-refined .stats .stat.big > strong{grid-column:1;grid-row:2;margin-top:4
 html.ops-refined .stats .stat.big .pbar-pc{grid-column:2;grid-row:2;justify-self:end;margin:0 0 5px;font-size:12.5px;color:#d5deea;text-align:right;}
 html.ops-refined .stats .stat.big .pbar{grid-column:1 / -1;grid-row:3;height:4px;margin-top:12px;border-radius:2px;}
 html.ops-refined .stats .stat.big .pbar i{background:var(--brand);}
-html.ops-refined .ops-strip > div{display:flex;flex-direction:column;justify-content:space-between;padding:10px 12px 11px;}
-html.ops-refined .ops-strip span{font-size:11.5px;line-height:1.25;color:var(--rf-mut);white-space:normal;}
-html.ops-refined .ops-strip strong{margin-top:4px;font-size:21px;}
-html.ops-refined .ops-card > header{padding:12px 14px 11px;}
+html.ops-refined .ops-strip{border-color:var(--rf-line);border-radius:var(--rf-r);}
+html.ops-refined .ops-strip > div{display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:9px 8px 10px;text-align:center;}
+html.ops-refined .ops-strip span{font-size:12px;font-weight:600;line-height:1.25;color:var(--rf-mut);white-space:normal;}
+html.ops-refined .ops-strip strong{margin-top:3px;font-size:21px;font-weight:750;color:var(--op-deep);}
+html.ops-refined .ops-card{border-radius:var(--rf-r);}
+html.ops-refined .ops-card > header{padding:11px 14px 10px;}
+html.ops-refined .ops-card > header strong{font-size:15px;font-weight:700;color:var(--op-deep);}
+html.ops-refined .ops-card > header small{font-size:12px;color:var(--rf-mut);}
 html.ops-refined .ops-tr{min-height:42px;padding:8px 14px;}
+/* the shift's parts: name and hours, "3 of 12", a thin bar under them */
+html.ops-refined .ops-tr > b{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 10px;min-width:0;font-size:14px;font-weight:650;}
+html.ops-refined .ops-tr > b small{margin:0;font-size:12.5px;font-weight:500;color:var(--rf-mut);}
+html.ops-refined .ops-tr > b .mbar{display:block;flex:0 0 100%;height:4px;margin-top:6px;overflow:hidden;border-radius:2px;background:#edf0f4;}
+html.ops-refined .ops-tr > b .mbar i{display:block;height:100%;border-radius:2px;background:var(--op-deep);}
+html.ops-refined .ops-tr > i{align-self:start;font-size:14px;font-weight:650;font-style:normal;color:var(--op-deep);}
+/* the activity: its own panel, the filters at the top, a line per entry */
+html.ops-refined .rf-act{margin-top:12px;}
+html.ops-refined .rf-act .actbar{display:flex;flex-direction:column;gap:8px;margin:0;padding:10px 14px 4px;}
+html.ops-refined .rf-act .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;}
+html.ops-refined .rf-act .chips button{min-height:32px;padding:0 12px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;color:var(--op-ink);font-size:13px;font-weight:600;}
+html.ops-refined .rf-act .chips button.on{border-color:var(--op-deep);background:var(--op-deep);color:#fff;}
+html.ops-refined .rf-act #actQ{width:100%;height:38px;margin:0;padding:0 12px;border:1px solid var(--rf-line);border-radius:var(--rf-r);font-size:14px;}
+html.ops-refined .rf-act .actday{margin:10px 14px 4px;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--rf-faint);}
+html.ops-refined .rf-act .actbox{margin:0;border:0;border-radius:0;box-shadow:none;}
+html.ops-refined .rf-act .row-actions{margin:0;padding:8px 14px 10px;border-top:1px solid var(--rf-soft);justify-content:flex-end;}
+html.ops-refined .rf-act .empty{padding:14px;}
 html.ops-refined .actday{margin-top:16px;}
-html.ops-refined .actrow{gap:10px;padding:9px 12px;border-top-color:var(--rf-soft);}
+html.ops-refined .actrow{align-items:baseline;gap:10px;padding:8px 14px;border-top-color:var(--rf-soft);}
+html.ops-refined .actrow .at{flex:none;width:40px;font-size:13px;font-weight:650;color:var(--op-ink);}
 html.ops-refined .actrow .grow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;min-width:0;}
 html.ops-refined .actrow .grow strong{font-size:14px;font-weight:650;color:var(--op-ink);}
 html.ops-refined .actrow .note{margin:0;font-size:12.5px;color:var(--rf-mut);}
 html.ops-refined .actbox{border-color:var(--rf-line);border-radius:var(--rf-r);}
+
+/* the other pages, in the same type, controls and panels as the board */
+@media(max-width:899px){
+ /* Keys: the word on the button, the four numbers as one ruled strip, the rows like the board's */
+ html.ops-refined #boardHead .tabs .keybtn.on b{padding:0;background:none;color:#fff;}
+ html.ops-refined .kc{border-color:var(--rf-line);}
+ html.ops-refined .kc-head b{font-size:15px;font-weight:700;color:var(--op-deep);}
+ html.ops-refined .kc-counts{gap:0;overflow:hidden;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
+ html.ops-refined .kc-counts .kc-count{border:0;border-radius:0;background:#fff;text-align:center;}
+ html.ops-refined .kc-counts .kc-count + .kc-count{border-left:1px solid var(--rf-soft);}
+ html.ops-refined .kc-counts .kc-count b{font-size:20px;font-weight:750;}
+ html.ops-refined .kc-counts .kc-count span{font-size:11.5px;font-weight:600;color:var(--rf-mut);}
+ html.ops-refined .kc-counts .kc-count[aria-pressed="true"]{background:var(--op-deep);}
+ html.ops-refined .kc-counts .kc-count[aria-pressed="true"] b,html.ops-refined .kc-counts .kc-count[aria-pressed="true"] span{color:#fff;}
+ html.ops-refined .kc-row{background:#fff;}
+ html.ops-refined .kc-row .reg{font-size:17px;font-weight:800;letter-spacing:.4px;color:var(--op-deep);}
+ html.ops-refined .kc-row .kc-meta{color:#42546a;}
+ /* Flights: what was checked on one line, the two buttons side by side; the cars needing a look edged in colour */
+ html.ops-refined .ops-check{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;}
+ html.ops-refined .ops-check .ops-dot,html.ops-refined .ops-check .checks-left{grid-column:1 / -1;}
+ html.ops-refined .ops-check .btn{width:100%;min-height:40px;margin:0;}
+ html.ops-refined main[data-view="flights"] > .row{align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #e8ecf1;background:#fff;box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined main[data-view="flights"] > .row.cmpl{box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined main[data-view="flights"] > .row .reg{font-size:16px;font-weight:800;color:var(--op-deep);}
+ html.ops-refined main[data-view="flights"] .ops-card{margin-top:12px;}
+ /* Staff & access: a person in three short lines (name; role · account; status and
+    last seen), Actions at the end of the row instead of under it */
+ html.ops-refined .ops-person{display:grid;grid-template-columns:32px auto minmax(0,1fr) auto;grid-template-areas:"i g g dd" "i em s dd";align-items:center;gap:6px 12px;padding:11px 14px;}
+ html.ops-refined .ops-person > i{grid-area:i;align-self:start;margin-top:2px;}
+ html.ops-refined .ops-person .grow{grid-area:g;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:5px;}
+ html.ops-refined .ops-person .grow strong{flex:1 1 100%;font-size:15px;font-weight:700;letter-spacing:.2px;color:var(--op-deep);overflow-wrap:anywhere;}
+ html.ops-refined .ops-person .grow span{order:1;margin:2px 0 0;font-size:13px;font-weight:500;color:var(--op-ink);}
+ html.ops-refined .ops-person .grow small{order:2;margin:2px 0 0;font-size:13px;color:var(--rf-mut);}
+ html.ops-refined .ops-person .grow small::before{content:"· ";}
+ html.ops-refined .ops-person .ops-side{display:contents;}
+ html.ops-refined .ops-person .ops-side em{grid-area:em;justify-self:start;}
+ html.ops-refined .ops-person .ops-side .seen{grid-area:s;justify-self:start;}
+ html.ops-refined .ops-person .ops-dd{grid-area:dd;}
+ html.ops-refined .ops-person .ops-dd summary{height:36px;padding:0 12px 0 14px;}
+ html.ops-refined .ops-person.off .ops-side em,html.ops-refined .ops-person.off > i{opacity:.6;}
+ /* Booking import: one panel: connection and times on top, the dates two by two,
+    the schedule as a full-width row, the two buttons at its foot; recent imports
+    as day, time and result on two lines */
+ html.ops-refined .bi-panel{align-items:stretch;gap:0;margin:0 0 16px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
+ html.ops-refined .bi-status{gap:2px 14px;padding:12px 14px;border-bottom:1px solid var(--rf-soft);font-size:12.5px;color:var(--rf-mut);}
+ html.ops-refined .bi-status .bi-conn{flex-basis:100%;font-size:15px;color:var(--op-deep);}
+ html.ops-refined .bi-range{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 10px;padding:12px 14px 4px;}
+ html.ops-refined .bi-range label{flex-direction:column;align-items:stretch;gap:4px;font-size:12.5px;font-weight:600;color:var(--rf-mut);}
+ html.ops-refined .bi-range input[type=date]{width:100%;min-height:42px;border-color:#cfd7e1;color:var(--op-ink);}
+ html.ops-refined .bi-range > .bi-hint,html.ops-refined .bi-range > .link{grid-column:1 / -1;font-size:12.5px;color:var(--rf-mut);}
+ html.ops-refined .bi-sched{margin:8px 14px 4px;border-color:var(--rf-line);border-radius:var(--rf-r);}
+ html.ops-refined .bi-sched summary{min-height:44px;font-size:14px;color:var(--op-deep);}
+ html.ops-refined .bi-sched summary .bi-chk{font-size:12.5px;font-weight:600;}
+ html.ops-refined .bi-body{gap:10px;padding:8px 14px 12px;}
+ html.ops-refined .bi-hint{font-size:13px;color:var(--rf-mut);}
+ html.ops-refined .bi-held{padding:0;border-color:var(--rf-line);border-radius:var(--rf-r);box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined .bi-held h3{margin:0;padding:10px 14px 9px;border-bottom:1px solid var(--rf-soft);font-size:14px;font-weight:700;color:var(--op-deep);}
+ html.ops-refined .bi-held div > div{padding:10px 14px;}
+ html.ops-refined .bi-held div > div:first-child{border-top:0;}
+ html.ops-refined .bi-act{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0;padding:10px 14px;border-top:1px solid var(--rf-soft);border-radius:0 0 var(--rf-r) var(--rf-r);}
+ html.ops-refined .bi-act .btn{width:100%;min-height:44px;margin:0;font-size:14px;}
+ html.ops-refined .bi-recent h3{font-size:15px;font-weight:700;color:var(--op-deep);}
+ html.ops-refined .bi-counts{border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
+ html.ops-refined .bi-counts div{padding:8px 2px;}
+ html.ops-refined .bi-counts b{font-size:20px;font-weight:750;color:var(--op-deep);}
+ html.ops-refined .bi-counts .warn b{color:#a15c07;}
+ html.ops-refined .bi-counts span{font-size:11.5px;font-weight:600;line-height:1.25;text-align:center;color:var(--rf-mut);}
+ html.ops-refined .bi-filters{gap:6px;}
+ html.ops-refined .bi-chip{min-height:34px;padding:0 11px;border-color:var(--rf-line);border-radius:var(--rf-r);font-size:13px;color:var(--op-ink);}
+ html.ops-refined .bi-chip[aria-pressed=true]{background:var(--op-deep);border-color:var(--op-deep);color:#fff;box-shadow:inset 0 -2px 0 var(--brand);}
+ html.ops-refined .bi-search{min-height:40px;border-color:#cfd7e1;border-radius:var(--rf-r);}
+ html.ops-refined .bi-tbl{border-color:var(--rf-line);border-radius:var(--rf-r);}
+ html.ops-refined .bi-hd{padding:9px 14px;}
+ html.ops-refined .bi-reg{font-size:16px;font-weight:800;letter-spacing:.4px;color:var(--op-deep);}
+ html.ops-refined .bi-board{color:var(--op-deep);}
+ html.ops-refined .bi-rlist{border-color:var(--rf-line);border-radius:var(--rf-r);}
+ html.ops-refined .bi-rr{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"bd bd t" "rs rs ud" "sr by ud";gap:1px 8px;padding:9px 14px;}
+ html.ops-refined .bi-bd{font-size:13px;font-weight:700;letter-spacing:.3px;color:var(--op-deep);}
+ html.ops-refined .bi-t{justify-self:end;font-size:13px;color:var(--op-ink);}
+ html.ops-refined .bi-res{font-size:14px;color:var(--op-ink);}
+ html.ops-refined .bi-src,html.ops-refined .bi-by{font-size:12px;color:var(--rf-mut);}
+ html.ops-refined .bi-by{margin-left:-3px;}
+ html.ops-refined .bi-by::before{content:"· ";}
+ html.ops-refined .bi-by:empty::before{content:none;}
+ html.ops-refined .bi-undo{min-height:32px;font-size:13px;}
+ /* Dashboard: what needs attention edged in its colour, the numbers in one
+    column; payments as label and amount lines instead of stacked boxes */
+ html.ops-refined .od-attn-item{align-items:center;min-height:48px;padding:10px 14px;}
+ html.ops-refined .od-attn-item:has(.od-n.bad){box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .od-attn-item:has(.od-n.warn){box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined .od-attn-item .od-n{flex:none;min-width:52px;font-size:19px;}
+ html.ops-refined .od-card > h2,html.ops-refined .od-cardhead{padding:11px 14px 10px;font-size:15px;}
+ html.ops-refined .od-card > h2,html.ops-refined .od-cardhead h2{font-weight:700;color:var(--op-deep);}
+ html.ops-refined .od-parked{padding:14px 16px;box-shadow:inset 4px 0 0 var(--brand);}
+ html.ops-refined .od-line{min-height:46px;padding:9px 14px;}
+ html.ops-refined .od-line > b{min-width:3ch;}
+ html.ops-refined .od-line:has(> b.warn){box-shadow:inset 3px 0 0 #d39b21;}
+ html.ops-refined .od-tr:not(.od-th){display:block;padding:10px 14px 6px;}
+ html.ops-refined .od-tr .od-name{margin:0 0 4px;}
+ html.ops-refined .od-tr .od-name b{display:inline;font-size:14.5px;font-weight:700;color:var(--op-deep);}
+ html.ops-refined .od-tr .od-name small{display:inline;margin:0 0 0 6px;}
+ html.ops-refined .od-tr .od-c:not(.od-name){display:block;padding:6px 0;border-top:1px solid var(--rf-soft);font-size:14px;text-align:right;}
+ html.ops-refined .od-tr .od-c:not(.od-name) > small{float:left;font-size:13px;color:var(--rf-mut);}
+}
+/* Menu: a small heading over each group, the pages as rows */
+html.ops-refined #menuBody > label,html.ops-refined #menuBody > .mgrp > label{background:#f8fafc;color:var(--rf-faint);font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;}
+html.ops-refined #menuBody .menu-list button{font-size:15px;font-weight:600;color:var(--op-deep);}
 
 /* Menu: the same panels, rows a little tighter */
 html.ops-refined #menuBody .menu-list button{min-height:50px;padding-left:16px;}
 html.ops-refined #menuBody > label,html.ops-refined #menuBody > .mgrp > label{padding:13px 16px 12px;border-color:var(--rf-line);}
 
 /* Settings: on a phone or tablet the sections are tabs, one open at a time */
-html.ops-refined .set-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin:0 0 12px;}
-html.ops-refined .set-tabs button{min-width:0;min-height:38px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;color:var(--op-ink);font-size:13px;font-weight:600;white-space:nowrap;}
+/* each tab as wide as its whole name ("Booking website" never cut short), rows filled edge to edge */
+html.ops-refined .set-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;}
+html.ops-refined .set-tabs button{flex:1 1 auto;min-width:0;max-width:100%;min-height:38px;padding:5px 12px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;color:var(--op-ink);font-size:13px;font-weight:600;line-height:1.2;white-space:normal;}
 html.ops-refined .set-tabs button[aria-selected="true"]{background:var(--op-deep);border-color:var(--op-deep);color:#fff;box-shadow:inset 0 -2px 0 var(--brand);}
 html.ops-refined .set-tabs button:focus-visible{outline:2px solid var(--op-ink);outline-offset:1px;}
 html.ops-refined main[data-view="settings"] .set-group > .box:first-child{margin-top:0 !important;}
 html.ops-refined main[data-view="settings"] .set-group > .box{margin:0 0 12px !important;}
 html.ops-refined main[data-view="settings"] .box > .row-actions{align-items:center;flex-wrap:wrap;}
+/* inside a section: a setting a line each, its name on the left and the
+   choice on the right; long boxes (web addresses, numbers to type) keep the
+   full width; the other sections listed underneath with what they're set to */
+@media(max-width:899px){
+ html.ops-refined main[data-view="settings"] .box{padding:0 14px !important;border-color:var(--rf-line);border-radius:var(--rf-r);}
+ html.ops-refined main[data-view="settings"] .box > strong:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 -14px 2px;padding:12px 14px 11px;border-bottom:1px solid var(--rf-soft);font-size:15px;font-weight:700;color:var(--op-deep);}
+ html.ops-refined main[data-view="settings"] .box > strong:first-child small{font-size:12px;font-weight:500;color:var(--rf-mut);}
+ html.ops-refined main[data-view="settings"] .box > .note{margin:10px 0 2px;font-size:13px;color:var(--rf-mut);}
+ html.ops-refined main[data-view="settings"] .box .pair{display:contents;}
+ html.ops-refined main[data-view="settings"] .box.fchecks{display:block;}
+ html.ops-refined main[data-view="settings"] .box.fchecks .section-label{display:block;}
+ html.ops-refined main[data-view="settings"] .box label.field:has(> select){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,172px);align-items:center;gap:12px;margin:0;padding:7px 0;border-bottom:1px solid var(--rf-soft);font-size:14px;font-weight:500;color:var(--op-ink);text-transform:none;letter-spacing:0;}
+ html.ops-refined main[data-view="settings"] .box label.field:has(> select) select{width:100%;min-height:40px;margin:0;font-size:14px;}
+ html.ops-refined main[data-view="settings"] .box .section-label{margin:12px 0 2px;font-size:11px;font-weight:700;letter-spacing:.6px;color:var(--rf-faint);}
+ html.ops-refined main[data-view="settings"] .box > .row-actions{margin:12px -14px 0;padding:10px 14px;border-top:1px solid var(--rf-soft);}
+ html.ops-refined .set-more{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
+ html.ops-refined .set-more button{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;width:100%;min-height:52px;padding:10px 40px 10px 14px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%235b6b7e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 2 4 4-4 4'/%3E%3C/svg%3E") no-repeat right 16px center;color:var(--op-deep);text-align:left;}
+ html.ops-refined .set-more button[hidden]{display:none;}
+ html.ops-refined .set-more b{font-size:15px;font-weight:700;}
+ html.ops-refined .set-more small{font-size:12.5px;color:var(--rf-mut);}
+ html.ops-refined .set-more small:empty{display:none;}
+}
 html.ops-refined .rf-dirty{margin-right:auto;font-size:12.5px;font-weight:600;color:#7a5200;}
 html.ops-refined .rf-dirty:empty{display:none;}
 html.ops-refined .rf-dirty::before{content:"";display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:#d39b21;vertical-align:0;}
 
-/* Booking details: a panel per section, the fields two by two, the footer always in view */
+/* Booking details: a panel per section, the fields two by two, read-only
+   details a line each, the footer always in view */
 html.ops-refined #panel.ops-car{scroll-padding-bottom:96px;}
-html.ops-refined #panel.ops-car h2{font-size:21px;}
+html.ops-refined #panel.ops-car h2{font-size:22px;letter-spacing:-.3px;}
 html.ops-refined #panel.ops-car .sub{margin:3px 0 12px;font-size:13.5px;color:var(--rf-mut);}
-html.ops-refined .rf-reg{font-size:15px;font-weight:750;letter-spacing:.3px;color:var(--op-deep);}
+html.ops-refined .rf-reg{font-size:15px;font-weight:800;letter-spacing:.4px;color:var(--op-deep);}
 html.ops-refined .rf-num{color:var(--rf-faint);}
 html.ops-refined .rf-sec{margin:0 0 10px;border:1px solid var(--rf-line);border-radius:var(--rf-r);background:#fff;}
-html.ops-refined .rf-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0;padding:12px 14px 11px;border-bottom:1px solid var(--rf-soft);font-size:14px;font-weight:650;color:var(--op-ink);}
+html.ops-refined .rf-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0;padding:11px 14px 10px;border-bottom:1px solid var(--rf-soft);font-size:15px;font-weight:700;color:var(--op-deep);}
 html.ops-refined .rf-h small{font-size:11.5px;font-weight:500;color:var(--rf-mut);}
-html.ops-refined .rf-sec .ops-sheet{padding:0 14px 14px;border:0;border-radius:0;background:none;}
-html.ops-refined .rf-sec .ops-sheet .det{margin-top:12px;row-gap:10px;}
-html.ops-refined .rf-sec .ops-sheet .det b{margin-bottom:2px;font-size:12px;color:var(--rf-mut);}
-html.ops-refined .rf-sec .ops-sheet .det span{font-size:14.5px;font-weight:600;color:var(--op-ink);}
-html.ops-refined .rf-sec .ops-f > label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:12px 0 5px;}
+html.ops-refined .rf-sec .ops-sheet{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;padding:0 14px 14px;border:0;border-radius:0;background:none;}
+html.ops-refined .rf-sec .ops-sheet > *{grid-column:1 / -1;}
+html.ops-refined .rf-sec .ops-sheet > .ops-f:not(.wide){grid-column:auto;}
+html.ops-refined .rf-sec .ops-f > label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:12px 0 5px;font-size:12.5px;font-weight:600;color:var(--rf-mut);text-transform:none;letter-spacing:0;}
+html.ops-refined .rf-sec .ops-f input,html.ops-refined .rf-sec .ops-f select{min-height:44px;}
+html.ops-refined .rf-sec .ops-f textarea{min-height:76px;}
 html.ops-refined .rf-now{font-size:11px;font-weight:500;color:var(--rf-faint);}
-html.ops-refined .rf-cust .ops-f.wide:has(#regText){grid-column:1;}
-html.ops-refined .rf-cust .ops-f.wide:has(#regText) + .rf-tel{grid-column:2;align-self:end;}
-html.ops-refined .rf-cust .ops-f.wide:has(#regText) + .rf-tel .tel{width:100%;min-height:44px;justify-content:center;padding:0 8px;font-size:13.5px;white-space:nowrap;}
-html.ops-refined .rf-tel .tel{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:9px 12px;border-color:#c9d8f0;border-radius:var(--rf-r);background:#f2f6fc;font-size:14.5px;}
+/* Customer | Vehicle */
+html.ops-refined .rf-cv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding-top:12px;}
+html.ops-refined .rf-cv > div{min-width:0;}
+html.ops-refined .rf-cv small{display:block;font-size:12.5px;font-weight:600;color:var(--rf-mut);}
+html.ops-refined .rf-cv b{display:block;margin-top:2px;font-size:15.5px;font-weight:700;line-height:1.3;color:var(--op-deep);overflow-wrap:anywhere;}
+html.ops-refined .rf-cv span.num{display:block;margin-top:2px;font-size:13px;color:var(--rf-mut);overflow-wrap:anywhere;}
+html.ops-refined .rf-tel{display:block;margin-top:4px;}
+html.ops-refined .rf-tel .tel{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;border:0;background:none;color:#1b5fc1;font-size:14px;font-weight:650;text-decoration:none;}
+html.ops-refined .rf-tel .tel::before{content:"";width:14px;height:14px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231b5fc1'%3E%3Cpath d='M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z'/%3E%3C/svg%3E") no-repeat center/contain;}
+/* read-only details: a line each */
+html.ops-refined .rf-kv{margin-top:12px;border-top:1px solid var(--rf-soft);}
+html.ops-refined .rf-kv > div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--rf-soft);font-size:13.5px;}
+html.ops-refined .rf-kv span{flex:none;color:var(--rf-mut);}
+html.ops-refined .rf-kv b{min-width:0;font-weight:600;color:var(--op-ink);text-align:right;}
+html.ops-refined .rf-kv b .hint{font-weight:500;}
+/* Sent / Called / Clear: when and who, in a row */
+html.ops-refined .rf-stamps{display:grid;grid-auto-columns:minmax(0,1fr);grid-auto-flow:column;margin-top:12px;border:1px solid var(--rf-line);border-radius:var(--rf-r);}
+html.ops-refined .rf-stamps > div{min-width:0;padding:7px 10px 8px;}
+html.ops-refined .rf-stamps > div + div{border-left:1px solid var(--rf-soft);}
+html.ops-refined .rf-stamps span{display:block;font-size:11.5px;font-weight:650;color:var(--rf-mut);}
+html.ops-refined .rf-stamps b{display:block;margin-top:2px;overflow:hidden;font-size:13px;font-weight:650;color:var(--rf-faint);white-space:nowrap;text-overflow:ellipsis;}
+html.ops-refined .rf-stamps .on b{color:var(--op-deep);}
+html.ops-refined .rf-stamps small{display:block;overflow:hidden;font-size:12px;color:var(--rf-mut);white-space:nowrap;text-overflow:ellipsis;}
+html.ops-refined .rf-pay .link,html.ops-refined .rf-early .link{display:inline-block;margin:10px 0 0;font-size:13px;font-weight:650;color:#1b5fc1;text-align:left;text-decoration:none;}
+html.ops-refined .rf-pay > .ops-sheet > label,html.ops-refined .rf-pay .ops-sheet > label{margin:12px 0 6px;font-size:12.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--rf-mut);}
+html.ops-refined .rf-pay .chgpay button{min-height:44px;border-color:#cfd7e1;border-radius:var(--rf-r);font-size:13px;}
 html.ops-refined .rf-hint{margin:6px 0 0;font-size:12px;color:var(--rf-mut);}
-html.ops-refined .rf-sec .pseg button{height:44px;border-color:#cfd7e1;border-radius:var(--rf-r);color:#34465c;}
+html.ops-refined .rf-sec .pseg{display:grid;grid-auto-columns:minmax(0,1fr);grid-auto-flow:column;gap:6px;}
+html.ops-refined .rf-sec .pseg button{height:42px;margin:0;border:1px solid #cfd7e1;border-radius:var(--rf-r);background:#fff;color:#34465c;font-size:13px;font-weight:650;}
 html.ops-refined .rf-sec .pseg.yard button.on{box-shadow:inset 0 0 0 1px currentColor;font-weight:800;}
-html.ops-refined .rf-sec .pseg.yard button.on::before{content:"✓ ";}
-html.ops-refined .rf-early{margin-top:12px;}
+html.ops-refined .rf-sec .pseg.yard button.on:not([class*=" y-"]),html.ops-refined .rf-sec .pseg.yard button.on.y-{background:var(--op-deep);border-color:var(--op-deep);color:#fff;}
+html.ops-refined .rf-early{margin-top:10px;}
+html.ops-refined .rf-early .link{font-size:13.5px;}
 html.ops-refined .rf-early .ptgo{width:100%;margin-top:8px;}
 html.ops-refined .rf-docs:not(:has(#docBox)):has(#ptPhotos:empty){display:none;}
 html.ops-refined .rf-pay .chgbox{margin-top:6px;}

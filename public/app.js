@@ -1003,8 +1003,11 @@
     renderTallyFold(cells);
     renderKeyBtn();
     var cardsWords = pro && !isPremium();
-    $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
-    $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    if (isRefined()) { $("tabTodo").innerHTML = 'To do <b class="num">' + S.rows.filter(waiting).length + "</b>"; $("tabAll").innerHTML = 'All <b class="num">' + S.rows.length + "</b>"; }
+    else {
+      $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
+      $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    }
     $("tabTodo").classList.toggle("on", !keyOn() && S.filter === "todo");
     $("tabAll").classList.toggle("on", !keyOn() && S.filter === "all");
     $("tabTodo").setAttribute("aria-pressed", !keyOn() && S.filter === "todo");
@@ -1257,6 +1260,7 @@
   function noteLine(r) { return r.note ? '<div class="l3' + (/^!/.test(r.note) ? " bang" : "") + '">' + esc(r.note.replace(/^!\s*/, "")) + "</div>" : ""; }
   // A pressed button shows the time and the first name of whoever pressed it.
   // The Cards look's buttons are big enough for words, not codes.
+  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   // A card per car (Cards or Premium look); isPremium tells the two apart.
   function isCards() { var c = document.documentElement.classList; return c.contains("cards") || c.contains("premium"); }
@@ -1278,15 +1282,19 @@
   // sections, the Summary upgrades): Premium looks and Standard with features.
   function hasFeatures() { return isPremium() || isStdPlus(); }
   // Booking sites send names in capitals; the Cards look shows them as written ("Senior Miss").
-  function niceMake(m) { return m.length <= 3 ? m : nice(m); }
+  // Operations Refined keeps the short model codes in capitals ("BMW 3 Series", "Audi Q5 S Line").
+  var RF_CAPS = /^(bmw|mg|vw|ds|byd|amg|gti|gtd|tdi|tsi|suv|ev|hev|phev|gt|rs|st|se|sr|xe|xf|xj|ii|iii|iv|vi|[a-z]\d{1,2}|id\.?\d?)$/i;
+  function niceMake(m) { return m.length <= 3 ? m : isRefined() ? nice(m).split(" ").map(function (w) { return RF_CAPS.test(w) ? w.toUpperCase() : w; }).join(" ") : nice(m); }
   function sentence(t) { t = String(t || ""); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase(); }
-  // Card looks tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
-  function nice(t) { t = String(t || ""); return isCards() && !isBoard() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
+  // Card looks and Operations Refined tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
+  function nice(t) { t = String(t || ""); return (isCards() && !isBoard()) || isRefined() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
   function actBtn(r, attrs, cls, label, on, at, allowed, who) {
     var pro = isCards() && !isBoard();   // Premium Board's buttons read like Standard's (COLL, NO SHOW)
     if (pro && PRO_WORDS[label]) label = PRO_WORDS[label];
     // Premium Board's pick rows have narrow buttons: the short word, as the old rows had.
     if (label === "Collected" && isBoard()) label = "Coll";
+    // Operations Refined: the words in sentence case, easier to read at a glance.
+    if (isRefined() && RF_WORDS[label]) label = RF_WORDS[label];
     var name = on && at ? nice(String(who || "").trim().split(/\s+/)[0]) : "";
     return '<button type="button" class="' + cls + (on ? " on" : "") + (label.length > 7 ? " lng" : "") + '" ' + attrs + (allowed ? "" : " disabled") + ">" +
       (pro ? '<span class="w">' + label + "</span>" : label) + (on && at ? '<small class="num">' + esc(hhmm(at)) + "</small>" : "") + (name ? '<em class="by">' + esc(name) + "</em>" : "") + "</button>";
@@ -1451,6 +1459,7 @@
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
     if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
+    if (isRefined()) return refinedDropRow(r, cls, overWord, cmpl, canc, over);
     // An early return shows no booked time here (it was for another day): the EARLY tag says when.
     var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "—");
     var eta = canc ? "" : r.est_time;
@@ -1473,6 +1482,42 @@
       earlyLine(r) + noteLine(r) + "</div>" +
       // "Show buttons on drops" off (Standard with features): what's done instead of buttons.
       (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+
+  // ── Operations Refined's rows (phone and tablet) ──
+  // The reg big on its own line with the yard and number, then the car and
+  // customer, then the flight and times with the flight's state as a word.
+  // The same data, taps and buttons as every other row.
+  function rfWho(r) { var mk = makeOnly(r.make); return [mk ? niceMake(mk) : "", nice(r.name)].filter(Boolean).join(" · "); }
+  function refinedDropRow(r, cls, overWord, cmpl, canc, over) {
+    var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "");
+    var eta = canc ? "" : r.est_time, who = rfWho(r);
+    var word = r.flight_status === "landed" ? '<span class="fw land">Landed</span>' : canc ? '<span class="fw stop">Cancelled</span>'
+      : eta === "DELAY" ? '<span class="fw stop">Delayed</span>' : "";
+    var flt = r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : can("flights") ? '<button type="button" class="addflight" data-addflight>+ Flight</button>' : '<span class="flp none">No flight</span>';
+    return '<div class="row rfr' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + yardChip(r) +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + keyBox(r) + "</div>" +
+      (who || catTag(r) || wasTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + wasTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open>' + flt + (booked ? '<span class="tm">' + esc(booked) + "</span>" : "") +
+      (eta && eta !== "DELAY" && eta !== booked ? '<span class="eta' + (r.flight_status === "expected" ? " exp" : "") + '">&rarr; ' + esc(eta) + "</span>" : "") + word + "</div>" +
+      rowTags(r, [flightToCheck(r) ? '<span class="tag ck">' + (/^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY"
+        : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.") + "</span>" : "",
+        over ? '<span class="tag ov">OVERSTAY</span>' : "", cmpl ? '<span class="tag cm">COMPLAINT</span>' : "", chargeTag(r).replace(/^ · /, ""), exitTag(r)]) +
+      earlyLine(r) + noteLine(r) + "</div>" +
+      (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+  function refinedPickRow(r, cls) {
+    var who = rfWho(r);
+    var tags = (S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "") +
+      (r.pick_called ? '<span class="rfpc"><span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called.toUpperCase())) + "</span> " + esc(hhmm(r.pick_called_at)) + "</span>" : "");
+    return '<div class="row rfr rfp' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + "</div>" +
+      (who || catTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open><span class="tm">Drop ' + esc(hhmm(r.drop_at) || "—") + "</span>" + (r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : "") + "</div>" +
+      (tags ? '<div class="l2 l2t" data-open>' + tags + "</div>" : "") + noteLine(r) + "</div>" +
+      pickActs(r) + "</div>";
   }
 
   // Short words on the row, so the customer's name still fits on a phone.
@@ -1548,7 +1593,7 @@
     a.href = u.data.signedUrl; a.innerHTML = '<img alt="Photo of the payment" src="' + esc(u.data.signedUrl) + '">';
   }
   function pickYardBtn(r) {
-    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : "YARD";
+    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : isRefined() && !opsDesk() ? "Yard" : "YARD";
     if (!can("intake")) return '<button type="button" class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '" disabled>' + lab + "</button>";
     return '<label class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '"><span>' + lab + '</span><select data-yard aria-label="Location of ' + esc(r.reg) + '"><option value="">' + (on ? "— none" : "Choose") + "</option>" +
       (S.company.yards || []).map(function (y) { return "<option" + (y === r.yard ? " selected" : "") + ' value="' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + "</option>"; }).join("") + "</select></label>";
@@ -1557,6 +1602,7 @@
     var bang = /^!/.test(r.note);
     var cls = r.intake === "Collected" ? " coll" : r.intake === "No Show" ? " nosh" : r.intake === "RTC" ? " rtc" : bang ? " cmpl" : "";
     if (opsDesk()) return opsDeskPickRow(r, cls);
+    if (isRefined()) return refinedPickRow(r, cls);
     return '<div class="row' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="rt" data-open><b class="num">' + esc(hhmm(r.drop_at) || "—") + "</b><small>Drop-off</small></div>" +
       (isBoard() ? pickLinesBoard(r) :
@@ -2787,36 +2833,37 @@
     // finds this car rather than adding it again (database part 48).
     // The booking site moved the drop-off: the office moves the car to that day (part 102).
     var dropF = "", retF = "", yardF = "", flightF = "", pickFlightF = "";
-    if (!drops && can("import") && !r.removed_at) {
-      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-      dropF = fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+    // Operations Refined: the date and the time as two boxes side by side, each named.
+    function when(d, t, word, p) {
+      return rf ? fld('<label for="' + d + '">' + word + ' date</label><input id="' + d + '" type="date" value="' + esc(p.key) + '">') + fld('<label for="' + t + '">' + word + " time</label>" + timeBox(t, p.time))
+        : fld('<label for="' + d + '">' + L(word === "Drop-off" ? "DROP-OFF DATE AND TIME" : "BACK DATE AND TIME") + '</label><div class="when2"><input id="' + d + '" type="date" value="' + esc(p.key) + '">' + timeBox(t, p.time) + "</div>", true);
     }
-    if (canReturn(r)) {
-      var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-      retF = fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
-    }
+    if (!drops && can("import") && !r.removed_at) dropF = when("dropD", "dropT", "Drop-off", r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" });
+    if (canReturn(r)) retF = when("retD", "retT", "Return", r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" });
     if (drops ? can("yard") : picksYard() && can("intake")) {
       yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
         return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '"' + (rf ? ' aria-pressed="' + (r.yard === y) + '"' : "") + ">" + esc(YARD_LABEL[y] || y) + "</button>";
       }).join("") + "</div>", true);
     }
+    var flightNo = "", flightTime = "";
     if (drops && can("flights")) {
-      flightF = fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
-      if (r.flight === "NO FLIGHT") flightF += fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
-      else flightF += fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightNo = fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
+      if (r.flight === "NO FLIGHT") flightTime = fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
+      else flightTime = fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightF = flightNo + flightTime;
     }
     // The return flight, when the booking came without one: it goes on to the DROPS car (database part 78).
     if (!drops && canPickFlight()) pickFlightF = fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
     var docs = docBlockHtml(r);
     var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
-    var extra = "";
+    var extra = "", W = function (t) { return rf ? sentence(t) : t; };
     if (drops) {
-      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">OVERSTAY</button>';
-      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '">COMPLAINT</button>';
+      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">' + W("OVERSTAY") + "</button>";
+      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '">' + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
-      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '">CALLED</button>';
-      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">NEW BOOKING</button>';
-      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">NO SHOW</button>';
+      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '">' + W("CALLED") + "</button>";
+      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">' + W("NEW BOOKING") + "</button>";
+      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">' + W("NO SHOW") + "</button>";
     }
     var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
     var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
@@ -2826,7 +2873,7 @@
     var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
     var hist = can("log") ? '<div id="carHist"></div>' : "";
-    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, pickFlightF: pickFlightF,
+    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
       docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
     else {
       h += tel + opsSec("Customer & vehicle") + detList(det);
@@ -2860,19 +2907,28 @@
   // documents and photos; the read-only details as text, the boxes Save changes
   // saves as fields, and what saves on a tap marked "Saves when tapped". The same
   // fields, buttons and saves as Operations; only where they sit changes.
-  var CAR_CUST = { NAME: 1, CAR: 1, REF: 1 }, CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 };
+  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
   function refinedCar(r, head, P) {
     // A detail that has its own box below shows once, in the box.
-    var skip = {}; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
-    var cust = [], park = [], stat = [], fee = [];
-    P.det.forEach(function (x) { if (skip[x[0]]) return; (CAR_CUST[x[0]] ? cust : CAR_PARK[x[0]] ? park : x[0] === "EXIT FEE" ? fee : stat).push(x); });
+    var skip = { NAME: 1, CAR: 1, REF: 1 }; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
+    var park = [], stat = [], fee = [];
+    P.det.forEach(function (x) { if (skip[x[0]]) return; (CAR_PARK[x[0]] ? park : x[0] === "EXIT FEE" ? fee : stat).push(x); });
+    // Read-only details: the name on the left, the value on the right, a line each.
+    function lab(t) { var l = L(t); return l === t ? sentence(t) : l; }
+    function kv(list) { list = list.filter(function (x) { return x[1] !== "—"; }); return list.length ? '<div class="rf-kv">' + list.map(function (x) { return "<div><span>" + lab(x[0]) + "</span><b>" + x[1] + "</b></div>"; }).join("") + "</div>" : ""; }
+    // Sent / Called / Clear (or how the car came in): when and who, side by side.
+    function stamps(list) { return list.length ? '<div class="rf-stamps">' + list.map(function (x) { var v = x[1].split(" · "); return '<div class="' + (x[1] === "—" ? "" : "on") + '"><span>' + lab(x[0]) + "</span><b>" + v[0] + "</b>" + (v[1] ? "<small>" + nice(v.slice(1).join(" · ")) + "</small>" : "") + "</div>"; }).join("") + "</div>" : ""; }
     var was = P.retF && r.orig_return_at ? '<p class="rf-hint">First booked back ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</p>" : "";
     function sec(cls, title, body, aside) { return body ? '<section class="rf-sec ' + cls + '"><h3 class="rf-h">' + esc(title) + (aside ? "<small>" + esc(aside) + "</small>" : "") + '</h3><div class="ops-sheet rf-grid">' + body + "</div></section>" : ""; }
+    var car = /^[-\s.]*$/.test(r.make || "") ? "" : niceMake(String(r.make).trim());
+    var cv = '<div class="rf-cv"><div><small>Customer</small><b>' + (esc(nice(r.name)) || "—") + "</b>" + (P.tel ? '<span class="rf-tel">' + P.tel + "</span>" : "") + "</div>" +
+      "<div><small>Vehicle</small><b>" + (esc(car) || "—") + '</b><span class="num">' + (esc(r.ref) || "No reference") + "</span></div></div>";
     // A wide screen: the booking and its return on the left; status, notes, payments and photos on the right.
-    var A = sec("rf-cust", "Customer & vehicle", P.detList(cust) + P.regF + (P.tel ? '<div class="rf-tel">' + P.tel + "</div>" : "")) +
-      sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", (park.length ? P.detList(park) : "") + P.dropF + P.retF + was + P.flightF + P.pickFlightF + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
-    var B = sec("rf-notes", "Notes & status", (stat.length ? P.detList(stat) : "") + P.steps + P.noteF + P.markF) +
-      sec("rf-pay", "Payments", (fee.length ? P.detList(fee) : "") + P.pay, P.pay ? "Saves when tapped" : "") +
+    var A = sec("rf-cust", "Customer & vehicle", cv) +
+      sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", P.regF.replace('class="ops-f wide"', 'class="ops-f"') + P.flightNo + P.pickFlightF + P.dropF + P.retF + was + P.flightTime + kv(park) + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
+    var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
+    var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
+      sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
       sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
       (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
     var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
@@ -3642,7 +3698,7 @@
     document.body.classList.toggle("keychecking", on && S.view === "board");
     if (!can0) return;
     $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
-    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
+    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : isRefined() ? "Keys" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
     $("keyBtn").setAttribute("aria-label", "Key check" + (k && k.session ? ", " + c.found + " of " + c.all + " found" : ""));
     $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet";
     if (on) { $("tabTodo").classList.remove("on"); $("tabAll").classList.remove("on"); $("tabTodo").setAttribute("aria-pressed", "false"); $("tabAll").setAttribute("aria-pressed", "false"); }
@@ -3673,7 +3729,7 @@
     head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>FLIGHT</span><span>CUSTOMER · REF</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
     return head + (rows.length ? rows.map(function (r) {
       var st = keyState(r), e = keyEntry(r), locked = disabled || !active || st === "driver" || sh.archived_at;
-      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div>' +
+      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make ? (isRefined() ? niceMake(String(r.make).trim()) : r.make) : "No vehicle details") + '</div></div>' +
         '<div class="kc-fl">' + flightCell(r) + (r.name ? '<span class="kc-meta kc-flcu" title="' + esc(r.name) + '">' + esc(nice(r.name)) + '</span>' : '') + '</div>' +
         '<div class="kc-cu"><div class="kc-name" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="kc-meta num">' + esc(r.ref || "") + '</div></div>' +
         '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(byName(r, "sent_by") || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
@@ -3996,7 +4052,8 @@
         var back = d.filter(function (r) { return r.cleared_at; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), "big") + "</div>" +
           opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length], ["Overstays", d.filter(function (r) { return r.overstay; }).length], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length]]) +
-          opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]]));
+          (isRefined() ? opsPanel("Shift progress", "Collected", opsTable(null, [rfPart("Morning", "06:00–17:30", D.morning), rfPart("Night", "17:31–05:59", D.night)]))
+            : opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])));
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), hasFeatures() ? "big" : "") +
           kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length) +
@@ -4021,7 +4078,12 @@
       }
     }
     var mid = h.length;
-    if (can("log")) {
+    // Operations Refined: the activity in its own panel, the filters in it.
+    if (can("log") && isRefined()) {
+      h += '<section class="ops-card rf-act"><header><strong>Activity</strong>' + (S.activity ? "<small>" + S.activity.length + " lines</small>" : "") + "</header>" +
+        (S.activity ? activityPremiumHtml() : '<div class="empty">Loading…</div>') + "</section>";
+      if (!S.activity) loadActivity();
+    } else if (can("log")) {
       h += '<div class="section-label">Activity</div>';
       if (!S.activity) { loadActivity(); h += '<div class="empty">Loading…</div>'; }
       else if (hasFeatures()) h += activityPremiumHtml();
@@ -4086,6 +4148,8 @@
     var zero = /^(0|£0|0 \/ 0)$/.test(String(value));
     return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + '"><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
   }
+  // Operations Refined's shift line: the part of the day and its hours, a thin bar, and "3 of 12".
+  function rfPart(name, hours, x) { return [name + "<small>" + hours + "</small>" + miniBar(x.done, x.due), x.done + " of " + x.due]; }
   function miniBar(done, all) { return '<span class="mbar" aria-hidden="true"><i style="width:' + (all ? Math.round(done / all * 100) : 0) + '%"></i></span>'; }
   function progressBar(done, all) {
     if (!hasFeatures() || !all) return "";
@@ -5519,7 +5583,16 @@
         return '<button type="button" role="tab" id="settab-' + g[0] + '" data-settab="' + g[0] + '" aria-controls="set-' + g[0] + '" aria-selected="' + (g[0] === cur) + '">' + esc(g[3]) + "</button>";
       }).join("") + "</div>" + groups.map(function (g) {
         return '<section class="set-group" id="set-' + g[0] + '" role="tabpanel" aria-labelledby="settab-' + g[0] + '"' + (g[0] === cur ? "" : " hidden") + ">" + g[2] + "</section>";
-      }).join("");
+      }).join("") +
+        // Under the open section, the others in a line each with what they're set to; a tap opens one.
+        '<div class="set-more">' + groups.map(function (g) {
+          var c = S.company || {}, what = {
+            parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
+            flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
+            charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
+          }[g[0]] || [];
+          return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
+        }).join("") + "</div>";
     }
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
@@ -5982,8 +6055,10 @@
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
     if (t.dataset.settab) {
       S.setTab = t.dataset.settab;
-      document.querySelectorAll("[data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b === t); });
+      document.querySelectorAll(".set-tabs [data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.settab === S.setTab); });
+      document.querySelectorAll(".set-more [data-settab]").forEach(function (b) { b.hidden = b.dataset.settab === S.setTab; });
       document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      if (t.closest(".set-more")) window.scrollTo(0, 0);
       return;
     }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }

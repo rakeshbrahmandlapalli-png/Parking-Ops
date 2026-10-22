@@ -90,8 +90,10 @@
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
     if (t.dataset.settab) {
       S.setTab = t.dataset.settab;
-      document.querySelectorAll("[data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b === t); });
+      document.querySelectorAll(".set-tabs [data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.settab === S.setTab); });
+      document.querySelectorAll(".set-more [data-settab]").forEach(function (b) { b.hidden = b.dataset.settab === S.setTab; });
       document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      if (t.closest(".set-more")) window.scrollTo(0, 0);
       return;
     }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }

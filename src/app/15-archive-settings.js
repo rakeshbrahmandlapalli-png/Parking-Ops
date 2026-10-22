@@ -144,7 +144,16 @@
         return '<button type="button" role="tab" id="settab-' + g[0] + '" data-settab="' + g[0] + '" aria-controls="set-' + g[0] + '" aria-selected="' + (g[0] === cur) + '">' + esc(g[3]) + "</button>";
       }).join("") + "</div>" + groups.map(function (g) {
         return '<section class="set-group" id="set-' + g[0] + '" role="tabpanel" aria-labelledby="settab-' + g[0] + '"' + (g[0] === cur ? "" : " hidden") + ">" + g[2] + "</section>";
-      }).join("");
+      }).join("") +
+        // Under the open section, the others in a line each with what they're set to; a tap opens one.
+        '<div class="set-more">' + groups.map(function (g) {
+          var c = S.company || {}, what = {
+            parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
+            flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
+            charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
+          }[g[0]] || [];
+          return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
+        }).join("") + "</div>";
     }
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";

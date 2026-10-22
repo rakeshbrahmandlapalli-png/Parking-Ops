@@ -149,6 +149,7 @@
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
     if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
+    if (isRefined()) return refinedDropRow(r, cls, overWord, cmpl, canc, over);
     // An early return shows no booked time here (it was for another day): the EARLY tag says when.
     var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "—");
     var eta = canc ? "" : r.est_time;
@@ -171,6 +172,42 @@
       earlyLine(r) + noteLine(r) + "</div>" +
       // "Show buttons on drops" off (Standard with features): what's done instead of buttons.
       (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+
+  // ── Operations Refined's rows (phone and tablet) ──
+  // The reg big on its own line with the yard and number, then the car and
+  // customer, then the flight and times with the flight's state as a word.
+  // The same data, taps and buttons as every other row.
+  function rfWho(r) { var mk = makeOnly(r.make); return [mk ? niceMake(mk) : "", nice(r.name)].filter(Boolean).join(" · "); }
+  function refinedDropRow(r, cls, overWord, cmpl, canc, over) {
+    var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "");
+    var eta = canc ? "" : r.est_time, who = rfWho(r);
+    var word = r.flight_status === "landed" ? '<span class="fw land">Landed</span>' : canc ? '<span class="fw stop">Cancelled</span>'
+      : eta === "DELAY" ? '<span class="fw stop">Delayed</span>' : "";
+    var flt = r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : can("flights") ? '<button type="button" class="addflight" data-addflight>+ Flight</button>' : '<span class="flp none">No flight</span>';
+    return '<div class="row rfr' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + yardChip(r) +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + keyBox(r) + "</div>" +
+      (who || catTag(r) || wasTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + wasTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open>' + flt + (booked ? '<span class="tm">' + esc(booked) + "</span>" : "") +
+      (eta && eta !== "DELAY" && eta !== booked ? '<span class="eta' + (r.flight_status === "expected" ? " exp" : "") + '">&rarr; ' + esc(eta) + "</span>" : "") + word + "</div>" +
+      rowTags(r, [flightToCheck(r) ? '<span class="tag ck">' + (/^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY"
+        : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.") + "</span>" : "",
+        over ? '<span class="tag ov">OVERSTAY</span>' : "", cmpl ? '<span class="tag cm">COMPLAINT</span>' : "", chargeTag(r).replace(/^ · /, ""), exitTag(r)]) +
+      earlyLine(r) + noteLine(r) + "</div>" +
+      (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+  function refinedPickRow(r, cls) {
+    var who = rfWho(r);
+    var tags = (S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "") +
+      (r.pick_called ? '<span class="rfpc"><span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called.toUpperCase())) + "</span> " + esc(hhmm(r.pick_called_at)) + "</span>" : "");
+    return '<div class="row rfr rfp' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + "</div>" +
+      (who || catTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open><span class="tm">Drop ' + esc(hhmm(r.drop_at) || "—") + "</span>" + (r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : "") + "</div>" +
+      (tags ? '<div class="l2 l2t" data-open>' + tags + "</div>" : "") + noteLine(r) + "</div>" +
+      pickActs(r) + "</div>";
   }
 
   // Short words on the row, so the customer's name still fits on a phone.
@@ -246,7 +283,7 @@
     a.href = u.data.signedUrl; a.innerHTML = '<img alt="Photo of the payment" src="' + esc(u.data.signedUrl) + '">';
   }
   function pickYardBtn(r) {
-    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : "YARD";
+    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : isRefined() && !opsDesk() ? "Yard" : "YARD";
     if (!can("intake")) return '<button type="button" class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '" disabled>' + lab + "</button>";
     return '<label class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '"><span>' + lab + '</span><select data-yard aria-label="Location of ' + esc(r.reg) + '"><option value="">' + (on ? "— none" : "Choose") + "</option>" +
       (S.company.yards || []).map(function (y) { return "<option" + (y === r.yard ? " selected" : "") + ' value="' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + "</option>"; }).join("") + "</select></label>";
@@ -255,6 +292,7 @@
     var bang = /^!/.test(r.note);
     var cls = r.intake === "Collected" ? " coll" : r.intake === "No Show" ? " nosh" : r.intake === "RTC" ? " rtc" : bang ? " cmpl" : "";
     if (opsDesk()) return opsDeskPickRow(r, cls);
+    if (isRefined()) return refinedPickRow(r, cls);
     return '<div class="row' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="rt" data-open><b class="num">' + esc(hhmm(r.drop_at) || "—") + "</b><small>Drop-off</small></div>" +
       (isBoard() ? pickLinesBoard(r) :
