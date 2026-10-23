@@ -19,8 +19,32 @@
   var QUEUES = {
     called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
     sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
-    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }]
+    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }],
+    // A tapped number on Summary or Hourly stats: the cars it counts.
+    way: ["On the way", function (r) { return !!r.sent_at && !r.cleared_at; }],
+    over: ["Overstays", function (r) { return !!r.overstay; }],
+    comp: ["Complaints", function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }],
+    sentall: ["Sent", function (r) { return !!r.sent_at; }],
+    back: ["Collected", function (r) { return !!r.cleared_at; }],
+    left: ["Still to collect", function (r) { return !r.cleared_at; }],
+    owed: ["Overstay still owed", function (r) { var d = !r.charge_method && chargeDue(r); return !!(d && d.amount > 0); }],
+    cash: ["Overstay paid: cash", function (r) { return r.charge_method === "cash"; }],
+    card: ["Overstay paid: card", function (r) { return r.charge_method === "card"; }],
+    waived: ["Overstay waived", function (r) { return r.charge_method === "waived"; }],
+    carsin: ["Cars in", function (r) { return r.intake === "Collected"; }],
+    come: ["Still to come", function (r) { return !r.intake; }],
+    noshow: ["No shows", function (r) { return r.intake === "No Show"; }],
+    rtc: ["RTC", function (r) { return r.intake === "RTC"; }],
+    pdone: ["Completed", function (r) { return r.intake === "Collected" || r.intake === "RTC"; }]
   };
+  // Open the board on one of those queues ("" = the whole sheet).
+  function openTile(k) {
+    keyModeSet(false); S.q = ""; S.yardFilter = ""; S.catFilter = ""; S.paymentFilter = "";
+    S.boardQueue = QUEUES[k] ? k : ""; if (!S.boardQueue) S.filter = "all";
+    go("board");
+  }
+  // A number that opens its cars: a tile that is also a button.
+  function tileAttr(k) { return ' data-tileq="' + k + '" role="button" tabindex="0"'; }
   function queueBar() {
     var q = QUEUES[S.boardQueue]; if (!q) return "";
     return '<div class="queuebar"><span>Showing <b>' + esc(q[0]) + '</b> · ' + S.rows.filter(q[1]).length + '</span><button type="button" data-queueclear>Show all</button></div>';

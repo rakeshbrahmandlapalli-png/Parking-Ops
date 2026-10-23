@@ -1071,6 +1071,11 @@ html.ops-refined .rf-sec .pseg{display:grid;grid-auto-columns:minmax(0,1fr);grid
 html.ops-refined .rf-sec .pseg button{height:42px;margin:0;border:1px solid #cfd7e1;border-radius:var(--rf-r);background:#fff;color:#34465c;font-size:13px;font-weight:650;}
 html.ops-refined .rf-sec .pseg.yard button.on{box-shadow:inset 0 0 0 1px currentColor;font-weight:800;}
 html.ops-refined .rf-sec .pseg.yard button.on:not([class*=" y-"]),html.ops-refined .rf-sec .pseg.yard button.on.y-{background:var(--op-deep);border-color:var(--op-deep);color:#fff;}
+/* Mark as: a state already marked (Called, New booking, No show, Overstay, Complaint) is filled, like the yard. */
+html.ops-refined .rf-sec .pseg:not(.yard) button.on{background:var(--op-deep);border-color:var(--op-deep);color:#fff;font-weight:800;}
+html.ops-refined .rf-sec .pseg:not(.yard) button.on.nb{background:#b45f06;border-color:#b45f06;}
+html.ops-refined .rf-sec .pseg:not(.yard) button.on.cm{background:#b42318;border-color:#b42318;}
+html.ops-refined .rf-sec .pseg:not(.yard) button.on.n{background:#4a5a6e;border-color:#4a5a6e;}
 html.ops-refined .rf-early{margin-top:10px;}
 html.ops-refined .rf-early .link{font-size:13.5px;}
 html.ops-refined .rf-early .ptgo{width:100%;margin-top:8px;}
@@ -1105,3 +1110,6 @@ html.ops-refined .od-handover label{font-size:14px;font-weight:650;color:var(--o
 html.ops-refined .od-handover textarea{min-height:76px;padding:10px 12px;border-color:#cfd7e1;font-size:15px;color:var(--op-ink);}
 html.ops-refined .od-hrow small{color:var(--rf-mut);}
 html.ops-refined .od-save{min-height:38px;padding:0 14px;border:1px solid var(--op-deep);border-radius:var(--rf-r);background:var(--op-deep);color:#fff;font-size:13px;font-weight:650;}
+/* Summary, Hourly stats and Flights numbers open their cars: pressed and chosen states. */
+html.ops-refined .ops-strip > .tap:active,html.ops-refined .ops-tr.tap:active{background:#eef2f7;opacity:1;}
+html.ops-refined .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){box-shadow:inset 0 -3px 0 var(--brand);}

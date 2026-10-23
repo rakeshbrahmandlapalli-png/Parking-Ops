@@ -54,12 +54,21 @@
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
+  // Those numbers are tiles, not buttons: Enter or Space on one taps it.
+  document.addEventListener("keydown", function (e) {
+    var tile = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile) { e.preventDefault(); tile.click(); }
+  });
   document.addEventListener("click", async function (e) {
     if (S.me && e.target.closest && e.target.closest("#who.can-switch, [data-switchname]")) return openSwitchName();
     if (e.target.closest("[data-reload]")) return location.reload();
     // The second line of a row opens the car too, not only the reg.
     var opener = e.target.closest("[data-addflight]") ? null : e.target.closest("div[data-open]");
     if (opener && S.me && !$("panel").open) { var or = rowOf(opener); if (or) return openPanel(or); }
+    // A number on Summary, Hourly stats or Flights: its cars (tileAttr, flTileAttr).
+    var tile = S.me && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile && tile.dataset.tileq !== undefined) return openTile(tile.dataset.tileq);
+    if (tile) { S.flTile = (S.flTile || "") === tile.dataset.fltile ? "" : tile.dataset.fltile; return render(); }
     var t = e.target.closest("button,a"); if (!t) return;
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }

@@ -610,3 +610,6 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk .od-records .ops-record:nth-of-type(3n){border-right:1px solid var(--od-soft);}
  html.ops body.ops-desk .od-records .ops-record:nth-of-type(2n){border-right:0;}
 }
+/* Summary, Hourly stats and Flights numbers open their cars: pressed and chosen states. */
+html.ops .ops-strip > .tap:active,html.ops .ops-tr.tap:active{background:#eef2f7;opacity:1;}
+html.ops .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){box-shadow:inset 0 -3px 0 var(--brand);}
