@@ -51,6 +51,8 @@
       if (S.me && !$("panel").open) render();
     } catch (e) {}
   }
+  // Closing or reloading the app with Settings not saved: the browser asks first.
+  window.addEventListener("beforeunload", function (e) { if (dirtySecs().length) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
@@ -88,7 +90,9 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
-    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) { yi.setAttribute("data-off", ""); var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style"); } t.outerHTML = '<span class="note">Not set</span>'; return; }
+    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
+    if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
+    if (t.dataset.savedirty !== undefined) { dirtySecs().map(function (d) { return d.querySelector(".row-actions .btn.brand"); }).forEach(function (b) { if (b) b.click(); }); return; }
     if (t.dataset.savecap !== undefined) return saveCapacity(t);
     if (t.dataset.swipestep) { setSwipeChoice(t.dataset.swipestep); render(); return openMenu(); }
     if (t.dataset.swipeleft) { setSwipeLeftChoice(t.dataset.swipeleft); render(); return openMenu(); }
@@ -120,7 +124,7 @@
     if (t.dataset.pickshift) return chooseShift(t.dataset.pickshift);
     if (t.dataset.closeshift !== undefined) return $("shiftPick").close();
     if (t.dataset.bn && isOps() && t.dataset.bn === "flBtn") return go("flights");
-    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn") go("board"); return $(t.dataset.bn).click(); }
+    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn" && go("board") === false) return; return $(t.dataset.bn).click(); }
     if (t.dataset.mode) { setMode(t.dataset.mode); return openMenu(); }
     if (t.id === "logBtn") return go("summary");
     if (t.id === "flBtn") return checkFlights(t);
@@ -276,6 +280,7 @@
       if (tag) { tag.style.background = v; tag.style.borderColor = hexMix(v, "#000000", 0.15); tag.style.color = lightColour(v) ? "#1F1A00" : "#FFFFFF"; }
       var nt = e.target.parentNode.querySelector(".note"); if (nt) nt.outerHTML = '<button type="button" class="link" data-ycoff="' + esc(yc) + '">No colour</button>';
     }
+    if (S.view === "settings" && e.target.closest("[data-sec]")) showUnsaved();
   });
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
@@ -291,7 +296,7 @@
     }
     if (t.id === "schedOn" && S.autoImport) { var on1 = t.checked; return biSchedChange(S.autoImport, function (d) { d.on = on1; }); }
     if (t.dataset.schedtime !== undefined && S.autoImport) { var v1 = t.value, i1 = Number(t.dataset.schedtime); return biSchedChange(S.autoImport, function (d) { d.times[i1] = v1; }); }
-    if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
+    if (t.id === "sheetPick") { if (!leaveOk()) { t.value = S.sheetId; return; } switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
       var y = t.value;

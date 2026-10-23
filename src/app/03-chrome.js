@@ -176,6 +176,7 @@
     if (id === (S.switching ? S.switching.id : S.sheetId)) return;
     // Operations: Drops | Picks on Hourly stats or Shift summary stays on that page.
     var stay = isOps() && (S.view === "summary" || S.view === "stats");
+    if (!stay && !leaveOk()) return;
     switchSheet(id, { stay: stay });
   }
   function pickerHtml(shift) {
@@ -233,7 +234,9 @@
       html = '<div class="msg">This screen couldn\'t be shown just now.<br><br>' + (S.view !== "board" ? '<button type="button" class="btn brand" data-view="board">Back to the board</button> ' : "") +
         '<button type="button" class="btn ghost" data-reload>Reload the app</button></div>';
     }
+    var keep = S.view === "settings" && $("main").dataset.view === "settings" && hasFeatures() ? setEdits() : null;
     setMain(html, S.view);
+    if (S.view === "settings" && hasFeatures()) settingsDrawn(keep);
     snapSave();
     if (flashId) { var el = document.querySelector('[data-id="' + flashId + '"]'); if (el) { el.classList.add("flash"); setTimeout(function () { el.classList.remove("flash"); }, 1500); } flashId = null; }
   }
@@ -249,5 +252,5 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 

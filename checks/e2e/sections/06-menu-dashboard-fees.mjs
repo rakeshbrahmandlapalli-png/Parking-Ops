@@ -402,6 +402,7 @@ for (const role of ["owner", "manager"]) await scenario(async () => {
   await open(page); await sleep(300);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menuBody [data-view="settings"]'); await sleep(400);
   if (role === "manager") return check("Yard colours settings: a manager doesn't get them", await page.locator("[data-saveycol]").count() === 0 && await page.locator("[data-savecap]").count() === 1);
+  await page.click('[data-setsec="ycol"]'); await sleep(200);
   check("Yard colours settings: the owner gets a colour per yard", await page.locator("[data-ycol]").count() === 3 && await page.inputValue('[data-ycol="MY"]') === "#2e7d32");
   await page.locator('[data-ycol="GS"]').evaluate((e) => { e.value = "#ef6c00"; e.dispatchEvent(new Event("input", { bubbles: true })); });
   check("Yard colours settings: the tag shows the colour as it's chosen", await page.locator('.ycol:has([data-ycol="GS"]) .code').evaluate((e) => getComputedStyle(e).backgroundColor) === rgb("#EF6C00"));
