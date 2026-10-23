@@ -4368,6 +4368,11 @@
     var h = '<div class="ops-dashboard"><div class="dash-toolbar"><div class="dash-heading"><span class="dash-eyebrow">OFFICE / OVERVIEW</span><h1>Operations dashboard</h1></div><div class="dchips" role="group" aria-label="Period">' + DASH_PERIODS.map(function (x) {
       return '<button type="button" data-dashp="' + x[0] + '" class="' + (f === x[0] ? "on" : "") + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + "</button>";
     }).join("") + "</div></div>";
+    // Standard with features and Operations: the loading and error states keep the loaded page's head, so the period bar doesn't change look.
+    if (isStdPlus() && (!S.dash || S.dash.error)) {
+      if (!S.dash) loadDash();
+      return '<div class="ops-dashboard ops-v2 od">' + odHead(S.dash ? "" : "Loading…", !S.dash) + (S.dash ? '<div class="od-err" role="alert">' + esc(S.dash.error) + "</div>" : "") + "</div>";
+    }
     if (!S.dash) { loadDash(); return h + '<div class="empty">Loading…</div></div>'; }
     if (S.dash.error) return h + '<div class="alert">' + esc(S.dash.error) + '</div><button type="button" class="btn ghost small" data-dashreload>Try again</button></div>';
     var D = S.dash, sum = function (a, k) { return a.reduce(function (t, x) { return t + (+x[k] || 0); }, 0); };
@@ -4481,6 +4486,13 @@
     if (S.dash) S.dash.handover = r.data || { note: text };
     toast(text ? "Handover note saved" : "Handover note cleared"); render();
   }
+  // The dashboard head: updated line, Refresh and the period bar, the same while loading as when loaded.
+  function odHead(updated, busy) {
+    return '<div class="od-head"><h1>Dashboard</h1><div class="od-tools"><span class="od-updated ops-updated">' + esc(updated) + '</span><button type="button" class="od-refresh" data-dashreload' + (busy ? " disabled" : "") + '>Refresh</button><div class="dchips" role="group" aria-label="Period">' + DASH_PERIODS.map(function (p) {
+      var on = p[0] === (S.dashDays || "7");
+      return '<button type="button" data-dashp="' + p[0] + '" class="' + (on ? "on" : "") + '" aria-pressed="' + on + '">' + p[1] + "</button>";
+    }).join("") + "</div></div></div>";
+  }
   function renderOpsDashboard(x) {
     var cap = +S.company.capacity || 0, PK = x.PK, D = x.D, total = +PK.total || 0, late = +PK.late || 0;
     var period = DASH_PERIODS.filter(function (p) { return p[0] === (S.dashDays || "7"); })[0][1];
@@ -4496,10 +4508,7 @@
     var showExit = !!E && (fee > 0 || +E.paid > 0), exitReview = showExit ? (+E.unpaid || 0) + (+E.no_photo || 0) : 0;
     var unpaidSum = x.sum(x.left, "due"), taken = x.taken;
 
-    var h = '<div class="ops-dashboard ops-v2 od"><div class="od-head"><h1>Dashboard</h1><div class="od-tools"><span class="od-updated ops-updated">Updated ' + esc(hhmm(S.dashUpdated)) + '</span><button type="button" class="od-refresh" data-dashreload>Refresh</button><div class="dchips" role="group" aria-label="Period">' + DASH_PERIODS.map(function (p) {
-      var on = p[0] === (S.dashDays || "7");
-      return '<button type="button" data-dashp="' + p[0] + '" class="' + (on ? "on" : "") + '" aria-pressed="' + on + '">' + p[1] + "</button>";
-    }).join("") + "</div></div></div>";
+    var h = '<div class="ops-dashboard ops-v2 od">' + odHead("Updated " + hhmm(S.dashUpdated));
 
     // Needs attention: only what someone has to act on.
     var items = [];

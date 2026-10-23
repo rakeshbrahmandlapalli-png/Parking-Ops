@@ -473,6 +473,7 @@ html.ops-refined body:not(.ops-desk) .bn-desk,html.ops-refined body:not(.ops-des
  html.ops-refined body.ops-desk .od-row{display:contents;}
  html.ops-refined body.ops-desk .od-head{grid-column:1/-1;order:1;justify-self:end;margin:0;}
  html.ops-refined body.ops-desk .od-attn{grid-column:1/-1;order:2;}
+ html.ops-refined body.ops-desk .od-err{grid-column:1/-1;order:2;}
  html.ops-refined body.ops-desk .od-parked{grid-column:span 4;order:3;align-self:stretch;}
  html.ops-refined body.ops-desk .od-work{grid-column:span 4;order:4;align-self:stretch;}
  html.ops-refined body.ops-desk .od-queues{grid-column:span 4;order:5;align-self:stretch;}
