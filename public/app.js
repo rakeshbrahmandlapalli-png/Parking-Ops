@@ -890,7 +890,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -5269,6 +5269,7 @@
       '<label for="clLook">LOOK</label><select id="clLook">' + LOOKS.map(function (l) { return '<option value="' + l[0] + '"' + ((b.theme || "") === l[0] ? " selected" : "") + ">" + l[1] + "</option>"; }).join("") + "</select>" +
       '<p class="hint">How their app looks to their team. Their phones change the next time the app refreshes.</p>' +
       '<label class="check"><input type="checkbox" id="clPicksYard"' + (b.picks_yard ? " checked" : "") + "> Location on PICKS (instead of NO SHOW)</label>" +
+      '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5284,7 +5285,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -6182,6 +6183,8 @@
   }
 
   // Physical yard positions are shared, confirmed online, and independent of a shift.
+  // An add-on: only clients given it on the platform page (Clients → Edit, brand.lane_planner).
+  function lanePlanner() { return !!(S.company && S.company.brand && S.company.brand.lane_planner); }
   var LP = { data: null, loading: false, error: '', selected: '', query: '', yard: '', busy: false, seq: 0 };
   function laneById(id) { return LP.data && LP.data.lanes.filter(function (x) { return x.id === id; })[0]; }
   function laneCar(id) { return LP.data && LP.data.cars.filter(function (x) { return x.id === id; })[0]; }
@@ -6225,12 +6228,12 @@
     choices.sort(function (a,b) { return b.rank-a.rank || a.lane.name.localeCompare(b.lane.name); }); return choices[0] || null;
   }
   async function loadLanes() {
-    if (!S.me || S.platform || LP.loading || LP.busy) return;
+    if (!S.me || S.platform || !lanePlanner() || LP.loading || LP.busy) return;
     var seq = ++LP.seq, company = S.company.id; LP.loading = true; LP.error = '';
     try {
       var r = await sb.rpc('lane_get');
       if (seq !== LP.seq || !S.company || S.company.id !== company) return;
-      if (r.error) LP.error = /lane_get|PGRST202/.test(r.error.message || '') ? 'Lane planner needs database part 104.' : r.error.message;
+      if (r.error) LP.error = /lane_get|PGRST202/.test(r.error.message || '') ? 'Lane planner needs database part 104.' : /not switched on/.test(r.error.message || '') ? 'The yard planner is not switched on for your company.' : r.error.message;
       else LP.data = r.data;
     } catch (e) { if (seq === LP.seq) LP.error = 'Could not load the yard. Check your connection.'; }
     finally { if (seq === LP.seq) { LP.loading = false; if (S.view === 'lanes') render(); } }
@@ -6674,7 +6677,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", true], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +

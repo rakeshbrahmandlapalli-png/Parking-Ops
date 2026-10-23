@@ -10,7 +10,7 @@ const ok=(name,c)=>{console.log((c?'PASS ':'FAIL ')+name);c?passed++:failed++;};
 const no=async(name,fn,re)=>{try{await fn();ok(name,false);}catch(e){ok(name,!re||re.test(e.message));if(re&&!re.test(e.message))console.log(e.message);}};
 await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
-create table companies(id uuid primary key,yards text[]);
+create table companies(id uuid primary key,yards text[],brand jsonb default '{"lane_planner":true}');
 create table staff(id uuid primary key,user_id uuid,company_id uuid,name text,role text,acting text,active boolean default true,extra text[] default '{}');
 create table bookings(id uuid primary key,company_id uuid,kind text,reg text,ref text,drop_at timestamptz,return_at timestamptz,make text default '',yard text default 'Y',yard_before_t text default '',intake text default '',sent_at timestamptz,cleared_at timestamptz,removed_at timestamptz,updated_at timestamptz default now());
 create table activity(id bigint generated always as identity,company_id uuid,at timestamptz default clock_timestamp(),reg text,action text,value text,staff_name text);
@@ -23,6 +23,8 @@ for(const [n,c,r]of [[11,1,'owner'],[12,1,'bongo'],[13,1,'view'],[21,2,'owner']]
 for(const [n,c,k,r,ref]of [[31,1,'picks','A11AAA','ONE'],[32,1,'drops','A11AAA','ONE'],[33,1,'drops','B22BBB','TWO'],[34,1,'drops','C33CCC','THREE'],[35,1,'drops','D44DDD','FOUR'],[41,2,'drops','Z99ZZZ','OTHER']])await q("insert into bookings(id,company_id,kind,reg,ref,drop_at,return_at,intake)values($1,$2,$3,$4,$5,'2026-10-20T10:00Z','2026-10-25T10:00Z','Collected')",[id(n),id(c),k,r,ref]);
 const sql=fs.readFileSync(new URL('../setup/104-lane-planner.sql',import.meta.url),'utf8');
 await db.exec(sql);await db.exec(sql);ok('setup applies twice',true);
+const addon=fs.readFileSync(new URL('../setup/107-lane-planner-addon.sql',import.meta.url),'utf8');
+await db.exec(addon);await db.exec(addon);ok('add-on part applies twice',true);
 const user=async n=>q("select set_config('test.uid',$1,false)",[n?id(n):'']);
 await user(11);
 let d=await call('lane_get');ok('read starts empty and does not invent positions',d.positions.length===0&&d.lanes.length===0);
@@ -97,4 +99,11 @@ ok('a repeat visit by the same registration stays separate',d.cars.filter(x=>x.r
 ok('a PICKS car with no location shows its DROPS car yard',d.cars.find(x=>x.ref==='FIVE').yard==='S');
 ok('old PICKS history is not listed as parked',!d.cars.some(x=>x.ref==='OLD'));
 ok('a car whose DROPS car was SENT is not listed unplaced',!d.cars.some(x=>x.ref==='GONE'));
+// Part 107: a client without the add-on is refused everywhere; data comes back when switched on.
+await user(11);await q("update companies set brand='{}' where id=$1",[id(1)]);
+await no('add-on off: reading refused',()=>call('lane_get'),/not switched on/);
+await no('add-on off: adding an area refused',()=>call('lane_save',['Y','Off lane',2,'front','lane']),/not switched on/);
+await no('add-on off: moving refused',()=>move(36,null,null,9,null),/not switched on/);
+await q("update companies set brand='{\"lane_planner\":true}' where id=$1",[id(1)]);
+d=await call('lane_get');ok('add-on back on: lanes kept',d.lanes.length===4);
 await db.close();console.log(`${passed} passed, ${failed} failed`);process.exitCode=failed?1:0;

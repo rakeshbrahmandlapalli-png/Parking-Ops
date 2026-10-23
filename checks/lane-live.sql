@@ -2,7 +2,8 @@
 -- Supabase MCP. Everything happens inside one DO block that ends by raising an
 -- error, so the test company, users, bookings, lanes and moves are all rolled
 -- back and nothing is kept. The error text is the result line. 22 Oct 2026:
--- every check gave the expected answer and nothing was left behind.
+-- every check gave the expected answer and nothing was left behind. 23 Oct: with
+-- part 107 the test companies have the add-on; addon_off checks the refusal.
 do $t$
 declare r text := ''; c1 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid();
  u1 uuid := gen_random_uuid(); u2 uuid := gen_random_uuid(); u3 uuid := gen_random_uuid(); u4 uuid := gen_random_uuid();
@@ -10,7 +11,7 @@ declare r text := ''; c1 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid()
  p1 uuid := gen_random_uuid(); d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid(); d3 uuid := gen_random_uuid(); p4 uuid := gen_random_uuid(); x1 uuid := gen_random_uuid();
  la jsonb; ho jsonb; g jsonb; n int;
 begin
- insert into companies(id,name,slug,yards) values (c1,'Lane test (rolled back)','lane-test-'||left(c1::text,8),array['Y','S','T']),(c2,'Lane test 2','lane-test2-'||left(c2::text,8),array['Y','T']);
+ insert into companies(id,name,slug,yards,brand) values (c1,'Lane test (rolled back)','lane-test-'||left(c1::text,8),array['Y','S','T'],'{"lane_planner":true}'),(c2,'Lane test 2','lane-test2-'||left(c2::text,8),array['Y','T'],'{"lane_planner":true}');
  insert into auth.users(id) values (u1),(u2),(u3),(u4);
  insert into staff(company_id,user_id,name,role,active) values (c1,u1,'TEST OWNER','owner',true),(c1,u2,'TEST DRIVER','bongo',true),(c1,u3,'TEST VIEW','view',true),(c2,u4,'OTHER OWNER','owner',true);
  insert into sheets(id,company_id,kind,day) values (sd,c1,'drops',current_date),(sp,c1,'picks',current_date),(sd2,c2,'drops',current_date);
@@ -56,6 +57,8 @@ begin
  begin perform public.lane_move(x1,(la->>'id')::uuid,1,0,4); r:=r||' cross_lane=NOT_REFUSED'; exception when others then r:=r||' cross_lane='||sqlerrm; end;
  begin perform public.lane_move(d2,null,null,1,null); r:=r||' cross_car=NOT_REFUSED'; exception when others then r:=r||' cross_car='||sqlerrm; end;
  begin update parking_lanes set capacity=99; r:=r||' direct_write=NOT_REFUSED'; exception when others then r:=r||' direct_write='||sqlerrm; end;
+ reset role; update companies set brand='{}' where id=c2; set local role authenticated;
+ begin perform public.lane_get(); r:=r||' addon_off=NOT_REFUSED'; exception when others then r:=r||' addon_off='||sqlerrm; end;
  perform set_config('request.jwt.claims','',true);
  begin perform public.lane_get(); r:=r||' anon=NOT_REFUSED'; exception when others then r:=r||' anon='||sqlerrm; end;
  raise exception 'ROLLED BACK. %', r;

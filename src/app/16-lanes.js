@@ -1,4 +1,6 @@
   // Physical yard positions are shared, confirmed online, and independent of a shift.
+  // An add-on: only clients given it on the platform page (Clients → Edit, brand.lane_planner).
+  function lanePlanner() { return !!(S.company && S.company.brand && S.company.brand.lane_planner); }
   var LP = { data: null, loading: false, error: '', selected: '', query: '', yard: '', busy: false, seq: 0 };
   function laneById(id) { return LP.data && LP.data.lanes.filter(function (x) { return x.id === id; })[0]; }
   function laneCar(id) { return LP.data && LP.data.cars.filter(function (x) { return x.id === id; })[0]; }
@@ -42,12 +44,12 @@
     choices.sort(function (a,b) { return b.rank-a.rank || a.lane.name.localeCompare(b.lane.name); }); return choices[0] || null;
   }
   async function loadLanes() {
-    if (!S.me || S.platform || LP.loading || LP.busy) return;
+    if (!S.me || S.platform || !lanePlanner() || LP.loading || LP.busy) return;
     var seq = ++LP.seq, company = S.company.id; LP.loading = true; LP.error = '';
     try {
       var r = await sb.rpc('lane_get');
       if (seq !== LP.seq || !S.company || S.company.id !== company) return;
-      if (r.error) LP.error = /lane_get|PGRST202/.test(r.error.message || '') ? 'Lane planner needs database part 104.' : r.error.message;
+      if (r.error) LP.error = /lane_get|PGRST202/.test(r.error.message || '') ? 'Lane planner needs database part 104.' : /not switched on/.test(r.error.message || '') ? 'The yard planner is not switched on for your company.' : r.error.message;
       else LP.data = r.data;
     } catch (e) { if (seq === LP.seq) LP.error = 'Could not load the yard. Check your connection.'; }
     finally { if (seq === LP.seq) { LP.loading = false; if (S.view === 'lanes') render(); } }

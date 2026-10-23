@@ -1,6 +1,6 @@
 import { check,sleep,TONIGHT,TOMORROW,iso,makeDb,phone,open,toast,noSideScroll,scenario,browser,fs } from '../harness.mjs';
 function fixture(){
- const db=makeDb();db.company.brand={theme:'ops',colour:'#F9A01B',ink:'#172536',short:'TakeOff'};
+ const db=makeDb();db.company.brand={theme:'ops',colour:'#F9A01B',ink:'#172536',short:'TakeOff',lane_planner:true};
  db.laneData={can_move:true,can_manage:true,moves:[],lanes:[
   {id:'la',yard:'Y',name:'Lane A',capacity:5,access:'front',kind:'lane',revision:2},
   {id:'lb',yard:'Y',name:'Lane B',capacity:5,access:'both',kind:'lane',revision:3},
@@ -57,9 +57,20 @@ await scenario(async()=>{
  await page.context().setOffline(false);
 },'lanes');
 for(const theme of ['','stdplus','cards','premium','board'])await scenario(async()=>{
- const db=fixture();db.company.brand.theme=theme;const page=await phone(browser,db);
+ const db=fixture();db.company.brand.theme=theme;db.company.brand.lane_planner=true;const page=await phone(browser,db);
  if(['cards','premium','board'].includes(theme))await page.addInitScript(()=>localStorage.setItem('takeoff_mode','dark'));
  await enter(page);await page.locator('.lp-lane [data-lpcar="c1"]').click();
  check('lanes: '+(theme||'standard')+' look renders movement controls without errors',await page.locator('#lpMove').count()===1&&page.__errors.length===0);
  if(['cards','premium','board'].includes(theme)) check('lanes: '+theme+' dark selection stays dark',await page.locator('.lp-lane .lp-car.selected').first().evaluate(x=>getComputedStyle(x).backgroundColor)==='rgb(41, 61, 83)');
+},'lanes');
+await scenario(async()=>{
+ // An add-on: a client without it never sees the Yard planner and never calls lane_get.
+ for(const theme of ['ops','']){const db=fixture();db.company.brand={theme};const page=await phone(browser,db);await open(page);
+  await page.locator('#menuBtn:visible,[data-bn="menuBtn"]:visible').first().click();await sleep(200);
+  check('lanes add-on off ('+(theme||'standard')+'): no Yard planner in the menu',await page.locator('[data-view="lanes"]').count()===0);
+  check('lanes add-on off ('+(theme||'standard')+'): the yard is never read',!db.calls.some(x=>x.fn==='lane_get'));}
+},'lanes');
+await scenario(async()=>{
+ const db=fixture();db.laneError='The yard planner is not switched on for your company.';const page=await phone(browser,db);await enter(page).catch(()=>{});await sleep(250);
+ check('lanes: switched off on the server says so',/not switched on/.test(await page.locator('#main').innerText()));
 },'lanes');
