@@ -172,6 +172,21 @@ function rpc(db, fn, a) {
     return sh.id;
   };
   switch (fn) {
+    case "lane_get": if (db.laneError) throw new Error(db.laneError); return db.laneData || {lanes:[],positions:[],cars:[],moves:[],can_move:true,can_manage:true};
+    case "lane_save": {
+      if(db.laneWriteError) throw new Error(db.laneWriteError);
+      const l={id:"newlane"+db.laneData.lanes.length,yard:a.p_yard,name:a.p_name,capacity:a.p_capacity,access:a.p_access,kind:a.p_kind,revision:0}; db.laneData.lanes.push(l);return l;
+    }
+    case "lane_move": {
+      if(db.laneWriteError) throw new Error(db.laneWriteError);
+      const d=db.laneData,l=d.lanes.find(x=>x.id===a.p_lane);let p=d.positions.find(x=>x.booking_id===a.p_booking);
+      if ((p?.revision||0)!==a.p_revision) throw new Error("The car moved. Refresh before confirming.");
+      if(l && l.revision!==a.p_lane_revision) throw new Error("The destination changed. Refresh before confirming.");
+      if(p?.lane_id) d.lanes.find(x=>x.id===p.lane_id).revision++;
+      if(!p) {p={booking_id:a.p_booking,revision:0};d.positions.push(p);}
+      Object.assign(p,{lane_id:a.p_lane,position:a.p_position,revision:p.revision+1});if(l)l.revision++;
+      return d;
+    }
     case "key_check_get": return db.keyChecks?.[a.p_sheet] || { session: null, entries: [] };
     case "key_check_start": {
       if (db.me.role === "view") throw new Error("You cannot check keys.");
@@ -470,6 +485,7 @@ const pickKind = async (page, kind) => {
 
 // Each section stands alone: if one breaks part-way, it's reported and the rest still run.
 async function scenario(fn, tag) {
+  if (process.env.LANES_ONLY && tag !== 'lanes') return;
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;

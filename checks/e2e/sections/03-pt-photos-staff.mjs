@@ -303,6 +303,10 @@ await scenario(async () => {
   check("Parking Ops: Location on PICKS is off until ticked", !(await page.isChecked("#clPicksYard")));
   await page.check("#clPicksYard"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: ticking Location on PICKS saves picks_yard on", db.clientSaves[db.clientSaves.length - 1].brand.picks_yard === true, db.clientSaves[db.clientSaves.length - 1]);
+  check("Parking Ops: Yard planner add-on is off unless ticked", db.clientSaves[db.clientSaves.length - 1].brand.lane_planner === false);
+  await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLanes");
+  await page.check("#clLanes"); await page.click("#clGo"); await sleep(400);
+  check("Parking Ops: ticking Yard planner (add-on) saves lane_planner on", db.clientSaves[db.clientSaves.length - 1].brand.lane_planner === true, db.clientSaves[db.clientSaves.length - 1]);
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
   await page.selectOption("#clLook", "cards"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: choosing Cards saves theme cards", (db.clientSaves || []).slice(-1)[0].brand.theme === "cards");

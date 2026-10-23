@@ -1,5 +1,13 @@
 # Checks
 
+Lane planner (part 104): `node checks/lane-planner.mjs` tests PostgreSQL access,
+physical reachability, booking pairs, stale revisions, audit and tenant isolation
+on PGlite. `LANES_ONLY=1 node checks/e2e/run.mjs` tests its browser flows.
+Use `LANE_SHOTS=/absolute/path` with that command for synthetic-data previews.
+Setup 104 is applied on the live Ops DB (22 Oct); `lane-live.sql` checks it there and rolls back. No positions
+are seeded: record actual lane positions from the back towards the exit.
+
+
 Run these before merging a change. Every line must say ok / PASS.
 
 Board collections access (part 105): `npm install @electric-sql/pglite@0.5.11`
