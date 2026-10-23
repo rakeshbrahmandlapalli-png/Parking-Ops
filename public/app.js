@@ -377,7 +377,7 @@
     if (o.archive) S.archiveSheet = o.archive;
     else if (S.archiveSheet && S.archiveSheet.id !== id) S.archiveSheet = null;   // leaving an archived sheet
     S.switching = null; loadSeq++;
-    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
+    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null; S.flTile = "";
     if (o.filter) S.filter = o.filter;
     S.view = stay ? S.view : "board"; if (stay) S.activity = null;
     S.rowsSheet = null;                                      // fresh sheet: filters reset in takeRows
@@ -907,8 +907,32 @@
   var QUEUES = {
     called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
     sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
-    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }]
+    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }],
+    // A tapped number on Summary or Hourly stats: the cars it counts.
+    way: ["On the way", function (r) { return !!r.sent_at && !r.cleared_at; }],
+    over: ["Overstays", function (r) { return !!r.overstay; }],
+    comp: ["Complaints", function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }],
+    sentall: ["Sent", function (r) { return !!r.sent_at; }],
+    back: ["Collected", function (r) { return !!r.cleared_at; }],
+    left: ["Still to collect", function (r) { return !r.cleared_at; }],
+    owed: ["Overstay still owed", function (r) { var d = !r.charge_method && chargeDue(r); return !!(d && d.amount > 0); }],
+    cash: ["Overstay paid: cash", function (r) { return r.charge_method === "cash"; }],
+    card: ["Overstay paid: card", function (r) { return r.charge_method === "card"; }],
+    waived: ["Overstay waived", function (r) { return r.charge_method === "waived"; }],
+    carsin: ["Cars in", function (r) { return r.intake === "Collected"; }],
+    come: ["Still to come", function (r) { return !r.intake; }],
+    noshow: ["No shows", function (r) { return r.intake === "No Show"; }],
+    rtc: ["RTC", function (r) { return r.intake === "RTC"; }],
+    pdone: ["Completed", function (r) { return r.intake === "Collected" || r.intake === "RTC"; }]
   };
+  // Open the board on one of those queues ("" = the whole sheet).
+  function openTile(k) {
+    keyModeSet(false); S.q = ""; S.yardFilter = ""; S.catFilter = ""; S.paymentFilter = "";
+    S.boardQueue = QUEUES[k] ? k : ""; if (!S.boardQueue) S.filter = "all";
+    go("board");
+  }
+  // A number that opens its cars: a tile that is also a button.
+  function tileAttr(k) { return ' data-tileq="' + k + '" role="button" tabindex="0"'; }
   function queueBar() {
     var q = QUEUES[S.boardQueue]; if (!q) return "";
     return '<div class="queuebar"><span>Showing <b>' + esc(q[0]) + '</b> · ' + S.rows.filter(q[1]).length + '</span><button type="button" data-queueclear>Show all</button></div>';
@@ -2956,14 +2980,14 @@
     if (!drops && canPickFlight()) pickFlightF = fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
     var docs = docBlockHtml(r);
     var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
-    var extra = "", W = function (t) { return rf ? sentence(t) : t; };
+    var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
-      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">' + W("OVERSTAY") + "</button>";
-      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '">' + W("COMPLAINT") + "</button>";
+      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
+      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
-      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '">' + W("CALLED") + "</button>";
-      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">' + W("NEW BOOKING") + "</button>";
-      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">' + W("NO SHOW") + "</button>";
+      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '"' + AP(r.pick_called === "Called") + ">" + W("CALLED") + "</button>";
+      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '"' + AP(r.pick_called === "New Booking") + ">" + W("NEW BOOKING") + "</button>";
+      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '"' + AP(r.intake === "No Show") + ">" + W("NO SHOW") + "</button>";
     }
     var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
     var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
@@ -3443,7 +3467,7 @@
   function chargeLines() {
     if (!(+(S.company && S.company.overstay_rate))) return [];
     var t = chargeTotals();
-    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due)], ["Overstay paid: cash", money(t.cash)], ["Overstay paid: card", money(t.card)], ["Overstay waived", money(t.waived)]];
+    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due), "owed"], ["Overstay paid: cash", money(t.cash), "cash"], ["Overstay paid: card", money(t.card), "card"], ["Overstay waived", money(t.waived), "waived"]];
   }
   function openDropsStats() {
     var D = dropsStats();
@@ -3502,13 +3526,15 @@
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
-  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
+  // x[2], when given, is the tile's tap: attributes from tileAttr() or flTileAttr().
+  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div" + (x[2] ? ' class="tap"' + x[2] : "") + "><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
   function opsPanel(title, aside, body, foot) {
     return '<section class="ops-card"><header><strong>' + esc(title) + "</strong>" + (aside ? "<small>" + esc(aside) + "</small>" : "") + "</header>" + body + (foot ? '<p class="ops-foot">' + esc(foot) + "</p>" : "") + "</section>";
   }
   // A table: the first cell is the label (trusted HTML), the rest numbers.
+  // A row with .tap (attributes from tileAttr) opens its cars.
   function opsTable(head, rows, total) {
-    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + '" style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
+    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + (c.tap ? ' tap"' + c.tap : '"') + ' style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
     return (head ? line(head, "th") : "") + rows.map(function (r) { return line(r); }).join("") + (total ? line(total, "tot") : "");
   }
   // ── Operations on a wide screen (900 px and up, ops.css "wide screen") ──
@@ -3842,16 +3868,16 @@
     var desk = opsDesk(), h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
     if (sh.kind === "drops") {
       var D = dropsStats(), owed = chargeLines();
-      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) + statsCols(
+      h += opsStrip([["Due back", D.total.due, tileAttr("")], ["Sent", D.total.sent, tileAttr("sentall")], ["Collected", D.total.done, tileAttr("back")], ["Still to collect", D.total.due - D.total.done, tileAttr("left")]]) + statsCols(
         opsPanel("Returns by booked hour", desk ? "Due and collected" : "", (desk ? statBars(D.hours.map(function (x) { return [x.label, x.due, x.done]; })) : "") + opsTable(["Hour", "Due", "Sent", "Collected"],
           D.hours.map(function (x) { return [esc(x.label), x.due, x.sent, x.done]; }).concat(D.over.due ? [["Overstays", D.over.due, D.over.sent, D.over.done]] : []),
           ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : ""),
         opsPanel("Shift breakdown", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])) +
         opsPanel("Collected lately", "", opsTable(null, [["Last 30 minutes", D.last30], ["Last 60 minutes", D.last60]])) +
-        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
+        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { var l = [esc(x[0]), x[1]]; l.tap = tileAttr(x[2]); return l; }))) : ""));
     } else {
       var P = picksStats(), cats = catLines();
-      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
+      h += opsStrip([["Scheduled", P.totalSched, tileAttr("")], ["Completed", P.totalDone, tileAttr("pdone")], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
         opsPanel("Arrivals by booked hour", desk ? "Scheduled and completed" : "", (desk ? statBars(P.hours.map(function (x) { return [x.label, x.sched, x.done]; })) : "") + opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
           "Completed counts Collected and RTC, by booked arrival hour."),
         (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
@@ -4017,12 +4043,15 @@
 
   // ── flights ───────────────────────────────
   var FLIGHT_WORD = { noflight: "No flight number · collection time", "": "Not checked yet", scheduled: "Scheduled", expected: "Running late", airborne: "In the air", delayed: "DELAY", landed: "Landed", cancelled: "CANCELLED" };
+  // A tapped number on a phone's Flights page shows only those flights (S.flTile; "" = all).
+  function flTileOk(r) { var t = S.flTile || "", st = r.flight_status; return !t || st === t || (t === "delayed" && st === "expected"); }
+  function flTileAttr(k) { var on = (S.flTile || "") === k; return ' data-fltile="' + k + '" role="button" tabindex="0" aria-pressed="' + on + '"'; }
   function renderFlights() {
     var sh = sheet();
     if (!sh || sh.kind !== "drops") return '<div class="msg">Choose a DROPS sheet at the top to see its flights.</div>';
     if (!S.runs) loadRuns();
     var all = S.rows.filter(function (r) { return r.flight; }).sort(function (a, b) { return orderAt(a) < orderAt(b) ? -1 : 1; });
-    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); });
+    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); }), shown = rows.filter(flTileOk);
     function n(st) { return rows.filter(function (r) { return r.flight_status === st; }).length; }
     function last(src) {
       var run0 = (S.runs || []).filter(function (x) { return x.source === src; })[0];
@@ -4031,29 +4060,29 @@
       return esc(dayShort(run0.at) + " " + hhmm(run0.at)) + (res.error ? ' · <span class="bad">' + esc(res.error) + "</span>" : "");
     }
     if (opsDesk()) return opsFlightsDesk(sh);
-    if (isOps()) return opsFlights(sh, all, rows, manual, n);
+    if (isOps()) return opsFlights(sh, all, rows, manual, n, shown);
     var h = '<div class="pad"><h2 class="title">' + esc(sheetLabel(sh)) + "</h2>" +
-      '<div class="stats"><div class="stat"><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat"><span>Landed</span><strong class="num">' + n("landed") +
-      '</strong></div><div class="stat"><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat"><span>Cancelled</span><strong class="num">' + n("cancelled") +
+      '<div class="stats"><div class="stat tap"' + flTileAttr("") + '><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat tap"' + flTileAttr("landed") + '><span>Landed</span><strong class="num">' + n("landed") +
+      '</strong></div><div class="stat tap"' + flTileAttr("delayed") + '><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat tap"' + flTileAttr("cancelled") + '><span>Cancelled</span><strong class="num">' + n("cancelled") +
       '</strong></div></div><p class="note">Timetable last checked: ' + last("schedule") + "<br>Live positions last checked: " + last("live") + "</p>" +
       (canCheckFlights() ? '<div class="row-actions">' + checksLeftHtml() + '<button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
       "</div>" + missingHtml() + manualHtml(manual) + (missingFlights().length || manual.length ? '<div class="sec">WITH FLIGHT NUMBERS</div>' : "");
-    return h + (rows.length ? rows.map(function (r) {
+    return h + (shown.length ? shown.map(function (r) {
       return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
         '<div class="l2 num"><span class="l2a">' + esc(FLIGHT_WORD[r.flight_status] || r.flight_status) + (r.flight_note ? " · " + esc(r.flight_note) : "") + '</span><span class="l2b">' + (isPremium() ? "" : " · ") + esc(r.sched_time || hhmm(r.return_at)) +
         (r.est_time ? ' &rarr; <span class="eta' + (r.est_time === "DELAY" ? " dly" : "") + '">' + esc(r.est_time) + "</span>" : "") + "</span></div></div></div>";
-    }).join("") : '<div class="msg">No flight numbers on this sheet.</div>');
+    }).join("") : '<div class="msg">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</div>");
   }
   // Operations: the numbers in a strip, then each flight with its times and a status badge.
-  function opsFlights(sh, all, rows, manual, n) {
+  function opsFlights(sh, all, rows, manual, n, shown) {
     function run(src) { return (S.runs || []).filter(function (x) { return !src || x.source === src; })[0]; }
     var lastRun = run(), tt = run("schedule");
     var h = opsSub(sh) + '<div class="ops-acts ops-check"><span class="ops-dot' + (lastRun ? "" : " never") + '">' + (lastRun ? "Checked at " + esc(hhmm(lastRun.at)) : "Not checked yet") + "</span>" +
       (canCheckFlights() ? checksLeftHtml() + '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button>' : "") + "</div>" +
-      opsStrip([["Flights", all.length], ["Landed", n("landed")], ["Delayed", n("delayed") + n("expected")], ["Cancelled", n("cancelled")]]) +
+      opsStrip([["Flights", all.length, flTileAttr("")], ["Landed", n("landed"), flTileAttr("landed")], ["Delayed", n("delayed") + n("expected"), flTileAttr("delayed")], ["Cancelled", n("cancelled"), flTileAttr("cancelled")]]) +
       missingHtml() + manualHtml(manual);
     function mins(t) { return /^\d{2}:\d{2}$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : null; }
-    var list = rows.map(function (r) {
+    var list = shown.map(function (r) {
       var st = r.flight_status || "", sched = r.sched_time || hhmm(r.return_at), est = r.est_time || "";
       var late = mins(est) !== null && mins(sched) !== null ? (mins(est) - mins(sched) + 1440 + 720) % 1440 - 720 : 0;
       var word = st === "landed" ? "Landed" : st === "cancelled" ? "Cancelled" : (st === "delayed" || st === "expected") && late > 0 ? "Delayed +" + late + " min" : st === "delayed" ? "Delayed" : FLIGHT_WORD[st] || st;
@@ -4065,7 +4094,7 @@
         (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : isRefined() ? "Est" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
         '<em class="ops-badge ' + tone + '">' + (isRefined() && r.flight_note && st !== "landed" && r.flight_note.indexOf(word) === 0 ? "" : esc(word) + (r.flight_note && st !== "landed" ? " · " : "")) + (r.flight_note && st !== "landed" ? esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
-    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
+    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</p>");
   }
   // Fill times and Check flights: owners, managers and the office any time;
   // drivers and terminal staff 2 an hour between both (the server counts).
@@ -4151,14 +4180,14 @@
         var due = d.filter(function (r) { return /£/.test(r.note); }), D = dropsStats();
         var back = d.filter(function (r) { return r.cleared_at; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), "big") + "</div>" +
-          opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length], ["Overstays", d.filter(function (r) { return r.overstay; }).length], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length]]) +
+          opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, tileAttr("way")], ["Overstays", d.filter(function (r) { return r.overstay; }).length, tileAttr("over")], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length, tileAttr("comp")]]) +
           (isRefined() ? opsPanel("Shift progress", "Collected", opsTable(null, [rfPart("Morning", "06:00–17:30", D.morning), rfPart("Night", "17:31–05:59", D.night)]))
             : opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])));
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), hasFeatures() ? "big" : "") +
-          kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length) +
-          kstat("over", "Overstays", d.filter(function (r) { return r.overstay; }).length) +
-          kstat("comp", "Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length) +
+          kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, "", "", "way") +
+          kstat("over", "Overstays", d.filter(function (r) { return r.overstay; }).length, "", "", "over") +
+          kstat("comp", "Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length, "", "", "comp") +
           kstat("morn", "Morning 06:00–17:30", D.morning.done + " / " + D.morning.due, miniBar(D.morning.done, D.morning.due)) +
           kstat("night", "Night 17:31–05:59", D.night.done + " / " + D.night.due, miniBar(D.night.done, D.night.due)) + "</div>";
         h += (due.length ? '<div class="section-label">Money due</div><div class="box">' + due.map(function (r) { return '<div class="rowline"><div class="grow"><strong>' + esc(r.reg) + "</strong> · " + esc(r.name) + '<div class="note">' + esc(r.note) + "</div></div></div>"; }).join("") + "</div>" : "");
@@ -4167,13 +4196,13 @@
         p.filter(function (r) { return r.intake === "Collected"; }).forEach(function (r) { var k = hhmm(r.intake_at).slice(0, 2); hours[k] = (hours[k] || 0) + 1; });
         var cin = p.filter(function (r) { return r.intake === "Collected"; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars in", cin + " / " + p.length, progressBar(cin, p.length), "big") + "</div>" +
-          opsStrip([["Still to come", p.filter(function (r) { return !r.intake; }).length], ["No shows", p.filter(function (r) { return r.intake === "No Show"; }).length], ["RTC", p.filter(function (r) { return r.intake === "RTC"; }).length]]) +
+          opsStrip([["Still to come", p.filter(function (r) { return !r.intake; }).length, tileAttr("come")], ["No shows", p.filter(function (r) { return r.intake === "No Show"; }).length, tileAttr("noshow")], ["RTC", p.filter(function (r) { return r.intake === "RTC"; }).length, tileAttr("rtc")]]) +
           opsPanel("Cars in by collection hour", "", hourBars(hours), "By the time each car was taken in. Hourly stats uses the booked arrival time.");
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars in", cin + " / " + p.length, progressBar(cin, p.length), hasFeatures() ? "big" : "") +
-          kstat("noshow", "No shows", p.filter(function (r) { return r.intake === "No Show"; }).length) +
-          kstat("rtc", "RTC", p.filter(function (r) { return r.intake === "RTC"; }).length) +
-          kstat("come", "Still to come", p.filter(function (r) { return !r.intake; }).length) + "</div>" +
+          kstat("noshow", "No shows", p.filter(function (r) { return r.intake === "No Show"; }).length, "", "", "noshow") +
+          kstat("rtc", "RTC", p.filter(function (r) { return r.intake === "RTC"; }).length, "", "", "rtc") +
+          kstat("come", "Still to come", p.filter(function (r) { return !r.intake; }).length, "", "", "come") + "</div>" +
           '<div class="section-label">Cars in by hour</div>' + (hasFeatures() ? hourBars(hours) : '<div class="box">' + (Object.keys(hours).sort().map(function (k) { return '<div class="rowline"><span class="num grow">' + k + ':00</span><strong class="num">' + hours[k] + "</strong></div>"; }).join("") || '<div class="empty">None yet.</div>') + "</div>");
       }
     }
@@ -4244,9 +4273,10 @@
     removed: '<path d="M6 6l12 12M18 6 6 18"/>',
     early: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>'
   };
-  function kstat(k, label, value, extra, cls) {
+  // tile: a QUEUES name, so tapping the number opens those cars on the board.
+  function kstat(k, label, value, extra, cls, tile) {
     var zero = /^(0|£0|0 \/ 0)$/.test(String(value));
-    return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + '"><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
+    return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + (tile ? ' tap"' + tileAttr(tile) : '"') + '><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
   }
   // Operations Refined's shift line: the part of the day and its hours, a thin bar, and "3 of 12".
   function rfPart(name, hours, x) { return [name + "<small>" + hours + "</small>" + miniBar(x.done, x.due), x.done + " of " + x.due]; }
@@ -6129,12 +6159,21 @@
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
+  // Those numbers are tiles, not buttons: Enter or Space on one taps it.
+  document.addEventListener("keydown", function (e) {
+    var tile = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile) { e.preventDefault(); tile.click(); }
+  });
   document.addEventListener("click", async function (e) {
     if (S.me && e.target.closest && e.target.closest("#who.can-switch, [data-switchname]")) return openSwitchName();
     if (e.target.closest("[data-reload]")) return location.reload();
     // The second line of a row opens the car too, not only the reg.
     var opener = e.target.closest("[data-addflight]") ? null : e.target.closest("div[data-open]");
     if (opener && S.me && !$("panel").open) { var or = rowOf(opener); if (or) return openPanel(or); }
+    // A number on Summary, Hourly stats or Flights: its cars (tileAttr, flTileAttr).
+    var tile = S.me && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile && tile.dataset.tileq !== undefined) return openTile(tile.dataset.tileq);
+    if (tile) { S.flTile = (S.flTile || "") === tile.dataset.fltile ? "" : tile.dataset.fltile; return render(); }
     var t = e.target.closest("button,a"); if (!t) return;
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }

@@ -74,7 +74,7 @@
   function chargeLines() {
     if (!(+(S.company && S.company.overstay_rate))) return [];
     var t = chargeTotals();
-    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due)], ["Overstay paid: cash", money(t.cash)], ["Overstay paid: card", money(t.card)], ["Overstay waived", money(t.waived)]];
+    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due), "owed"], ["Overstay paid: cash", money(t.cash), "cash"], ["Overstay paid: card", money(t.card), "card"], ["Overstay waived", money(t.waived), "waived"]];
   }
   function openDropsStats() {
     var D = dropsStats();
@@ -133,13 +133,15 @@
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
-  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
+  // x[2], when given, is the tile's tap: attributes from tileAttr() or flTileAttr().
+  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div" + (x[2] ? ' class="tap"' + x[2] : "") + "><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
   function opsPanel(title, aside, body, foot) {
     return '<section class="ops-card"><header><strong>' + esc(title) + "</strong>" + (aside ? "<small>" + esc(aside) + "</small>" : "") + "</header>" + body + (foot ? '<p class="ops-foot">' + esc(foot) + "</p>" : "") + "</section>";
   }
   // A table: the first cell is the label (trusted HTML), the rest numbers.
+  // A row with .tap (attributes from tileAttr) opens its cars.
   function opsTable(head, rows, total) {
-    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + '" style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
+    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + (c.tap ? ' tap"' + c.tap : '"') + ' style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
     return (head ? line(head, "th") : "") + rows.map(function (r) { return line(r); }).join("") + (total ? line(total, "tot") : "");
   }
   // ── Operations on a wide screen (900 px and up, ops.css "wide screen") ──

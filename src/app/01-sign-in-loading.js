@@ -236,7 +236,7 @@
     if (o.archive) S.archiveSheet = o.archive;
     else if (S.archiveSheet && S.archiveSheet.id !== id) S.archiveSheet = null;   // leaving an archived sheet
     S.switching = null; loadSeq++;
-    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
+    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null; S.flTile = "";
     if (o.filter) S.filter = o.filter;
     S.view = stay ? S.view : "board"; if (stay) S.activity = null;
     S.rowsSheet = null;                                      // fresh sheet: filters reset in takeRows

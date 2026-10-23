@@ -115,16 +115,16 @@
     var desk = opsDesk(), h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
     if (sh.kind === "drops") {
       var D = dropsStats(), owed = chargeLines();
-      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) + statsCols(
+      h += opsStrip([["Due back", D.total.due, tileAttr("")], ["Sent", D.total.sent, tileAttr("sentall")], ["Collected", D.total.done, tileAttr("back")], ["Still to collect", D.total.due - D.total.done, tileAttr("left")]]) + statsCols(
         opsPanel("Returns by booked hour", desk ? "Due and collected" : "", (desk ? statBars(D.hours.map(function (x) { return [x.label, x.due, x.done]; })) : "") + opsTable(["Hour", "Due", "Sent", "Collected"],
           D.hours.map(function (x) { return [esc(x.label), x.due, x.sent, x.done]; }).concat(D.over.due ? [["Overstays", D.over.due, D.over.sent, D.over.done]] : []),
           ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : ""),
         opsPanel("Shift breakdown", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])) +
         opsPanel("Collected lately", "", opsTable(null, [["Last 30 minutes", D.last30], ["Last 60 minutes", D.last60]])) +
-        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
+        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { var l = [esc(x[0]), x[1]]; l.tap = tileAttr(x[2]); return l; }))) : ""));
     } else {
       var P = picksStats(), cats = catLines();
-      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
+      h += opsStrip([["Scheduled", P.totalSched, tileAttr("")], ["Completed", P.totalDone, tileAttr("pdone")], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
         opsPanel("Arrivals by booked hour", desk ? "Scheduled and completed" : "", (desk ? statBars(P.hours.map(function (x) { return [x.label, x.sched, x.done]; })) : "") + opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
           "Completed counts Collected and RTC, by booked arrival hour."),
         (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
