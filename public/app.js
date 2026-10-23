@@ -856,7 +856,9 @@
     main.innerHTML = html; main.dataset.view = view;
   }
   function render() {
-    if (!S.me) return;
+    // S.me is set before the company arrives; a clock tick or coming back to
+    // the app in that gap drew the board with no company (21 Oct, "reading 'yards'").
+    if (!S.me || !S.company) return;
     document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
     var fn = { stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;

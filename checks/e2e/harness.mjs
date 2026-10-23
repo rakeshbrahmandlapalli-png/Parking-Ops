@@ -362,7 +362,7 @@ async function backend(ctx, db) {
       return l ? reply(200, { reg: "DY16MYO", company: "TAKEOFF", by: "RAKESH", created_at: l.at, photos: l.paths.map((x, i) => ({ url: BASE + "/icons/icon-192.png", download: BASE + "/icons/icon-192.png", name: "DY16MYO-0" + (i + 1) + ".jpg" })) }) : reply(404, { error: "These photos have expired or the link isn't right." });
     }
     const q = Object.fromEntries(u.searchParams);
-    if (p === "/rest/v1/companies") return reply(200, db.company);
+    if (p === "/rest/v1/companies") { if (db.companyDelay) await sleep(db.companyDelay); return reply(200, db.company); }
     // The owner's last "download company data" (backup reminder): today, unless a test says otherwise.
     if (p === "/rest/v1/activity" && q.action === "eq.SETTINGS") return reply(200, db.lastDownload === null ? [] : [{ at: db.lastDownload || new Date().toISOString() }]);
     if (p === "/rest/v1/activity" && (q.booking_id || "").startsWith("in.(")) {

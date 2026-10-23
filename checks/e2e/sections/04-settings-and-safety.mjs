@@ -1,4 +1,4 @@
-import { path, check, sleep, server, addDays, TONIGHT, iso, makeDb, now, phone, open, text, noSideScroll, toast, scenario, browser } from "../harness.mjs";
+import { path, check, sleep, server, addDays, TONIGHT, iso, makeDb, now, phone, open, text, noSideScroll, toast, scenario, browser, BASE } from "../harness.mjs";
 
 // 8. Settings
 await scenario(async () => {
@@ -64,6 +64,18 @@ await scenario(async () => {
   check("each says which screen it was on", l.every((x) => x.view === "board"), l);
   check("the phone and browser are named", sent[0]?.args.p_device === "Android 14 · Chrome", sent[0]?.args);
   check("and nothing is shown for the report itself", page.__errors.filter((e) => !/test boom|Failed to fetch/.test(e)).length === 0, page.__errors);
+});
+// 10c. A slow start: the board isn't drawn before the company arrives (21 Oct: a clock
+// tick or coming back to the app in that gap read the company's yards from nothing).
+await scenario(async () => {
+  const db = makeDb(); db.company.yards = ["NY", "S", "CP", "T"]; db.companyDelay = 1500;
+  const page = await phone(browser, db);
+  await page.goto(BASE + "/"); await sleep(500);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.waitForSelector("#main .row", { timeout: 8000 }); await sleep(6000);
+  const rep = db.calls.filter((c) => c.fn === "report_errors").flatMap((c) => c.args.p_list);
+  check("a slow company load: coming back to the app before it arrives draws nothing and reports no error", page.__errors.length === 0 && rep.length === 0, [page.__errors, rep]);
+  check("…and the board then shows its yards", await page.locator('[data-tally="NY"]').count() === 1);
 });
 
 // 11. hostile booking data never runs as code (names, notes, regs come from outside)
