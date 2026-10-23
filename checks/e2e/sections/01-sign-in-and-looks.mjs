@@ -225,6 +225,7 @@ await scenario(async () => {
     return { below: btns.top >= name.bottom - 1, initial: getComputedStyle(row, "::before").content, oneRow: new Set([...row.querySelectorAll(".sbtns .btn")].map((b) => Math.round(b.getBoundingClientRect().top))).size === 1 }; });
   check("Premium Staff: the buttons sit under the name (never over it), on one row, with the person's initial", st && st.below && st.oneRow && /"S"/.test(st.initial), st);
   await go("settings");
+  await page.click('[data-setsec="flights"]'); await sleep(200);
   check("Premium Settings: From and Until side by side", await page.evaluate(() => { const p = document.querySelector(".pair"); if (!p) return false; const f = p.querySelectorAll(".field"); return f.length === 2 && Math.abs(f[0].getBoundingClientRect().top - f[1].getBoundingClientRect().top) < 2; }));
   check("Premium screens: no sideways scrolling, no errors", (await noSideScroll(page)) && page.__errors.length === 0, page.__errors);
 });
@@ -486,8 +487,9 @@ await scenario(async () => {
   await plus.click("#main [data-addperson]"); await sleep(200);
   check("Operations: Add person opens the form", await plus.evaluate(() => !!document.querySelector("#main form#addStaff #newName") && document.activeElement.id === "newName"));
   await plus.click('#bnav [data-bn="menuBtn"]'); await sleep(200); await plus.click('#menuBody [data-view="settings"]'); await sleep(300);
-  const se = await plus.evaluate(() => { const a = document.querySelector('[data-setting="enabled"]').getBoundingClientRect(), b = document.querySelector('[data-setting="live_every_min"]').getBoundingClientRect(), h = document.querySelector(".fchecks > strong");
-    return { side: Math.round(a.top) === Math.round(b.top) && a.right < b.left, head: h.innerText.replace(/\s+/g, " "), unsaved: !!document.querySelector(".ops-unsaved") }; });
+  await plus.click('[data-setsec="flights"]'); await sleep(200);
+  const se = await plus.evaluate(() => { const a = document.querySelector('[data-setting="enabled"]').getBoundingClientRect(), b = document.querySelector('[data-setting="live_every_min"]').getBoundingClientRect(), h = document.querySelector(".fchecks > .sethead");
+    return { side: Math.round(a.top) === Math.round(b.top) && a.right < b.left, head: h.innerText.replace(/\s+/g, " "), unsaved: !!document.querySelector(".ops-unsaved:not([hidden])") }; });
   check("Operations: Settings in panels, Flight checks two boxes a line, what it's set to by the title", se.side && se.head === "Flight checks Automatic checks on" && !se.unsaved, se);
   await plus.selectOption('[data-setting="live_every_min"]', "60"); await sleep(200);
   check("Operations: Settings says when there are unsaved changes", await plus.evaluate(() => /Unsaved changes/.test((document.querySelector(".ops-unsaved") || {}).textContent || "")));
@@ -656,7 +658,7 @@ await scenario(async () => {
   const db = mk(), page = await phone(browser, db, { width: 1440 }); await page.setViewportSize({ width: 1440, height: 1000 }); await open(page); await sleep(400);
   const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
   const go = async (v) => { if (!(await page.$("#menu[open]"))) await menu(); await page.click('#menuBody [data-view="' + v + '"]'); await sleep(600); };
-  const ctl = () => page.evaluate(() => [...document.querySelectorAll("#main input,#main select,#main textarea,#main button")].filter((e) => !e.closest(".set-nav")).map((e) => e.id || [...e.attributes].filter((a) => a.name.startsWith("data-")).map((a) => a.name + "=" + a.value).join(" ") || e.textContent.trim()).sort().join("|"));
+  const ctl = () => page.evaluate(() => [...document.querySelectorAll("#main input,#main select,#main textarea,#main button")].filter((e) => !e.closest(".set-nav") && !e.classList.contains("sethead")).map((e) => e.id || [...e.attributes].filter((a) => a.name.startsWith("data-")).map((a) => a.name + "=" + a.value).join(" ") || e.textContent.trim()).sort().join("|"));
   const noSide = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
   // Menu
   await menu();

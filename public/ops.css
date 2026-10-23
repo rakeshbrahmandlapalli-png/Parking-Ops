@@ -242,6 +242,19 @@ html.ops main[data-view="settings"] .box.fchecks .field{grid-column:auto;margin:
 html.ops main[data-view="settings"] .box.fchecks .pair{display:contents;}
 html.ops main[data-view="settings"] .box.fchecks .section-label{display:none;}
 html.ops main[data-view="settings"] .box.fchecks select{min-width:0;}
+/* Settings on a phone: each section a header that opens it (app.js setBox) */
+html.ops main[data-view="settings"] .box.setsec{display:block;padding:0 !important;margin-top:14px;border-radius:6px;}
+html.ops main[data-view="settings"] .box.setsec:first-of-type{margin-top:0;}
+html.ops main[data-view="settings"] .setsec > .setbody{margin-bottom:0;padding:4px 14px 0;}
+html.ops main[data-view="settings"] .sethead{padding:15px 14px 14px;}
+html.ops main[data-view="settings"] .sethead small{font-size:12px;font-weight:500;color:var(--op-mut);}
+html.ops main[data-view="settings"] .setsec.open .sethead{border-bottom-color:#e4e9ef;}
+html.ops main[data-view="settings"] .setbody > .row-actions{justify-content:flex-end;margin:14px -14px 0;padding:12px 14px;border-top:1px solid #e4e9ef;}
+html.ops main[data-view="settings"] .setbody > :last-child:not(.row-actions){margin-bottom:14px;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody > *{grid-column:1 / -1;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody > .field{grid-column:auto;}
+html.ops .setdirty.ops-unsaved{max-width:none;}
 html.ops .ops-unsaved{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:12px 14px;border:1px solid #f0d9a8;border-radius:6px;background:#fdf6e7;color:#5c4510;font-size:13px;}
 html.ops .ops-unsaved .btn{flex:none;}
 

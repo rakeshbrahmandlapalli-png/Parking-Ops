@@ -811,6 +811,7 @@
     if (id === (S.switching ? S.switching.id : S.sheetId)) return;
     // Operations: Drops | Picks on Hourly stats or Shift summary stays on that page.
     var stay = isOps() && (S.view === "summary" || S.view === "stats");
+    if (!stay && !leaveOk()) return;
     switchSheet(id, { stay: stay });
   }
   function pickerHtml(shift) {
@@ -868,7 +869,9 @@
       html = '<div class="msg">This screen couldn\'t be shown just now.<br><br>' + (S.view !== "board" ? '<button type="button" class="btn brand" data-view="board">Back to the board</button> ' : "") +
         '<button type="button" class="btn ghost" data-reload>Reload the app</button></div>';
     }
+    var keep = S.view === "settings" && $("main").dataset.view === "settings" && hasFeatures() ? setEdits() : null;
     setMain(html, S.view);
+    if (S.view === "settings" && hasFeatures()) settingsDrawn(keep);
     snapSave();
     if (flashId) { var el = document.querySelector('[data-id="' + flashId + '"]'); if (el) { el.classList.add("flash"); setTimeout(function () { el.classList.remove("flash"); }, 1500); } flashId = null; }
   }
@@ -884,7 +887,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -5697,8 +5700,9 @@
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
     // Operations Refined says it in the Flight checks box itself, beside its Save.
-    var rf = isRefined(), unsaved = dirty && !rf ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
-    var flights = '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
+    // Looks with features (Operations Refined aside, which says it in each box): a bar names what isn't saved yet.
+    var rf = isRefined(), unsaved = hasFeatures() && !rf ? '<div id="setUnsaved" class="setdirty' + (o ? " ops-unsaved" : "") + '"' + (flightsDirty() ? "" : " hidden") + "><span>Unsaved changes" + (flightsDirty() ? " in Flight checks" : "") + '</span><button type="button" class="btn small" data-savedirty>Save changes</button></div>' : "";
+    var flights = setBox("flights", "Flight checks", "Automatic checks " + (String(T.enabled) === "false" ? "off" : "on"), '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px">',
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
       sel("enabled", [["true", "On"], ["false", o ? "Off" : "Off: no automatic checks"]], "Automatic checks") +
       (String(T.enabled) === "false" ? "" :
@@ -5708,8 +5712,7 @@
         sel("before_min", o ? [[30, "30 min before"], [60, "1 hour before"], [90, "90 min before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]]
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
-      '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
-      "";
+      '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div>", "fchecks");
     var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
     if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
@@ -5739,17 +5742,83 @@
   }
   // A settings box's title; Operations adds what it's set to on the right.
   function boxTitle(t, aside) { return "<strong>" + esc(t) + (isOps() && aside ? "<small>" + esc(aside) + "</small>" : "") + "</strong>"; }
+  // A settings section. Looks with features on a phone (not Operations Refined,
+  // which has tabs, nor the Operations desktop, which has groups): a header (title,
+  // what it's set to) that opens it, one at a time. Those two keep their boxes,
+  // marked so unsaved changes are noticed. Other looks: the box exactly as before.
+  function setFold() { return hasFeatures() && !opsDesk() && !isRefined(); }
+  function setBox(key, title, aside, open0, inner, cls) {
+    if (!hasFeatures()) return open0 + boxTitle(title, aside) + inner + "</div>";
+    if (!setFold()) return open0.replace('<div class="box', '<div data-sec="' + key + '" data-title="' + esc(title) + '" class="box') + boxTitle(title, aside) + inner + "</div>";
+    var open = S.setOpen === key;
+    return '<section class="box setsec' + (cls ? " " + cls : "") + (open ? " open" : "") + '" data-sec="' + key + '" data-title="' + esc(title) + '">' +
+      '<button type="button" class="sethead" data-setsec="' + key + '" aria-expanded="' + open + '"><b>' + esc(title) + "</b><small>" + esc(aside || "") + "</small></button>" +
+      '<div class="setbody"' + (open ? "" : " hidden") + ">" + inner + "</div></section>";
+  }
+  // Unsaved changes: the flight checks draft, or a field typed in and not saved.
+  function flightsDirty() { var T = S.settingsDraft, base = timing(); return !!T && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); }); }
+  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]),textarea")); }
+  function fieldEdited(el) {
+    if (el.dataset.ycol !== undefined) return el.hasAttribute("data-off") !== el.hasAttribute("data-offdef") || (!el.hasAttribute("data-off") && el.value.toLowerCase() !== el.defaultValue.toLowerCase());
+    return el.value !== el.defaultValue;
+  }
+  function secDirty(sec) { return sec.dataset.sec === "flights" ? flightsDirty() : setFields(sec).some(fieldEdited); }
+  function dirtySecs() {
+    if (S.view !== "settings" || !hasFeatures()) return [];
+    return Array.prototype.filter.call(document.querySelectorAll("#main [data-sec]"), secDirty);
+  }
+  // Back to what's saved: the fields as they were drawn.
+  function discardSec(sec) {
+    if (sec.dataset.sec === "flights") S.settingsDraft = null;
+    setFields(sec).forEach(function (el) { el.value = el.defaultValue; if (el.dataset.ycol !== undefined) el.toggleAttribute("data-off", el.hasAttribute("data-offdef")); });
+  }
+  // Saved: the section's fields (on the page now; it may have been redrawn while saving) start again from what's saved.
+  function savedSec(btn) { var s0 = btn.closest("[data-sec]"), sec = s0 && document.querySelector('#main [data-sec="' + s0.dataset.sec + '"]'); if (sec) discardSec(sec); }
+  function showUnsaved() {
+    var bar = $("setUnsaved"); if (!bar) return;
+    var d = dirtySecs();
+    bar.hidden = !d.length;
+    if (d.length) bar.firstChild.textContent = "Unsaved changes in " + d.map(function (s) { return s.dataset.title; }).join(", ");
+  }
+  // Leaving Settings (or closing a section) with something not saved asks first.
+  function leaveOk(secs) {
+    var d = secs || dirtySecs();
+    return !d.length || confirm("Unsaved changes in " + d.map(function (s) { return s.dataset.title; }).join(", ") + ". Leave without saving?");
+  }
+  function toggleSec(key) {
+    var cur = S.setOpen && document.querySelector('#main [data-sec="' + S.setOpen + '"]');
+    if (cur && secDirty(cur)) { if (!leaveOk([cur])) return; discardSec(cur); }
+    S.setOpen = S.setOpen === key ? null : key; render();
+    var h = document.querySelector('#main [data-setsec="' + key + '"]'); if (h && h.getBoundingClientRect().top < 0) h.scrollIntoView();
+  }
+  // A redraw while a field is being typed in (a live update) keeps what was typed.
+  function setEdits() {
+    var out = [];
+    document.querySelectorAll("#main [data-sec]").forEach(function (sec) {
+      setFields(sec).forEach(function (el, i) { if (fieldEdited(el)) out.push({ sec: sec.dataset.sec, i: i, def: el.defaultValue, val: el.value, off: el.hasAttribute("data-off") }); });
+    });
+    return out;
+  }
+  function settingsDrawn(keep) {
+    (keep || []).forEach(function (k) {
+      var sec = document.querySelector('#main [data-sec="' + k.sec + '"]'), el = sec && setFields(sec)[k.i];
+      if (!el || el.defaultValue !== k.def) return;
+      el.value = k.val;
+      if (el.dataset.ycol !== undefined) { if (k.off) yardOff(el); else el.dispatchEvent(new Event("input", { bubbles: true })); }
+    });
+    showUnsaved();
+  }
   // Car park capacity (database part 71): how many cars fit, in all and per
   // yard. The dashboard shows Parked now against it.
   function capacityHtml() {
     var C = S.company || {}, cap = +C.capacity || 0, yc = C.yard_capacity || {}, ys = C.yards || [];
-    return '<div class="box" style="padding:14px;max-width:560px">' + boxTitle("Car park capacity", cap ? cap + " spaces" : "Not set") +
+    return setBox("cap", "Car park capacity", cap ? cap + " spaces" : "Not set", '<div class="box" style="padding:14px;max-width:560px">',
       '<p class="note">How many cars you can park. Now: <b>' + (cap ? cap + " cars" : "not set") + "</b>.</p>" +
       '<label class="field">Total spaces<input id="capTotal" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 400" value="' + (cap || "") + '"></label>' +
       (ys.length ? '<div class="section-label">Per yard (optional)</div><div class="capyards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0 10px">' + ys.map(function (y) {
         return '<label class="field">' + esc(YARD_LABEL[y] || y) + '<input data-capyard="' + esc(y) + '" type="number" inputmode="numeric" min="0" step="1" value="' + (+yc[y] || "") + '"></label>';
       }).join("") + "</div>" : "") +
-      '<div class="row-actions"><button type="button" class="btn brand" data-savecap>Save capacity</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-savecap>Save capacity</button></div>');
   }
   async function saveCapacity(btn) {
     var yards = {}, bad = "";
@@ -5760,7 +5829,7 @@
     var r = await sb.rpc("set_capacity", { p_total: t ? +t : null, p_yards: yards });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.capacity = r.data.capacity; S.company.yard_capacity = r.data.yard_capacity || {}; S.dash = null;
+    savedSec(btn); S.company.capacity = r.data.capacity; S.company.yard_capacity = r.data.yard_capacity || {}; S.dash = null;
     toast(r.data.capacity ? "Saved: " + r.data.capacity + " spaces" : "Capacity cleared"); render();
   }
   // Operations dashboard panels fold open and closed; each person's choice is kept on their phone.
@@ -5792,23 +5861,29 @@
   }
   function overstayRateHtml() {
     var rate = +(S.company && S.company.overstay_rate) || 0;
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Overstay charges", rate ? money(rate) + " a day" : "Off") +
+    return setBox("overstay", "Overstay charges", rate ? money(rate) + " a day" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">Booked back before ' + esc(((S.company.drops_day_end) || "06:00").slice(0, 5)) + ": free until 12:00 that day, then one day's rate and one more every midnight. Booked back later: free until " + esc(((S.company.drops_day_end) || "06:00").slice(0, 5)) + " the next morning, then one day's rate and one more every morning at that time. 0 switches charging off." + (rate ? " Now: <b>" + money(rate) + " a day</b>." : " Now: <b>off</b>.") + "</p>" +
       '<label class="field">Daily rate (£)<input id="ovRate" type="number" inputmode="decimal" min="0" step="0.5" value="' + rate + '"></label>' +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saverate>Save rate</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saverate>Save rate</button></div>');
   }
   // Yard colours (database part 77): owners only.
   function yardColoursHtml() {
     var ys = (S.company && S.company.yards) || [];
     if (!S.me || S.me.role !== "owner" || !ys.length) return "";
     var set = ys.filter(function (y) { return yardColour(y); }).length;
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Yard colours", set ? set + " of " + ys.length + " set" : "Not set") +
+    return setBox("ycol", "Yard colours", set ? set + " of " + ys.length + " set" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<div class="ycols">' + ys.map(function (y) {
         var c = yardColour(y);
-        return '<div class="ycol"><span class="code ' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + '</span><input type="color" data-ycol="' + esc(y) + '" aria-label="Colour for ' + esc(YARD_LABEL[y] || y) + '" value="' + (c || "#9AA0A6") + '"' + (c ? "" : " data-off") + '>' +
+        return '<div class="ycol"><span class="code ' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + '</span><input type="color" data-ycol="' + esc(y) + '" aria-label="Colour for ' + esc(YARD_LABEL[y] || y) + '" value="' + (c || "#9AA0A6") + '"' + (c ? "" : " data-off" + (hasFeatures() ? " data-offdef" : "")) + '>' +
           (c ? '<button type="button" class="link" data-ycoff="' + esc(y) + '">No colour</button>' : '<span class="note">Not set</span>') + "</div>";
       }).join("") + "</div>" +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saveycol>Save colours</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saveycol>Save colours</button></div>');
+  }
+  // "No colour": the yard's tag goes back to the look's own.
+  function yardOff(yi) {
+    yi.setAttribute("data-off", "");
+    var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style");
+    var b = yi.parentNode.querySelector("[data-ycoff]"); if (b) b.outerHTML = '<span class="note">Not set</span>';
   }
   async function saveYardColours(btn) {
     var cols = {};
@@ -5817,18 +5892,18 @@
     var r = await sb.rpc("set_yard_colours", { p_colours: cols });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.yard_colours = r.data.yard_colours || {}; applyYardColours(S.company);
+    savedSec(btn); S.company.yard_colours = r.data.yard_colours || {}; applyYardColours(S.company);
     toast("Saved: yard colours"); render();
   }
   // Exit fee (database part 76): owners only.
   function exitFeeHtml() {
     if (!S.me || S.me.role !== "owner") return "";
     var fee = exitFee(), free = S.company.exit_free || [];
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Exit fee", fee ? money(fee) : "Off") +
+    return setBox("exit", "Exit fee", fee ? money(fee) : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Exit fee (£)<input id="exitFee" type="number" inputmode="decimal" min="0" max="999" step="0.01" placeholder="0 = off" value="' + (fee || "") + '"></label>' +
       '<label class="field">No exit fee for references starting with<input id="exitFree" autocomplete="off" autocapitalize="characters" placeholder="e.g. CAP, APD, VIP APB-1147" value="' + esc(free.join(", ")) + '"></label>' +
       '<p class="note">Agent codes or whole references, separated by commas.</p>' +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saveexit>Save exit fee</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saveexit>Save exit fee</button></div>');
   }
   async function saveExitFee(btn) {
     var fee = $("exitFee").value.trim(), free = $("exitFree").value.split(/[,\n]+/).map(function (x) { return x.trim(); }).filter(Boolean);
@@ -5837,7 +5912,7 @@
     var r = await sb.rpc("set_exit_fee", { p_fee: +fee || 0, p_free: free });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.exit_fee = r.data.exit_fee; S.company.exit_free = r.data.exit_free || [];
+    savedSec(btn); S.company.exit_fee = r.data.exit_fee; S.company.exit_free = r.data.exit_free || [];
     toast(+r.data.exit_fee ? "Saved: exit fee " + money(r.data.exit_fee) : "Exit fee off"); render();
   }
   async function saveOverstayRate(btn) {
@@ -5845,14 +5920,14 @@
     var r = await sb.rpc("set_overstay_rate", { p_rate: parseFloat($("ovRate").value) || 0 });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.overstay_rate = r.data; toast(r.data ? "Saved: " + money(r.data) + " a day" : "Overstay charges off"); render();
+    savedSec(btn); S.company.overstay_rate = r.data; toast(r.data ? "Saved: " + money(r.data) + " a day" : "Overstay charges off"); render();
   }
   // Owner only: the company's own data, to keep a copy outside the app.
   function backupHtml() {
     if (!S.me || S.me.role !== "owner") return "";
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Backup</strong>' +
+    return setBox("backup", "Backup", "Download a copy", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">A copy of everything is kept automatically every night for 7 days. To keep one of your own as well, download it and save it somewhere safe, like OneDrive. PINs, links and Discord links are not included.</p>' +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-backup>Download a backup</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn ghost" data-backup>Download a backup</button></div>');
   }
   // Booking website (database part 101): owners only. The address and login the automatic
   // import signs in with; the password is never sent back, only whether one is saved.
@@ -5861,12 +5936,12 @@
     if (S.bsite === undefined) { S.bsite = null; sb.rpc("booking_site_status").then(function (r) { S.bsite = r.error ? false : r.data; if (S.view === "settings") render(); }); }
     if (S.bsite === false) return "";
     var B = S.bsite || {}, set = !!(B.login && B.has_pass);
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Booking website", !S.bsite ? "" : set ? "Saved" : "Not set") +
+    return setBox("bsite", "Booking website", !S.bsite ? "" : set ? "Saved" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Website address<input id="bsUrl" type="url" autocomplete="off" placeholder="https://" value="' + esc(B.url || "") + '"></label>' +
       '<label class="field">Login name<input id="bsLogin" autocomplete="off" autocapitalize="none" spellcheck="false" value="' + esc(B.login || "") + '"></label>' +
       '<label class="field">Password <span class="note">' + (S.bsite ? (B.has_pass ? "✓ saved" : "not set") : "…") + '</span><input id="bsPass" type="password" autocomplete="new-password" placeholder="' + (B.has_pass ? "Type a new one to replace it" : "") + '"></label>' +
       (set && B.saved_at ? '<p class="note">Saved by ' + esc(B.saved_by) + " " + esc(dayShort(B.saved_at)) + " " + esc(hhmm(B.saved_at)) + ".</p>" : "") +
-      '<div class="row-actions">' + (set ? '<button type="button" class="btn ghost small" data-bsclear>Remove login</button>' : "") + '<button type="button" class="btn brand" data-bssave>Save login</button></div></div>';
+      '<div class="row-actions">' + (set ? '<button type="button" class="btn ghost small" data-bsclear>Remove login</button>' : "") + '<button type="button" class="btn brand" data-bssave>Save login</button></div>');
   }
   async function saveBookingSite(btn, clear) {
     var u = clear ? "" : $("bsUrl").value.trim(), l = clear ? "" : $("bsLogin").value.trim(), p = clear ? "" : ($("bsPass").value || null);
@@ -5874,7 +5949,7 @@
     var r = await sb.rpc("booking_site_set", { p_url: u, p_login: l, p_password: p });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
+    savedSec(btn); S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
   }
   async function downloadBackup(btn) {
     btn.disabled = true;
@@ -5892,7 +5967,7 @@
   }
   function ptNumberHtml() {
     var n = (S.company && S.company.pt_whatsapp) || "";
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("PT photos: WhatsApp number", n ? "+" + n : "Not set") +
+    return setBox("pt", "PT photos: WhatsApp number", n ? "+" + n : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">PT opens this chat with the reg typed, before the photos are sent.' + (n ? " Now: <b>+" + esc(n) + "</b>" : " Not set.") + "</p>" +
       '<label class="field">Number<input id="ptNumber" type="tel" autocomplete="off" placeholder="07932 029349 or +44 7932 029349" value="' + esc(n ? "+" + n : "") + '"></label>' +
       '<div class="row-actions"><button type="button" class="btn brand" data-savept>Save number</button></div>' +
@@ -5900,7 +5975,7 @@
       '<option value="photos"' + (S.company.pt_method !== "link" && S.company.pt_method !== "pdf" ? " selected" : "") + ">In the WhatsApp chat: reg, then the photos (10 at a time on Android)</option>" +
       '<option value="pdf"' + (S.company.pt_method === "pdf" ? " selected" : "") + ">As one PDF with all the photos (one tap)</option>" +
       '<option value="link"' + (S.company.pt_method === "link" ? " selected" : "") + ">As one link to all the photos (only once PT has agreed)</option></select></label>" +
-      ptIosSelect(S.company.pt_method_ios || S.company.pt_method) + "</div>";
+      ptIosSelect(S.company.pt_method_ios || S.company.pt_method));
   }
   // iPhones have their own choice (part 49); the one above is for every other phone.
   function ptIosSelect(now) {
@@ -5921,7 +5996,7 @@
     var r = await sb.rpc("set_pt_whatsapp", { p_number: $("ptNumber").value });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.pt_whatsapp = r.data || "";
+    savedSec(btn); S.company.pt_whatsapp = r.data || "";
     toast(r.data ? "Saved: +" + r.data : "Number removed"); render();
   }
   // Discord links work like passwords for the channel, so the app never shows
@@ -5933,10 +6008,10 @@
     function field(key, label) {
       return '<label class="field">' + label + ' <span class="note">' + (S.discord ? (D[key] ? "✓ set" : "not set") : "…") + '</span><input data-discord="' + key + '" type="url" autocomplete="off" placeholder="' + (D[key] ? "Paste a new link to replace it" : "https://discord.com/api/webhooks/…") + '"></label>';
     }
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Discord alerts", !S.discord ? "" : D.drops || D.picks ? [D.drops && "Drops", D.picks && "Picks"].filter(Boolean).join(" and ") + " set" : "Not set") +
+    return setBox("discord", "Discord alerts", !S.discord ? "" : D.drops || D.picks ? [D.drops && "Drops", D.picks && "Picks"].filter(Boolean).join(" and ") + " set" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       field("drops", "DROPS channel") + field("picks", "PICKS channel") +
       '<div class="row-actions">' + (D.drops || D.picks ? '<button type="button" class="btn ghost small" data-discordtest>Send a test to Discord</button><button type="button" class="btn ghost small" data-discordclear>Remove both</button>' : "") +
-      '<button type="button" class="btn brand" data-discordsave>Save links</button></div></div>';
+      '<button type="button" class="btn brand" data-discordsave>Save links</button></div>');
   }
   async function saveDiscord(btn, clear) {
     var d = clear ? "" : (document.querySelector('[data-discord="drops"]').value.trim() || null);
@@ -5946,7 +6021,7 @@
     var r = await sb.rpc("set_discord", { p_drops: d, p_picks: p });
     btn.disabled = false;
     if (r.error) { toast(r.error.message, true); return; }
-    S.discord = r.data; toast(clear ? "Discord links removed" : "Saved"); render();
+    savedSec(btn); S.discord = r.data; toast(clear ? "Discord links removed" : "Saved"); render();
   }
   async function saveSettings(btn) {
     var T = S.settingsDraft; btn.disabled = true;
@@ -6156,6 +6231,8 @@
       if (S.me && !$("panel").open) render();
     } catch (e) {}
   }
+  // Closing or reloading the app with Settings not saved: the browser asks first.
+  window.addEventListener("beforeunload", function (e) { if (dirtySecs().length) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
@@ -6193,7 +6270,9 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
-    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) { yi.setAttribute("data-off", ""); var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style"); } t.outerHTML = '<span class="note">Not set</span>'; return; }
+    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
+    if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
+    if (t.dataset.savedirty !== undefined) { dirtySecs().map(function (d) { return d.querySelector(".row-actions .btn.brand"); }).forEach(function (b) { if (b) b.click(); }); return; }
     if (t.dataset.savecap !== undefined) return saveCapacity(t);
     if (t.dataset.swipestep) { setSwipeChoice(t.dataset.swipestep); render(); return openMenu(); }
     if (t.dataset.swipeleft) { setSwipeLeftChoice(t.dataset.swipeleft); render(); return openMenu(); }
@@ -6225,7 +6304,7 @@
     if (t.dataset.pickshift) return chooseShift(t.dataset.pickshift);
     if (t.dataset.closeshift !== undefined) return $("shiftPick").close();
     if (t.dataset.bn && isOps() && t.dataset.bn === "flBtn") return go("flights");
-    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn") go("board"); return $(t.dataset.bn).click(); }
+    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn" && go("board") === false) return; return $(t.dataset.bn).click(); }
     if (t.dataset.mode) { setMode(t.dataset.mode); return openMenu(); }
     if (t.id === "logBtn") return go("summary");
     if (t.id === "flBtn") return checkFlights(t);
@@ -6381,6 +6460,7 @@
       if (tag) { tag.style.background = v; tag.style.borderColor = hexMix(v, "#000000", 0.15); tag.style.color = lightColour(v) ? "#1F1A00" : "#FFFFFF"; }
       var nt = e.target.parentNode.querySelector(".note"); if (nt) nt.outerHTML = '<button type="button" class="link" data-ycoff="' + esc(yc) + '">No colour</button>';
     }
+    if (S.view === "settings" && e.target.closest("[data-sec]")) showUnsaved();
   });
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
@@ -6396,7 +6476,7 @@
     }
     if (t.id === "schedOn" && S.autoImport) { var on1 = t.checked; return biSchedChange(S.autoImport, function (d) { d.on = on1; }); }
     if (t.dataset.schedtime !== undefined && S.autoImport) { var v1 = t.value, i1 = Number(t.dataset.schedtime); return biSchedChange(S.autoImport, function (d) { d.times[i1] = v1; }); }
-    if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
+    if (t.id === "sheetPick") { if (!leaveOk()) { t.value = S.sheetId; return; } switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
       var y = t.value;
