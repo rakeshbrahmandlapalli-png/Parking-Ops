@@ -115,6 +115,7 @@ for (const [look, mk] of [["Standard", () => makeDb()], ["Operations", () => apb
   await page.click("#main [data-filltimes]"); await sleep(600);
   check(look + " Flights: Fill times asks for that sheet's timetable", db.flightCalls.length === 2 && db.flightCalls[1].action === "timetable" && /^\d{4}-\d{2}-\d{2}$/.test(db.flightCalls[1].day), db.flightCalls);
   await go("settings");
+  if (await page.locator('[data-setsec="flights"]').count()) { await page.click('[data-setsec="flights"]'); await sleep(200); }
   check(look + " Settings: no timetable timer (AeroData runs only from Fill times)", await page.evaluate(() => !document.querySelector('[data-setting="schedule_every_hours"]') && !/AeroDataBox/.test(document.querySelector(".fchecks").textContent)));
   await page.selectOption('[data-setting="active_from"]', "0"); await page.selectOption('[data-setting="before_min"]', "240"); await page.selectOption('[data-setting="live_every_min"]', "10"); await sleep(200);
   if (process.env.PREVIEW) await page.evaluate(() => document.querySelector(".fchecks").scrollIntoView()), await page.screenshot({ path: process.env.PREVIEW + "/settings-24h-" + look + ".png" });

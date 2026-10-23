@@ -51,19 +51,35 @@
       if (S.me && !$("panel").open) render();
     } catch (e) {}
   }
+  // Closing or reloading the app with Settings not saved: the browser asks first.
+  window.addEventListener("beforeunload", function (e) { if (dirtySecs().length) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
+  // Those numbers are tiles, not buttons: Enter or Space on one taps it.
+  document.addEventListener("keydown", function (e) {
+    var tile = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile) { e.preventDefault(); tile.click(); }
+  });
   document.addEventListener("click", async function (e) {
     if (S.me && e.target.closest && e.target.closest("#who.can-switch, [data-switchname]")) return openSwitchName();
     if (e.target.closest("[data-reload]")) return location.reload();
     // The second line of a row opens the car too, not only the reg.
     var opener = e.target.closest("[data-addflight]") ? null : e.target.closest("div[data-open]");
     if (opener && S.me && !$("panel").open) { var or = rowOf(opener); if (or) return openPanel(or); }
+    // A number on Summary, Hourly stats or Flights: its cars (tileAttr, flTileAttr).
+    var tile = S.me && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile && tile.dataset.tileq !== undefined) return openTile(tile.dataset.tileq);
+    if (tile) { S.flTile = (S.flTile || "") === tile.dataset.fltile ? "" : tile.dataset.fltile; return render(); }
     var t = e.target.closest("button,a"); if (!t) return;
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
+    if ((t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
+    if (t.dataset.paydetails) { var pr = S.rows.find(function (x) { return x.id === t.dataset.paydetails; }); if (pr) openBoardPayment(pr); return; }
+    if (t.dataset.paybooking) { var pb = S.rows.find(function (x) { return x.id === t.dataset.paybooking; }); if (pb) { boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); openPanel(pb); } return; }
+    if (t.dataset.payproof) { var pp = S.rows.find(function (x) { return x.id === t.dataset.payproof; }); if (pp) fillBoardPaymentProof(pp); return; }
     // The link opens WhatsApp by itself; just remember it was sent.
     // The link opens WhatsApp by itself; PT is done.
     if (t.dataset.ptlink !== undefined) { if (panelRow) ptSent(panelRow); return; }
@@ -74,7 +90,9 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
-    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) { yi.setAttribute("data-off", ""); var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style"); } t.outerHTML = '<span class="note">Not set</span>'; return; }
+    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
+    if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
+    if (t.dataset.savedirty !== undefined) { dirtySecs().map(function (d) { return d.querySelector(".row-actions .btn.brand"); }).forEach(function (b) { if (b) b.click(); }); return; }
     if (t.dataset.savecap !== undefined) return saveCapacity(t);
     if (t.dataset.swipestep) { setSwipeChoice(t.dataset.swipestep); render(); return openMenu(); }
     if (t.dataset.swipeleft) { setSwipeLeftChoice(t.dataset.swipeleft); render(); return openMenu(); }
@@ -88,6 +106,14 @@
     if (t.dataset.keyretry !== undefined) return loadKeys(S.sheetId);
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
+    if (t.dataset.settab) {
+      S.setTab = t.dataset.settab;
+      document.querySelectorAll(".set-tabs [data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.settab === S.setTab); });
+      document.querySelectorAll(".set-more [data-settab]").forEach(function (b) { b.hidden = b.dataset.settab === S.setTab; });
+      document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      if (t.closest(".set-more")) window.scrollTo(0, 0);
+      return;
+    }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.lpcar) { LP.selected = t.dataset.lpcar; render(); var detail = document.querySelector(".lp-detail"); if (detail && window.innerWidth < 761) detail.scrollIntoView({block:"start"}); return; }
     if (t.dataset.lpreload !== undefined) return loadLanes();
@@ -100,7 +126,7 @@
     if (t.dataset.pickshift) return chooseShift(t.dataset.pickshift);
     if (t.dataset.closeshift !== undefined) return $("shiftPick").close();
     if (t.dataset.bn && isOps() && t.dataset.bn === "flBtn") return go("flights");
-    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn") go("board"); return $(t.dataset.bn).click(); }
+    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn" && go("board") === false) return; return $(t.dataset.bn).click(); }
     if (t.dataset.mode) { setMode(t.dataset.mode); return openMenu(); }
     if (t.id === "logBtn") return go("summary");
     if (t.id === "flBtn") return checkFlights(t);
@@ -256,6 +282,7 @@
       if (tag) { tag.style.background = v; tag.style.borderColor = hexMix(v, "#000000", 0.15); tag.style.color = lightColour(v) ? "#1F1A00" : "#FFFFFF"; }
       var nt = e.target.parentNode.querySelector(".note"); if (nt) nt.outerHTML = '<button type="button" class="link" data-ycoff="' + esc(yc) + '">No colour</button>';
     }
+    if (S.view === "settings" && e.target.closest("[data-sec]")) showUnsaved();
   });
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
@@ -271,7 +298,7 @@
     }
     if (t.id === "schedOn" && S.autoImport) { var on1 = t.checked; return biSchedChange(S.autoImport, function (d) { d.on = on1; }); }
     if (t.dataset.schedtime !== undefined && S.autoImport) { var v1 = t.value, i1 = Number(t.dataset.schedtime); return biSchedChange(S.autoImport, function (d) { d.times[i1] = v1; }); }
-    if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
+    if (t.id === "sheetPick") { if (!leaveOk()) { t.value = S.sheetId; return; } switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
       var y = t.value;

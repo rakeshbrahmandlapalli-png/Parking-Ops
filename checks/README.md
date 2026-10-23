@@ -10,6 +10,11 @@ are seeded: record actual lane positions from the back towards the exit.
 
 Run these before merging a change. Every line must say ok / PASS.
 
+Board collections access (part 105): `npm install @electric-sql/pglite@0.5.11`
+then `node checks/board-collections-access.mjs` (throwaway Postgres only).
+Browser coverage is in `checks/e2e/sections/11-board-payments.mjs`: role defaults,
+saved grants/removals, Staff & access, and hidden collection controls.
+
 Shared key checks (part 93): `node checks/key-check.mjs` tests the database rules
 on PGlite. `KEYS_ONLY=1 node checks/e2e/run.mjs` tests the real key-check UI,
 two browser contexts, failed saves, stale updates, filters and narrow screens.

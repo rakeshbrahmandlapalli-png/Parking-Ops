@@ -268,7 +268,7 @@ await scenario(async () => {
   check("Location on PICKS: switched off, rows keep NO SHOW and no yard counts", await page.locator('.row[data-id="p1"] [data-pick="No Show"]').count() === 1 && await page.locator(".pyard").count() === 0 && await page.locator("#tally .tyards").count() === 0);
 });
 
-// 18a3d2. Exit fee (companies.exit_fee / exit_free, database part 76): exempt references get NO EXIT FEE on DROPS, the car says the fee
+// 18a3d2. Exit fee (companies.exit_fee / exit_free, database part 76): exempt references are explicit on DROPS; the car says the fee.
 for (const theme of ["", "stdplus", "ops", "premium", "board", "cards", "pro"]) await scenario(async () => {
   const db = theme ? apbDb(theme) : makeDb(); db.company.exit_fee = 10; db.company.exit_free = ["CPD", "VIPAPB1147"];
   const drops = db.bookings.filter((x) => x.kind === "drops" && x.sheet_id === db.bookings[0].sheet_id);
@@ -278,8 +278,8 @@ for (const theme of ["", "stdplus", "ops", "premium", "board", "cards", "pro"]) 
   const look = theme || "standard";
   const r0 = '.row[data-id="' + drops[0].id + '"]', r1 = '.row[data-id="' + drops[1].id + '"]';
   await page.waitForSelector(r0);
-  check("Exit fee (" + look + "): a listed reference start shows NO EXIT FEE, any case or spacing", /NO EXIT FEE/.test(await page.locator(r0).innerText()));
-  if (drops[2]) check("Exit fee (" + look + "): a whole listed reference shows NO EXIT FEE", /NO EXIT FEE/.test(await page.locator('.row[data-id="' + drops[2].id + '"]').innerText()));
+  check("Exit fee (" + look + "): a listed reference start shows Exempt, any case or spacing", (await page.locator(r0 + ' .bpay-row .bpay-status').first().innerText()) === "Exit · Exempt");
+  if (drops[2]) check("Exit fee (" + look + "): a whole listed reference shows Exempt", (await page.locator('.row[data-id="' + drops[2].id + '"] .bpay-row .bpay-status').first().innerText()) === "Exit · Exempt");
   check("Exit fee (" + look + "): other references show no tag", !/EXIT FEE/.test(await page.locator(r1).innerText()));
   await page.click(r0 + " .reg"); await page.waitForSelector("#panel[open]");
   check("Exit fee (" + look + "): the car says no exit fee", /EXIT FEE\s*None for this booking/i.test(await page.locator("#panelBody .det").innerText()));
@@ -312,7 +312,7 @@ for (const theme of ["", "ops"]) await scenario(async () => {
   check("Exit fee paid (" + look + "): CARD with a photo uploads it and marks the car", call && call.args.p_method === "card" && /^c1\/docs\/b1\/x\d+\.jpg$/.test(call.args.p_photo) && db.uploads.some((u) => u === call.args.p_photo), { call, up: db.uploads });
   check("Exit fee paid (" + look + "): the car says paid by card, with the photo", /£10 paid by card/.test(await page.locator("#panelBody").innerText()) && await page.locator("#exitImg").count() === 1);
   await page.keyboard.press("Escape"); await sleep(300);
-  check("Exit fee paid (" + look + "): the row shows EXIT £10 CARD", /EXIT £10 CARD/.test(await page.locator('.row[data-id="b1"]').innerText()));
+  check("Exit fee paid (" + look + "): terminal keeps its operational fee tag without collection-review controls", (await page.locator('.row[data-id="b1"]').innerText()).includes("EXIT £10 CARD") && !await page.locator("#boardPayments").isVisible() && await page.locator(".bpay-row").count() === 0);
   await page.click('.row[data-id="b1"] .reg'); await page.waitForSelector("#panel[open]");
   await page.click("[data-exitundo]"); await sleep(600);
   check("Exit fee paid (" + look + "): Undo clears it", db.calls.filter((c) => c.fn === "set_exit_paid").pop().args.p_method === "" && /£10 due/.test(await page.locator("#panelBody").innerText()));
@@ -402,6 +402,7 @@ for (const role of ["owner", "manager"]) await scenario(async () => {
   await open(page); await sleep(300);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menuBody [data-view="settings"]'); await sleep(400);
   if (role === "manager") return check("Yard colours settings: a manager doesn't get them", await page.locator("[data-saveycol]").count() === 0 && await page.locator("[data-savecap]").count() === 1);
+  await page.click('[data-setsec="ycol"]'); await sleep(200);
   check("Yard colours settings: the owner gets a colour per yard", await page.locator("[data-ycol]").count() === 3 && await page.inputValue('[data-ycol="MY"]') === "#2e7d32");
   await page.locator('[data-ycol="GS"]').evaluate((e) => { e.value = "#ef6c00"; e.dispatchEvent(new Event("input", { bubbles: true })); });
   check("Yard colours settings: the tag shows the colour as it's chosen", await page.locator('.ycol:has([data-ycol="GS"]) .code').evaluate((e) => getComputedStyle(e).backgroundColor) === rgb("#EF6C00"));
@@ -510,7 +511,7 @@ await scenario(async () => {
     const row = document.querySelector('.row[data-id="b3"]'), acts = row.querySelector(".acts").getBoundingClientRect();
     return [...row.querySelectorAll(".l2 .tag")].map((t) => { const b = t.getBoundingClientRect(); return { t: t.textContent, right: Math.round(b.right), acts: Math.round(acts.left) }; });
   });
-  check("row tags: CHECK FLIGHT NO., OVERSTAY and £ DUE all shown", /CHECK FLIGHT/.test(JSON.stringify(r)) && /OVERSTAY/.test(JSON.stringify(r)) && /DUE/.test(JSON.stringify(r)), r);
+  check("row tags: flight warning, overstay and the separate amount due all shown", /CHECK FLIGHT/.test(JSON.stringify(r)) && /OVERSTAY/.test(JSON.stringify(r)) && /Overstay \/ charge £\d+ · Due/.test(await page.locator('.row[data-id="b3"] .bpay-row').innerText()), r);
   check("row tags: none runs under the buttons", r.length > 0 && r.every((x) => x.right <= x.acts), r);
   // An ordinary landed car keeps flight and times on one line (28 Sept: they wrapped).
   const one = await page.evaluate(() => {

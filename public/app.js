@@ -377,7 +377,7 @@
     if (o.archive) S.archiveSheet = o.archive;
     else if (S.archiveSheet && S.archiveSheet.id !== id) S.archiveSheet = null;   // leaving an archived sheet
     S.switching = null; loadSeq++;
-    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null;
+    S.sheetId = id; S.q = o.q || ""; S.boardQueue = o.queue || ""; S.other = null; S.yardFilter = ""; S.catFilter = ""; S.runs = null; S.flTile = "";
     if (o.filter) S.filter = o.filter;
     S.view = stay ? S.view : "board"; if (stay) S.activity = null;
     S.rowsSheet = null;                                      // fresh sheet: filters reset in takeRows
@@ -673,7 +673,7 @@
     if (premium && sh) $("cShift").innerHTML = cShiftHtml(sh);
     show("kindSeg", cardsLook && board && !!sh);
     // Operations: Drops | Picks in the top bar.
-    var opsLook = document.documentElement.classList.contains("ops");
+    var opsLook = isOps();
     show("kindBar", opsLook && !S.platform && !!sh);
     if (opsLook && sh) Array.prototype.forEach.call($("kindBar").querySelectorAll("[data-kind]"), function (b) { b.setAttribute("aria-pressed", b.dataset.kind === sh.kind); });
     if (cardsLook && sh) {
@@ -813,14 +813,15 @@
     if (id === (S.switching ? S.switching.id : S.sheetId)) return;
     // Operations: Drops | Picks on Hourly stats or Shift summary stays on that page.
     var stay = isOps() && (S.view === "summary" || S.view === "stats");
+    if (!stay && !leaveOk()) return;
     switchSheet(id, { stay: stay });
   }
   function pickerHtml(shift) {
     // Operations: Drops | Picks sits beside the picker, so it lists only that
     // kind's days, without the word ("7TH OCT · today").
-    var cur = sheet(), oneKind = document.documentElement.classList.contains("ops") && cur ? cur.kind : "";
+    var cur = sheet(), oneKind = isOps() && cur ? cur.kind : "";
     var sheets = oneKind ? S.sheets.filter(function (s) { return s.kind === oneKind; }) : S.sheets;
-    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
+    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? (isRefined() && s.day ? refinedDay(s.day, s.day === shift) : sheetLabel(s).replace(/^\S+ /, "")) : sheetLabel(s)) + (s.day === shift && !(isRefined() && oneKind && s.day) ? " · today" : "") + "</option>"; }
     var ahead = sheets.filter(function (s) { return s.day >= shift; }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.kind < b.kind ? -1 : 1; });
     var h = ahead.length ? '<optgroup label="TODAY AND COMING UP">' + ahead.map(opt).join("") + "</optgroup>" : "";
     var months = {};
@@ -871,7 +872,9 @@
       html = '<div class="msg">This screen couldn\'t be shown just now.<br><br>' + (S.view !== "board" ? '<button type="button" class="btn brand" data-view="board">Back to the board</button> ' : "") +
         '<button type="button" class="btn ghost" data-reload>Reload the app</button></div>';
     }
+    var keep = S.view === "settings" && $("main").dataset.view === "settings" && hasFeatures() ? setEdits() : null;
     setMain(html, S.view);
+    if (S.view === "settings" && hasFeatures()) settingsDrawn(keep);
     snapSave();
     if (flashId) { var el = document.querySelector('[data-id="' + flashId + '"]'); if (el) { el.classList.add("flash"); setTimeout(function () { el.classList.remove("flash"); }, 1500); } flashId = null; }
   }
@@ -887,7 +890,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -910,8 +913,32 @@
   var QUEUES = {
     called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
     sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
-    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }]
+    soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }],
+    // A tapped number on Summary or Hourly stats: the cars it counts.
+    way: ["On the way", function (r) { return !!r.sent_at && !r.cleared_at; }],
+    over: ["Overstays", function (r) { return !!r.overstay; }],
+    comp: ["Complaints", function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }],
+    sentall: ["Sent", function (r) { return !!r.sent_at; }],
+    back: ["Collected", function (r) { return !!r.cleared_at; }],
+    left: ["Still to collect", function (r) { return !r.cleared_at; }],
+    owed: ["Overstay still owed", function (r) { var d = !r.charge_method && chargeDue(r); return !!(d && d.amount > 0); }],
+    cash: ["Overstay paid: cash", function (r) { return r.charge_method === "cash"; }],
+    card: ["Overstay paid: card", function (r) { return r.charge_method === "card"; }],
+    waived: ["Overstay waived", function (r) { return r.charge_method === "waived"; }],
+    carsin: ["Cars in", function (r) { return r.intake === "Collected"; }],
+    come: ["Still to come", function (r) { return !r.intake; }],
+    noshow: ["No shows", function (r) { return r.intake === "No Show"; }],
+    rtc: ["RTC", function (r) { return r.intake === "RTC"; }],
+    pdone: ["Completed", function (r) { return r.intake === "Collected" || r.intake === "RTC"; }]
   };
+  // Open the board on one of those queues ("" = the whole sheet).
+  function openTile(k) {
+    keyModeSet(false); S.q = ""; S.yardFilter = ""; S.catFilter = ""; S.paymentFilter = "";
+    S.boardQueue = QUEUES[k] ? k : ""; if (!S.boardQueue) S.filter = "all";
+    go("board");
+  }
+  // A number that opens its cars: a tile that is also a button.
+  function tileAttr(k) { return ' data-tileq="' + k + '" role="button" tabindex="0"'; }
   function queueBar() {
     var q = QUEUES[S.boardQueue]; if (!q) return "";
     return '<div class="queuebar"><span>Showing <b>' + esc(q[0]) + '</b> · ' + S.rows.filter(q[1]).length + '</span><button type="button" data-queueclear>Show all</button></div>';
@@ -958,9 +985,11 @@
   }
   function dayWord(key) { var d = +key.slice(8, 10); return pad(d) + ordinal(d); }
 
-  function visibleRows() {
+  function visibleRows(withoutPayments) {
     var q = S.q.trim().toUpperCase().replace(/^#/, "").replace(/\s+/g, "");
+    var usePayments = !withoutPayments && S.paymentFilter && boardPaymentsAvailable();
     return S.rows.filter(function (r) {
+      if (usePayments && !paymentMatches(r, S.paymentFilter)) return false;
       // A search looks at the whole sheet: a car already done must still be findable from TO DO.
       if (q) return [r.reg, r.num, r.flight, r.name, r.phone, r.note, r.ref, r.make].join("").toUpperCase().replace(/\s+/g, "").indexOf(q) !== -1;
       if (QUEUES[S.boardQueue]) return QUEUES[S.boardQueue][1](r);
@@ -1006,8 +1035,11 @@
     renderTallyFold(cells);
     renderKeyBtn();
     var cardsWords = pro && !isPremium();
-    $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
-    $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    if (isRefined()) { $("tabTodo").innerHTML = 'To do <b class="num">' + S.rows.filter(waiting).length + "</b>"; $("tabAll").innerHTML = 'All <b class="num">' + S.rows.length + "</b>"; }
+    else {
+      $("tabTodo").textContent = cardsWords ? S.rows.filter(waiting).length + " Waiting for action" : "TO DO (" + S.rows.filter(waiting).length + ")";
+      $("tabAll").textContent = cardsWords ? "All " + S.rows.length : "ALL (" + S.rows.length + ")";
+    }
     $("tabTodo").classList.toggle("on", !keyOn() && S.filter === "todo");
     $("tabAll").classList.toggle("on", !keyOn() && S.filter === "all");
     $("tabTodo").setAttribute("aria-pressed", !keyOn() && S.filter === "todo");
@@ -1036,6 +1068,8 @@
     show("tallyFold", on);
     if (!on) return;
     $("tallyFold").setAttribute("aria-expanded", !folded);
+    // Operations Refined: the fold takes away the counts block only; SHORT / LONG and SHORT TO stay.
+    $("tallyFold").setAttribute("aria-controls", isRefined() ? "tally" : "tally catTally");
     if (!folded) { $("tallyFold").innerHTML = '<span class="tf-act">Hide numbers</span>'; return; }
     var sum = cells.map(function (x) { return '<b class="num">' + x[2] + "</b> <i>" + esc(x[0]) + "</i>"; }).join(" · ");
     var f = S.yardFilter ? (cells.filter(function (x) { return x[1] === S.yardFilter; })[0] || [S.yardFilter])[0]
@@ -1064,6 +1098,7 @@
   }
 
   function renderBoard() {
+    renderBoardPayments();
     if (keyOn()) { boardChunks = null; sheetChunks = null; return renderKeyBoard(); }
     var n = backupNudge(), d = deskBtn() + keyStrip(); sheetChunks = null;
     var sh = renderSheet(), o = otherDaysHtml(), f = opsBoardFoot();
@@ -1216,7 +1251,7 @@
     }
     if (!S.rows.length) return '<div class="msg">No cars on this sheet.</div>';
     if (!rows.length) return queueBar() + '<div class="msg">' + (QUEUES[S.boardQueue] ? "Nothing in this queue now." : S.filter === "todo" && !S.q && !S.yardFilter ? "Nothing outstanding." : S.q ? (S.other && S.other.length ? "Not on this sheet. Found on another day below." : searchWords().tight.length >= 3 && S.other ? "Not found on any sheet." : "Not on this sheet.") : "Nothing matches.") + "</div>";
-    var draw = sh.kind === "picks" ? pickRow : dropRow;
+    var draw = sh.kind === "picks" ? pickRow : dropRow, paymentRows = boardPaymentsAvailable();
     var cardsLook = isCards() && !isBoard();   // Premium Board heads its sections like the old board
     var chunks = [], qb = queueBar();
     if (qb) chunks.push(["queue", qb]);
@@ -1235,7 +1270,7 @@
         }
       }
       chunks.push(["head:" + g.title, head]);
-      return head + g.rows.map(function (r) { var x = draw(r); chunks.push(["row:" + r.id, x]); return x; }).join("");
+      return head + g.rows.map(function (r) { var x = draw(r); if (paymentRows) x = withBoardPayments(r, x); chunks.push(["row:" + r.id, x]); return x; }).join("");
     }).join("");
     sheetChunks = chunks;
     return out;
@@ -1260,27 +1295,41 @@
   function noteLine(r) { return r.note ? '<div class="l3' + (/^!/.test(r.note) ? " bang" : "") + '">' + esc(r.note.replace(/^!\s*/, "")) + "</div>" : ""; }
   // A pressed button shows the time and the first name of whoever pressed it.
   // The Cards look's buttons are big enough for words, not codes.
+  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   // A card per car (Cards or Premium look); isPremium tells the two apart.
   function isCards() { var c = document.documentElement.classList; return c.contains("cards") || c.contains("premium"); }
   function isPremium() { return document.documentElement.classList.contains("premium"); }
   // Premium Board: Premium with two-line rows (board.css).
   function isBoard() { return document.documentElement.classList.contains("pboard"); }
-  function isOps() { return document.documentElement.classList.contains("ops"); }
+  // Operations and Operations Refined (html.ops-refined, ops-refined.css) share the Operations pages and features.
+  function isOps() { var c = document.documentElement.classList; return c.contains("ops") || c.contains("ops-refined"); }
+  function isRefined() { return document.documentElement.classList.contains("ops-refined"); }
+  // Operations Refined's day words: "Thu 22 Oct" ("Today 22 Oct" for the shift on now), and "Drops · Thu 22 Oct" for a sheet.
+  function refinedDay(key, today) {
+    if (!key) return "";
+    var d = new Date(key + "T12:00:00Z"), o = function (x) { x.timeZone = "UTC"; return d.toLocaleDateString("en-GB", x); };
+    return (today ? "Today" : o({ weekday: "short" })) + " " + d.getUTCDate() + " " + o({ month: "short" });
+  }
+  function refinedSheetLabel(s) { var k = s.kind === "picks" ? "Picks" : "Drops"; return s.day ? k + " · " + refinedDay(s.day) : k; }
   function isStdPlus() { return document.documentElement.classList.contains("stdplus"); }
   // The working features (swipe, pull to refresh, the number fold, the menu in
   // sections, the Summary upgrades): Premium looks and Standard with features.
   function hasFeatures() { return isPremium() || isStdPlus(); }
   // Booking sites send names in capitals; the Cards look shows them as written ("Senior Miss").
-  function niceMake(m) { return m.length <= 3 ? m : nice(m); }
+  // Operations Refined keeps the short model codes in capitals ("BMW 3 Series", "Audi Q5 S Line").
+  var RF_CAPS = /^(bmw|mg|vw|ds|byd|amg|gti|gtd|tdi|tsi|suv|ev|hev|phev|gt|rs|st|se|sr|xe|xf|xj|ii|iii|iv|vi|[a-z]\d{1,2}|id\.?\d?)$/i;
+  function niceMake(m) { return m.length <= 3 ? m : isRefined() ? nice(m).split(" ").map(function (w) { return RF_CAPS.test(w) ? w.toUpperCase() : w; }).join(" ") : nice(m); }
   function sentence(t) { t = String(t || ""); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase(); }
-  // Card looks tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
-  function nice(t) { t = String(t || ""); return isCards() && !isBoard() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
+  // Card looks and Operations Refined tidy names to "Senior Miss"; Premium Board keeps them as imported, like Standard.
+  function nice(t) { t = String(t || ""); return (isCards() && !isBoard()) || isRefined() ? t.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t; }
   function actBtn(r, attrs, cls, label, on, at, allowed, who) {
     var pro = isCards() && !isBoard();   // Premium Board's buttons read like Standard's (COLL, NO SHOW)
     if (pro && PRO_WORDS[label]) label = PRO_WORDS[label];
     // Premium Board's pick rows have narrow buttons: the short word, as the old rows had.
     if (label === "Collected" && isBoard()) label = "Coll";
+    // Operations Refined: the words in sentence case, easier to read at a glance.
+    if (isRefined() && RF_WORDS[label]) label = RF_WORDS[label];
     var name = on && at ? nice(String(who || "").trim().split(/\s+/)[0]) : "";
     return '<button type="button" class="' + cls + (on ? " on" : "") + (label.length > 7 ? " lng" : "") + '" ' + attrs + (allowed ? "" : " disabled") + ">" +
       (pro ? '<span class="w">' + label + "</span>" : label) + (on && at ? '<small class="num">' + esc(hhmm(at)) + "</small>" : "") + (name ? '<em class="by">' + esc(name) + "</em>" : "") + "</button>";
@@ -1445,6 +1494,7 @@
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
     if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
+    if (isRefined()) return refinedDropRow(r, cls, overWord, cmpl, canc, over);
     // An early return shows no booked time here (it was for another day): the EARLY tag says when.
     var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "—");
     var eta = canc ? "" : r.est_time;
@@ -1467,6 +1517,42 @@
       earlyLine(r) + noteLine(r) + "</div>" +
       // "Show buttons on drops" off (Standard with features): what's done instead of buttons.
       (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+
+  // ── Operations Refined's rows (phone and tablet) ──
+  // The reg big on its own line with the yard and number, then the car and
+  // customer, then the flight and times with the flight's state as a word.
+  // The same data, taps and buttons as every other row.
+  function rfWho(r) { var mk = makeOnly(r.make); return [mk ? niceMake(mk) : "", nice(r.name)].filter(Boolean).join(" · "); }
+  function refinedDropRow(r, cls, overWord, cmpl, canc, over) {
+    var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "");
+    var eta = canc ? "" : r.est_time, who = rfWho(r);
+    var word = r.flight_status === "landed" ? '<span class="fw land">Landed</span>' : canc ? '<span class="fw stop">Cancelled</span>'
+      : eta === "DELAY" ? '<span class="fw stop">Delayed</span>' : "";
+    var flt = r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : can("flights") ? '<button type="button" class="addflight" data-addflight>+ Flight</button>' : '<span class="flp none">No flight</span>';
+    return '<div class="row rfr' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" + yardChip(r) +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + keyBox(r) + "</div>" +
+      (who || catTag(r) || wasTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + wasTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open>' + flt + (booked ? '<span class="tm">' + esc(booked) + "</span>" : "") +
+      (eta && eta !== "DELAY" && eta !== booked ? '<span class="eta' + (r.flight_status === "expected" ? " exp" : "") + '">&rarr; ' + esc(eta) + "</span>" : "") + word + "</div>" +
+      rowTags(r, [flightToCheck(r) ? '<span class="tag ck">' + (/^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY"
+        : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.") + "</span>" : "",
+        over ? '<span class="tag ov">OVERSTAY</span>' : "", cmpl ? '<span class="tag cm">COMPLAINT</span>' : "", chargeTag(r).replace(/^ · /, ""), exitTag(r)]) +
+      earlyLine(r) + noteLine(r) + "</div>" +
+      (swipeOnly() ? stepStatus(r) : dropButtons(r, overWord, cmpl)) + "</div>";
+  }
+  function refinedPickRow(r, cls) {
+    var who = rfWho(r);
+    var tags = (S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "") +
+      (r.pick_called ? '<span class="rfpc"><span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called.toUpperCase())) + "</span> " + esc(hhmm(r.pick_called_at)) + "</span>" : "");
+    return '<div class="row rfr rfp' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
+      '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
+      (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + "</div>" +
+      (who || catTag(r) ? '<div class="l2 rfw" data-open>' + catTag(r) + esc(who) + "</div>" : "") +
+      '<div class="l2 rft num" data-open><span class="tm">Drop ' + esc(hhmm(r.drop_at) || "—") + "</span>" + (r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : "") + "</div>" +
+      (tags ? '<div class="l2 l2t" data-open>' + tags + "</div>" : "") + noteLine(r) + "</div>" +
+      pickActs(r) + "</div>";
   }
 
   // Short words on the row, so the customer's name still fits on a phone.
@@ -1541,8 +1627,103 @@
     if (u.error || !u.data) { a.innerHTML = '<span class="note">Photo not found.</span>'; return; }
     a.href = u.data.signedUrl; a.innerHTML = '<img alt="Photo of the payment" src="' + esc(u.data.signedUrl) + '">';
   }
+  // Collections on the board, shared by every look and gated by saved access.
+  // Defaults and per-person grants/removals are resolved by my_permissions.
+  // These are the existing
+  // payment records: a recorded charge settles it (a smaller payment can be
+  // the agreed discount), and a waiver is never counted as cash received.
+  function paymentPence(n) { return Math.max(0, Math.round((+n || 0) * 100)); }
+  function paymentFacts(r) {
+    var fee = paymentPence(exitFee()), due = chargeDue(r), ex, ch;
+    if (r.exit_method) ex = { state: "paid", amount: paymentPence(r.exit_amount), paid: paymentPence(r.exit_amount), due: 0, word: "Collected" };
+    else if (exitFree(r)) ex = { state: "free", amount: 0, paid: 0, due: 0, word: "Exempt" };
+    else ex = { state: fee ? "due" : "free", amount: fee, paid: 0, due: fee, word: fee ? "Due" : "No fee" };
+    if (r.charge_method === "waived") ch = { state: "free", amount: paymentPence(r.charge_amount), paid: 0, due: 0, word: "Waived" };
+    else if (r.charge_method) ch = { state: "paid", amount: paymentPence(r.charge_amount), paid: paymentPence(r.charge_amount), due: 0, word: "Collected" };
+    else { var amount = paymentPence(due && due.amount); ch = { state: amount ? "due" : "free", amount: amount, paid: 0, due: amount, word: amount ? "Due" : "No charge" }; }
+    var saving = S.queue.some(function (q) { return q.rowId === r.id && (q.fn === "set_exit_paid" || q.fn === "set_overstay_paid" || q.fn === "set_overstay_agreed"); });
+    return { exit: ex, charge: ch, due: ex.due + ch.due, paid: ex.paid + ch.paid, check: ex.state === "paid" && !r.exit_photo, saving: saving };
+  }
+  function boardPaymentsAvailable() {
+    var sh = sheet();
+    return !!(can("collections") && sh && sh.kind === "drops" && !S.platform && !keyOn() && (exitFee() > 0 || S.rows.some(function (r) { return r.exit_method || r.charge_method || paymentPence((chargeDue(r) || {}).amount) > 0; })));
+  }
+  function paymentMatches(r, filter) {
+    var p = paymentFacts(r);
+    return filter === "due" ? p.due > 0 : filter === "paid" ? p.paid > 0 : filter === "check" ? p.check : true;
+  }
+  var boardPaymentScope = "", boardPaymentId = "";
+  function renderBoardPayments() {
+    var el = $("boardPayments"); if (!el) return;
+    var scope = (S.company && S.company.id || "") + ":" + S.sheetId;
+    if (scope !== boardPaymentScope) { boardPaymentScope = scope; S.paymentFilter = ""; }
+    var on = boardPaymentsAvailable();
+    el.classList.toggle("hidden", !on);
+    if (!on) {
+      S.paymentFilter = ""; el.innerHTML = "";
+      if (boardPaymentId) {
+        boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); $("panelBody").innerHTML = "";
+        if ($("panel").open) $("panel").close();
+      }
+      return;
+    }
+    var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
+    rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
+    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]];
+    el.innerHTML = '<div class="bpay-caption"><strong>Collections</strong><span>' + rows.length + ' bookings shown' + (total.saving ? " · Saving changes…" : "") + '</span></div><div class="bpay-totals">' +
+      [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v, i) { return '<div><span>' + (i === 1 && isRefined() ? "Overstays" : v[0]) + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
+      '</div><div class="bpay-filters" role="group" aria-label="Filter collections">' + filters.map(function (f) {
+        var count = f[0] ? base.filter(function (r) { return paymentMatches(r, f[0]); }).length : base.length;
+        return '<button type="button" data-payfilter="' + f[0] + '" aria-pressed="' + ((S.paymentFilter || "") === f[0]) + '">' + f[1] + ' <b class="num">' + count + "</b></button>";
+      }).join("") + "</div>";
+  }
+  function withBoardPayments(r, html) {
+    if (!can("collections")) return html;
+    var p = paymentFacts(r);
+    function label(title, x) { return '<span class="bpay-status ' + x.state + '">' + title + (x.amount ? ' <b class="num">' + money(x.amount / 100) + "</b>" : "") + " · " + x.word + "</span>"; }
+    var line = '<button type="button" class="bpay-row" data-paydetails="' + esc(r.id) + '" aria-label="Collection details for ' + esc(r.reg) + '">' + label("Exit", p.exit) + label("Overstay / charge", p.charge) +
+      (p.saving ? '<span class="bpay-check">Saving…</span>' : p.check ? '<span class="bpay-check">Needs checking</span>' : "") + '<span class="bpay-arrow" aria-hidden="true">›</span></button>';
+    // Keep one outer element per booking for incremental redraws and swipes.
+    html = html.replace('class="row', 'class="row with-payments');
+    html = html.replace(chargeTag(r).replace(/^ · /, "") || "\u0000", "").replace(exitTag(r) || "\u0000", "").replace(/<div class="l2 l2t" data-open>\s*<\/div>/, "");
+    return html.replace(/<\/div>$/, line + "</div>");
+  }
+  function openBoardPayment(r) {
+    if (!boardPaymentsAvailable() || S.switching || !S.company || r.company_id && r.company_id !== S.company.id || r.sheet_id !== S.sheetId || r.kind !== "drops") return;
+    var p = paymentFacts(r);
+    boardPaymentId = r.id; panelRow = null;
+    $("panel").classList.remove("ops-car"); $("panel").classList.add("payment-sheet");
+    function detail(label, value) { return '<div class="bpay-kv"><dt>' + label + '</dt><dd>' + esc(value || "—") + "</dd></div>"; }
+    function record(title, x, method, who, at, reason) {
+      return '<section class="bpay-record"><div class="bpay-record-head"><h3>' + title + '</h3><b class="num">' + money(x.amount / 100) + '</b><span class="bpay-status ' + x.state + '">' + x.word + '</span></div><dl>' +
+        (method ? detail("Payment method", method === "waived" ? "Waived" : sentence(method)) + detail(method === "waived" ? "Recorded by" : "Collected by", byName(r, who)) + detail("Recorded", at ? dayShort(at) + " · " + hhmm(at) : "") : "") +
+        (reason ? detail("Reason", reason) : "") + "</dl></section>";
+    }
+    $("panelBody").innerHTML = '<div class="bpay-sheet"><div class="bpay-title"><div><span>Collection details</span><h2 id="panelTitle">' + esc(r.reg || "No registration") + '</h2><p>' + esc([niceMake(r.make || ""), r.ref].filter(Boolean).join(" · ")) + '</p></div><button type="button" data-close aria-label="Close collection details">×</button></div>' +
+      '<div class="bpay-balance' + (p.due ? " due" : "") + '">' + (p.due ? money(p.due / 100) + " outstanding" : "No outstanding balance") + '</div><div class="bpay-summary"><span>Collected <b class="num">' + money(p.paid / 100) + '</b></span><span>Outstanding <b class="num">' + money(p.due / 100) + "</b></span></div>" +
+      (p.saving ? '<p class="bpay-note" role="status">Payment changes are waiting to save.</p>' : "") +
+      record("Exit fee", p.exit, r.exit_method, "exit_by", r.exit_at, "") +
+      (p.exit.state === "paid" ? '<div class="bpay-proof" id="boardPayProof">' + (r.exit_photo ? 'Loading payment proof…' : '<span class="bpay-check">Needs checking · no payment photo recorded</span>') + "</div>" : "") +
+      record("Overstay / additional charge", p.charge, r.charge_method, "charge_by", r.charge_at, r.charge_reason) +
+      '<div class="bpay-footer"><button type="button" data-paybooking="' + esc(r.id) + '">Open booking</button><button type="button" data-close>Back to board</button></div></div>';
+    if (!$("panel").open) $("panel").showModal();
+    if (r.exit_photo && p.exit.state === "paid") fillBoardPaymentProof(r);
+  }
+  async function fillBoardPaymentProof(r) {
+    var company = S.company && S.company.id, path = r.exit_photo, el = $("boardPayProof");
+    if (!can("collections") || S.switching || !el || boardPaymentId !== r.id) return;
+    if (!path || path.indexOf(company + "/") !== 0) { el.textContent = "Payment proof unavailable."; return; }
+    el.textContent = "Loading payment proof…";
+    var result;
+    try { result = await sb.storage.from("pt-photos").createSignedUrl(path, 3600); } catch (err) { result = { error: err }; }
+    el = $("boardPayProof");
+    var current = S.rows.find(function (x) { return x.id === r.id; });
+    if (!can("collections") || S.switching || !el || !$("panel").open || boardPaymentId !== r.id || !S.company || S.company.id !== company || !current || current.exit_photo !== path) return;
+    if (result.error || !result.data || !result.data.signedUrl) { el.innerHTML = 'Payment proof unavailable. <button type="button" data-payproof="' + esc(r.id) + '">Try again</button>'; return; }
+    el.innerHTML = '<a href="' + esc(result.data.signedUrl) + '" target="_blank" rel="noopener">View payment proof ›</a>';
+  }
   function pickYardBtn(r) {
-    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : "YARD";
+    var on = !!r.yard, lab = on ? esc(YARD_LABEL[r.yard] || r.yard) : isRefined() && !opsDesk() ? "Yard" : "YARD";
     if (!can("intake")) return '<button type="button" class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '" disabled>' + lab + "</button>";
     return '<label class="pyard' + (on ? " on y-" + esc(r.yard) : "") + '"><span>' + lab + '</span><select data-yard aria-label="Location of ' + esc(r.reg) + '"><option value="">' + (on ? "— none" : "Choose") + "</option>" +
       (S.company.yards || []).map(function (y) { return "<option" + (y === r.yard ? " selected" : "") + ' value="' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + "</option>"; }).join("") + "</select></label>";
@@ -1551,6 +1732,7 @@
     var bang = /^!/.test(r.note);
     var cls = r.intake === "Collected" ? " coll" : r.intake === "No Show" ? " nosh" : r.intake === "RTC" ? " rtc" : bang ? " cmpl" : "";
     if (opsDesk()) return opsDeskPickRow(r, cls);
+    if (isRefined()) return refinedPickRow(r, cls);
     return '<div class="row' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="rt" data-open><b class="num">' + esc(hhmm(r.drop_at) || "—") + "</b><small>Drop-off</small></div>" +
       (isBoard() ? pickLinesBoard(r) :
@@ -2739,6 +2921,8 @@
   function canReturn(r) { return can("import") && (r.kind === "picks" || (r.kind === "drops" && !r.early && !r.cleared_at)); }
   function openPanel(r) {
     if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
+    // Operations Refined: drawn again after a tap that saves at once (yard, charge), it keeps what was typed.
+    var draft = isRefined() && $("panel").open && panelRow && panelRow.id === r.id && $("carState") ? carDraft() : null;
     panelRow = r;
     var drops = r.kind === "drops";
     function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(who) : "") : "—"; }
@@ -2756,74 +2940,91 @@
     }
     // Operations: "Booking details" with the reg under it, the details in two
     // columns, and the boxes in sections, each with a plain name.
-    var o = isOps(), desk = o && opsDesk(), R = "";
+    var o = isOps(), desk = o && opsDesk(), R = "", rf = isRefined();
     var h = o ? '<button type="button" class="ops-x" data-close aria-label="Close">&times;</button><h2 id="panelTitle">Booking details</h2>' +
-        '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+        (rf ? '<p class="sub"><b class="rf-reg">' + esc(r.reg || "NO REG") + "</b>" + (r.num ? ' <span class="rf-num">#' + r.num + "</span>" : "") + " · " + esc(refinedSheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+          : '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>")
       : '<h2 id="panelTitle">' + esc(r.reg || "NO REG") + (r.num ? " <small>#" + r.num + "</small>" : "") + "</h2>" +
       '<p class="sub">' + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>";
     var headEnd = h.length;
-    h += (r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "") + opsSec("Customer & vehicle") +
-      '<div class="det">' + det.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
+    var tel = r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "";
+    function detList(list) { return '<div class="det">' + list.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>"; }
+    // Operations Refined: a tap here saves at once, unlike the boxes saved by Save changes.
+    var NOW = rf ? '<small class="rf-now">Saves when tapped</small>' : "";
     // A booking can come with no reg: the office can type or correct it, a
     // driver can fill in a missing one when the car comes in.
     var canReg = can("import") || (can("intake") && !r.reg);
     // Swipe instead of buttons: the buttons live here, to undo or fix a swipe.
-    if (drops && swipeOnly()) { var steps = '<label>' + L("STEPS") + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts"); if (desk) R += opsSec("Status") + steps; else h += steps; }
+    var steps = drops && swipeOnly() ? '<label>' + L("STEPS") + NOW + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts") : "";
     var parking = canReg || canReturn(r) || (drops ? can("yard") : picksYard() && can("intake")) || (drops ? can("flights") : canPickFlight());
-    if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
-    if (canReg) h += fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true);
+    var regF = canReg ? fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true) : "";
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
     // finds this car rather than adding it again (database part 48).
     // The booking site moved the drop-off: the office moves the car to that day (part 102).
-    if (!drops && can("import") && !r.removed_at) {
-      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-      h += fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+    var dropF = "", retF = "", yardF = "", flightF = "", pickFlightF = "";
+    // Operations Refined: the date and the time as two boxes side by side, each named.
+    function when(d, t, word, p) {
+      return rf ? fld('<label for="' + d + '">' + word + ' date</label><input id="' + d + '" type="date" value="' + esc(p.key) + '">') + fld('<label for="' + t + '">' + word + " time</label>" + timeBox(t, p.time))
+        : fld('<label for="' + d + '">' + L(word === "Drop-off" ? "DROP-OFF DATE AND TIME" : "BACK DATE AND TIME") + '</label><div class="when2"><input id="' + d + '" type="date" value="' + esc(p.key) + '">' + timeBox(t, p.time) + "</div>", true);
     }
-    if (canReturn(r)) {
-      var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-      h += fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
-    }
+    if (!drops && can("import") && !r.removed_at) dropF = when("dropD", "dropT", "Drop-off", r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" });
+    if (canReturn(r)) retF = when("retD", "retT", "Return", r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" });
     if (drops ? can("yard") : picksYard() && can("intake")) {
-      h += fld('<label>' + L(drops ? "YARD" : "LOCATION") + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
-        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '">' + esc(YARD_LABEL[y] || y) + "</button>";
+      yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
+        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '"' + (rf ? ' aria-pressed="' + (r.yard === y) + '"' : "") + ">" + esc(YARD_LABEL[y] || y) + "</button>";
       }).join("") + "</div>", true);
     }
+    var flightNo = "", flightTime = "";
     if (drops && can("flights")) {
-      h += fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
-      if (r.flight === "NO FLIGHT") h += fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
-      else h += fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightNo = fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
+      if (r.flight === "NO FLIGHT") flightTime = fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
+      else flightTime = fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightF = flightNo + flightTime;
     }
     // The return flight, when the booking came without one: it goes on to the DROPS car (database part 78).
-    if (!drops && canPickFlight()) h += fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
-    var docs = docBlockHtml(r); if (!desk) h += docs;
-    if (can("note")) h += opsSec("Notes & status") + fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true);
-    var extra = "";
+    if (!drops && canPickFlight()) pickFlightF = fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
+    var docs = docBlockHtml(r);
+    var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
+    var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
-      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">OVERSTAY</button>';
-      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '">COMPLAINT</button>';
+      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
+      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
-      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '">CALLED</button>';
-      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">NEW BOOKING</button>';
-      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">NO SHOW</button>';
+      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '"' + AP(r.pick_called === "Called") + ">" + W("CALLED") + "</button>";
+      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '"' + AP(r.pick_called === "New Booking") + ">" + W("NEW BOOKING") + "</button>";
+      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '"' + AP(r.intake === "No Show") + ">" + W("NO SHOW") + "</button>";
     }
-    // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
-    var side = "";
-    if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + fld('<label>' + L("MARK AS") + '</label><div class="pseg">' + extra + "</div>", true);
-    if (drops) side += chargePanelHtml(r) + exitPanelHtml(r);
-    side += drops ? earlyHtml(r) : pickEarlyHtml(r);
+    var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
+    var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
+    var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    side += '<div id="ptPhotos"></div>';
-    if (can("import")) side += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
-    if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+    var photos = '<div id="ptPhotos"></div>';
+    var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
-    var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
     var hist = can("log") ? '<div id="carHist"></div>' : "";
-    // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
-    h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
-      : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
+      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
+    else {
+      h += tel + opsSec("Customer & vehicle") + detList(det);
+      if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
+      if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
+      h += regF + dropF + retF + yardF + flightF + pickFlightF;
+      if (!desk) h += docs;
+      if (can("note")) h += opsSec("Notes & status") + noteF;
+      // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
+      var side = "";
+      if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
+      side += pay + early + photos + rm;
+      if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+      var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
+      // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
+      h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
+        : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    }
     $("panelBody").innerHTML = h;
     $("panel").classList.toggle("ops-car", o);
+    if (rf) { carInit = carFieldVals(); if (draft) Object.keys(draft).forEach(function (k) { if ($(k)) $(k).value = draft[k]; }); carState(); }
     if (o) opsMenuPlace();
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
@@ -2831,6 +3032,58 @@
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
+  // ── Operations Refined: Booking details in sections ──
+  // Customer & vehicle, Return & parking, Notes & status, then payments,
+  // documents and photos; the read-only details as text, the boxes Save changes
+  // saves as fields, and what saves on a tap marked "Saves when tapped". The same
+  // fields, buttons and saves as Operations; only where they sit changes.
+  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
+  function refinedCar(r, head, P) {
+    // A detail that has its own box below shows once, in the box.
+    var skip = { NAME: 1, CAR: 1, REF: 1 }; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
+    var park = [], stat = [], fee = [];
+    P.det.forEach(function (x) { if (skip[x[0]]) return; (CAR_PARK[x[0]] ? park : x[0] === "EXIT FEE" ? fee : stat).push(x); });
+    // Read-only details: the name on the left, the value on the right, a line each.
+    function lab(t) { var l = L(t); return l === t ? sentence(t) : l; }
+    function kv(list) { list = list.filter(function (x) { return x[1] !== "—"; }); return list.length ? '<div class="rf-kv">' + list.map(function (x) { return "<div><span>" + lab(x[0]) + "</span><b>" + x[1] + "</b></div>"; }).join("") + "</div>" : ""; }
+    // Sent / Called / Clear (or how the car came in): when and who, side by side.
+    function stamps(list) { return list.length ? '<div class="rf-stamps">' + list.map(function (x) { var v = x[1].split(" · "); return '<div class="' + (x[1] === "—" ? "" : "on") + '"><span>' + lab(x[0]) + "</span><b>" + v[0] + "</b>" + (v[1] ? "<small>" + nice(v.slice(1).join(" · ")) + "</small>" : "") + "</div>"; }).join("") + "</div>" : ""; }
+    var was = P.retF && r.orig_return_at ? '<p class="rf-hint">First booked back ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</p>" : "";
+    function sec(cls, title, body, aside) { return body ? '<section class="rf-sec ' + cls + '"><h3 class="rf-h">' + esc(title) + (aside ? "<small>" + esc(aside) + "</small>" : "") + '</h3><div class="ops-sheet rf-grid">' + body + "</div></section>" : ""; }
+    var car = /^[-\s.]*$/.test(r.make || "") ? "" : niceMake(String(r.make).trim());
+    var cv = '<div class="rf-cv"><div><small>Customer</small><b>' + (esc(nice(r.name)) || "—") + "</b>" + (P.tel ? '<span class="rf-tel">' + P.tel + "</span>" : "") + "</div>" +
+      "<div><small>Vehicle</small><b>" + (esc(car) || "—") + '</b><span class="num">' + (esc(r.ref) || "No reference") + "</span></div></div>";
+    // A wide screen: the booking and its return on the left; status, notes, payments and photos on the right.
+    var A = sec("rf-cust", "Customer & vehicle", cv) +
+      sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", P.regF.replace('class="ops-f wide"', 'class="ops-f"') + P.flightNo + P.pickFlightF + P.dropF + P.retF + was + P.flightTime + kv(park) + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
+    var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
+    var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
+      sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
+      sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
+      (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
+    var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
+      : '<button type="button" data-close>Close</button>') + "</div>";
+    return head + (P.desk ? '<div class="ops-2col rf-2col"><div class="rf-col">' + A + '</div><div class="rf-col">' + B + "</div></div>" : A + B) +
+      (P.hist ? '<section class="rf-sec rf-hist">' + P.hist + "</section>" : "") + foot;
+  }
+  // What's typed in the car's boxes and not saved yet (Operations Refined).
+  var CAR_FIELDS = ["regText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
+  function carFieldVals() { var v = {}; CAR_FIELDS.forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
+  function carDraft() { var v = carFieldVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
+  function carState(msg) {
+    var el = $("carState"); if (!el) return;
+    var n = Object.keys(carDraft()).length;
+    el.textContent = msg || (n ? "Unsaved changes" : "No unsaved changes");
+    el.className = "rf-state" + (msg ? " bad" : n ? " dirty" : "");
+  }
+  // A box Save changes can't take: said in the footer too (Operations Refined), always as a message.
+  function saveErr(m) { if (isRefined()) carState(m); return toast(m, true); }
+  ["input", "change"].forEach(function (ev) { $("panelBody").addEventListener(ev, function (e) { if (isRefined() && $("carState") && e.target.id && CAR_FIELDS.indexOf(e.target.id) >= 0) carState(); }); });
+  // A phone keyboard: the box being typed in stays above Cancel / Save changes.
+  $("panelBody").addEventListener("focusin", function (e) {
+    var t = e.target; if (!isRefined() || !$("carState") || !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    setTimeout(function () { if (document.activeElement === t) t.scrollIntoView({ block: "nearest" }); }, 350);
+  });
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
@@ -2870,7 +3123,7 @@
       return '<a class="ptset" href="/p/' + esc(x.token) + '" target="_blank" rel="noopener"><span><b>' + x.n + " photo" + (x.n === 1 ? "" : "s") + "</b> · " + esc(dayShort(x.at) + " " + hhmm(x.at)) + (x.by ? " · " + esc(x.by) : "") + "</span><i>View ›</i></a>";
     }).join("");
   }
-  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car"); var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
+  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car", "payment-sheet"); boardPaymentId = ""; var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
   // Closes on a tap outside only when the press started outside too: selecting
   // text in a box and letting go past the edge must not close it.
   var downOn = {};
@@ -2897,27 +3150,27 @@
       var saved = false;
       // Check everything first: nothing is queued while any field is invalid.
       var pf = $("pickFlightText") ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
-      if (pf && pf.length > 10) return toast("That does not look like a flight number.", true);
+      if (pf && pf.length > 10) return saveErr("That does not look like a flight number.");
       var g = null;
       if ($("regText")) {
         g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
-        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return toast("Check the reg: letters and numbers only.", true);
+        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
       }
       var rl = null;
       if ($("retD")) {
         var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-        if (rt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (rt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("retD").value !== old.key || (rt || "") !== old.time) {
-          if (!$("retD").value || !rt) return toast("Enter when the car is back: the date and the time.", true);
+          if (!$("retD").value || !rt) return saveErr("Enter when the car is back: the date and the time.");
           rl = $("retD").value + " " + rt;
         }
       }
       var dl = null;
       if ($("dropD")) {
         var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-        if (dt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("dropD").value !== od.key || (dt || "") !== od.time) {
-          if (!$("dropD").value || !dt) return toast("Enter the drop-off: the date and the time.", true);
+          if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
           dl = $("dropD").value + " " + dt;
           if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
         }
@@ -2925,7 +3178,7 @@
       var f = null, ct, st;
       if ($("flightText")) {
         f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
-        if (ct === null || st === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
@@ -3220,7 +3473,7 @@
   function chargeLines() {
     if (!(+(S.company && S.company.overstay_rate))) return [];
     var t = chargeTotals();
-    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due)], ["Overstay paid: cash", money(t.cash)], ["Overstay paid: card", money(t.card)], ["Overstay waived", money(t.waived)]];
+    return [["Overstay: still owed (" + t.dueCars + ")", money(t.due), "owed"], ["Overstay paid: cash", money(t.cash), "cash"], ["Overstay paid: card", money(t.card), "card"], ["Overstay waived", money(t.waived), "waived"]];
   }
   function openDropsStats() {
     var D = dropsStats();
@@ -3274,17 +3527,20 @@
   }
   // ── Operations: Hourly stats and Shift summary as pages (ops.css) ──
   function opsSub(sh) {
-    if (opsDesk()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
+    // Operations Refined names the shift and its hours on a phone too.
+    if (opsDesk() || isRefined()) return '<div class="ops-scopewrap">' + opsScope(sh) + "</div>";
     return '<p class="ops-sub">' + (sh.kind === "drops" ? "Drops" : "Picks") + " · " + esc(new Date(sh.day + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })) + "</p>";
   }
   // Numbers side by side in one panel: [[label, value], …].
-  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
+  // x[2], when given, is the tile's tap: attributes from tileAttr() or flTileAttr().
+  function opsStrip(items) { return '<div class="ops-strip">' + items.map(function (x) { return "<div" + (x[2] ? ' class="tap"' + x[2] : "") + "><span>" + esc(x[0]) + '</span><strong class="num">' + x[1] + "</strong></div>"; }).join("") + "</div>"; }
   function opsPanel(title, aside, body, foot) {
     return '<section class="ops-card"><header><strong>' + esc(title) + "</strong>" + (aside ? "<small>" + esc(aside) + "</small>" : "") + "</header>" + body + (foot ? '<p class="ops-foot">' + esc(foot) + "</p>" : "") + "</section>";
   }
   // A table: the first cell is the label (trusted HTML), the rest numbers.
+  // A row with .tap (attributes from tileAttr) opens its cars.
   function opsTable(head, rows, total) {
-    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + '" style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
+    function line(c, cls) { return '<div class="ops-tr' + (cls ? " " + cls : "") + (c.tap ? ' tap"' + c.tap : '"') + ' style="--cols:' + (c.length - 1) + '">' + c.map(function (x, i) { return i ? '<i class="num">' + x + "</i>" : "<b>" + x + "</b>"; }).join("") + "</div>"; }
     return (head ? line(head, "th") : "") + rows.map(function (r) { return line(r); }).join("") + (total ? line(total, "tot") : "");
   }
   // ── Operations on a wide screen (900 px and up, ops.css "wide screen") ──
@@ -3308,7 +3564,7 @@
   // sheet, its full date and the hours it covers (the company's day end), London time.
   function opsScope(sh) {
     if (!sh || !sh.day) return "";
-    var bits = [longDate(sh.day)];
+    var bits = [isRefined() && !opsDesk() ? refinedDay(sh.day) : longDate(sh.day)];
     if (sh.kind === "drops") {
       var end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5), last = (minsOf(end) + 1439) % 1440;
       var lastDay = end === "00:00" ? sh.day : addDaysKey(sh.day, 1);
@@ -3574,7 +3830,7 @@
     document.body.classList.toggle("keychecking", on && S.view === "board");
     if (!can0) return;
     $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
-    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
+    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : isRefined() ? "Keys" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
     $("keyBtn").setAttribute("aria-label", "Key check" + (k && k.session ? ", " + c.found + " of " + c.all + " found" : ""));
     $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet";
     if (on) { $("tabTodo").classList.remove("on"); $("tabAll").classList.remove("on"); $("tabTodo").setAttribute("aria-pressed", "false"); $("tabAll").setAttribute("aria-pressed", "false"); }
@@ -3605,7 +3861,7 @@
     head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>FLIGHT</span><span>CUSTOMER · REF</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
     return head + (rows.length ? rows.map(function (r) {
       var st = keyState(r), e = keyEntry(r), locked = disabled || !active || st === "driver" || sh.archived_at;
-      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div>' +
+      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make ? (isRefined() ? niceMake(String(r.make).trim()) : r.make) : "No vehicle details") + '</div></div>' +
         '<div class="kc-fl">' + flightCell(r) + (r.name ? '<span class="kc-meta kc-flcu" title="' + esc(r.name) + '">' + esc(nice(r.name)) + '</span>' : '') + '</div>' +
         '<div class="kc-cu"><div class="kc-name" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="kc-meta num">' + esc(r.ref || "") + '</div></div>' +
         '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(byName(r, "sent_by") || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
@@ -3618,16 +3874,16 @@
     var desk = opsDesk(), h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
     if (sh.kind === "drops") {
       var D = dropsStats(), owed = chargeLines();
-      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) + statsCols(
+      h += opsStrip([["Due back", D.total.due, tileAttr("")], ["Sent", D.total.sent, tileAttr("sentall")], ["Collected", D.total.done, tileAttr("back")], ["Still to collect", D.total.due - D.total.done, tileAttr("left")]]) + statsCols(
         opsPanel("Returns by booked hour", desk ? "Due and collected" : "", (desk ? statBars(D.hours.map(function (x) { return [x.label, x.due, x.done]; })) : "") + opsTable(["Hour", "Due", "Sent", "Collected"],
           D.hours.map(function (x) { return [esc(x.label), x.due, x.sent, x.done]; }).concat(D.over.due ? [["Overstays", D.over.due, D.over.sent, D.over.done]] : []),
           ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : ""),
         opsPanel("Shift breakdown", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])) +
         opsPanel("Collected lately", "", opsTable(null, [["Last 30 minutes", D.last30], ["Last 60 minutes", D.last60]])) +
-        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
+        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { var l = [esc(x[0]), x[1]]; l.tap = tileAttr(x[2]); return l; }))) : ""));
     } else {
       var P = picksStats(), cats = catLines();
-      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
+      h += opsStrip([["Scheduled", P.totalSched, tileAttr("")], ["Completed", P.totalDone, tileAttr("pdone")], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
         opsPanel("Arrivals by booked hour", desk ? "Scheduled and completed" : "", (desk ? statBars(P.hours.map(function (x) { return [x.label, x.sched, x.done]; })) : "") + opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
           "Completed counts Collected and RTC, by booked arrival hour."),
         (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
@@ -3793,12 +4049,15 @@
 
   // ── flights ───────────────────────────────
   var FLIGHT_WORD = { noflight: "No flight number · collection time", "": "Not checked yet", scheduled: "Scheduled", expected: "Running late", airborne: "In the air", delayed: "DELAY", landed: "Landed", cancelled: "CANCELLED" };
+  // A tapped number on a phone's Flights page shows only those flights (S.flTile; "" = all).
+  function flTileOk(r) { var t = S.flTile || "", st = r.flight_status; return !t || st === t || (t === "delayed" && st === "expected"); }
+  function flTileAttr(k) { var on = (S.flTile || "") === k; return ' data-fltile="' + k + '" role="button" tabindex="0" aria-pressed="' + on + '"'; }
   function renderFlights() {
     var sh = sheet();
     if (!sh || sh.kind !== "drops") return '<div class="msg">Choose a DROPS sheet at the top to see its flights.</div>';
     if (!S.runs) loadRuns();
     var all = S.rows.filter(function (r) { return r.flight; }).sort(function (a, b) { return orderAt(a) < orderAt(b) ? -1 : 1; });
-    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); });
+    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); }), shown = rows.filter(flTileOk);
     function n(st) { return rows.filter(function (r) { return r.flight_status === st; }).length; }
     function last(src) {
       var run0 = (S.runs || []).filter(function (x) { return x.source === src; })[0];
@@ -3807,40 +4066,41 @@
       return esc(dayShort(run0.at) + " " + hhmm(run0.at)) + (res.error ? ' · <span class="bad">' + esc(res.error) + "</span>" : "");
     }
     if (opsDesk()) return opsFlightsDesk(sh);
-    if (isOps()) return opsFlights(sh, all, rows, manual, n);
+    if (isOps()) return opsFlights(sh, all, rows, manual, n, shown);
     var h = '<div class="pad"><h2 class="title">' + esc(sheetLabel(sh)) + "</h2>" +
-      '<div class="stats"><div class="stat"><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat"><span>Landed</span><strong class="num">' + n("landed") +
-      '</strong></div><div class="stat"><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat"><span>Cancelled</span><strong class="num">' + n("cancelled") +
+      '<div class="stats"><div class="stat tap"' + flTileAttr("") + '><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat tap"' + flTileAttr("landed") + '><span>Landed</span><strong class="num">' + n("landed") +
+      '</strong></div><div class="stat tap"' + flTileAttr("delayed") + '><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat tap"' + flTileAttr("cancelled") + '><span>Cancelled</span><strong class="num">' + n("cancelled") +
       '</strong></div></div><p class="note">Timetable last checked: ' + last("schedule") + "<br>Live positions last checked: " + last("live") + "</p>" +
       (canCheckFlights() ? '<div class="row-actions">' + checksLeftHtml() + '<button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
       "</div>" + missingHtml() + manualHtml(manual) + (missingFlights().length || manual.length ? '<div class="sec">WITH FLIGHT NUMBERS</div>' : "");
-    return h + (rows.length ? rows.map(function (r) {
+    return h + (shown.length ? shown.map(function (r) {
       return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
         '<div class="l2 num"><span class="l2a">' + esc(FLIGHT_WORD[r.flight_status] || r.flight_status) + (r.flight_note ? " · " + esc(r.flight_note) : "") + '</span><span class="l2b">' + (isPremium() ? "" : " · ") + esc(r.sched_time || hhmm(r.return_at)) +
         (r.est_time ? ' &rarr; <span class="eta' + (r.est_time === "DELAY" ? " dly" : "") + '">' + esc(r.est_time) + "</span>" : "") + "</span></div></div></div>";
-    }).join("") : '<div class="msg">No flight numbers on this sheet.</div>');
+    }).join("") : '<div class="msg">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</div>");
   }
   // Operations: the numbers in a strip, then each flight with its times and a status badge.
-  function opsFlights(sh, all, rows, manual, n) {
+  function opsFlights(sh, all, rows, manual, n, shown) {
     function run(src) { return (S.runs || []).filter(function (x) { return !src || x.source === src; })[0]; }
     var lastRun = run(), tt = run("schedule");
     var h = opsSub(sh) + '<div class="ops-acts ops-check"><span class="ops-dot' + (lastRun ? "" : " never") + '">' + (lastRun ? "Checked at " + esc(hhmm(lastRun.at)) : "Not checked yet") + "</span>" +
       (canCheckFlights() ? checksLeftHtml() + '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button>' : "") + "</div>" +
-      opsStrip([["Flights", all.length], ["Landed", n("landed")], ["Delayed", n("delayed") + n("expected")], ["Cancelled", n("cancelled")]]) +
+      opsStrip([["Flights", all.length, flTileAttr("")], ["Landed", n("landed"), flTileAttr("landed")], ["Delayed", n("delayed") + n("expected"), flTileAttr("delayed")], ["Cancelled", n("cancelled"), flTileAttr("cancelled")]]) +
       missingHtml() + manualHtml(manual);
     function mins(t) { return /^\d{2}:\d{2}$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : null; }
-    var list = rows.map(function (r) {
+    var list = shown.map(function (r) {
       var st = r.flight_status || "", sched = r.sched_time || hhmm(r.return_at), est = r.est_time || "";
       var late = mins(est) !== null && mins(sched) !== null ? (mins(est) - mins(sched) + 1440 + 720) % 1440 - 720 : 0;
       var word = st === "landed" ? "Landed" : st === "cancelled" ? "Cancelled" : (st === "delayed" || st === "expected") && late > 0 ? "Delayed +" + late + " min" : st === "delayed" ? "Delayed" : FLIGHT_WORD[st] || st;
       var tone = st === "landed" ? "ok" : st === "cancelled" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
       return '<div class="ops-fl fs-' + esc(st || "none") + '" data-id="' + r.id + '"><div class="ops-flin" data-open>' +
         '<b class="num">' + esc(r.flight) + '</b><span class="ops-flcar"><span class="num">' + esc(r.reg) + "</span><small>" + esc(nice(r.name)) + "</small></span>" +
-        '<span class="ops-flt"><small>Scheduled</small><span class="num">' + esc(sched || "—") + "</span></span>" +
-        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
-        '<em class="ops-badge ' + tone + '">' + esc(word) + (r.flight_note && st !== "landed" ? " · " + esc(r.flight_note) : "") + "</em></div></div>";
+        // Operations Refined: a flight per line on a phone, in the board's words (Sch, Est).
+        '<span class="ops-flt"><small>' + (isRefined() ? "Sch" : "Scheduled") + '</small><span class="num">' + esc(sched || "—") + "</span></span>" +
+        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : isRefined() ? "Est" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
+        '<em class="ops-badge ' + tone + '">' + (isRefined() && r.flight_note && st !== "landed" && r.flight_note.indexOf(word) === 0 ? "" : esc(word) + (r.flight_note && st !== "landed" ? " · " : "")) + (r.flight_note && st !== "landed" ? esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
-    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
+    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</p>");
   }
   // Fill times and Check flights: owners, managers and the office any time;
   // drivers and terminal staff 2 an hour between both (the server counts).
@@ -3926,13 +4186,14 @@
         var due = d.filter(function (r) { return /£/.test(r.note); }), D = dropsStats();
         var back = d.filter(function (r) { return r.cleared_at; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), "big") + "</div>" +
-          opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length], ["Overstays", d.filter(function (r) { return r.overstay; }).length], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length]]) +
-          opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]]));
+          opsStrip([["On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, tileAttr("way")], ["Overstays", d.filter(function (r) { return r.overstay; }).length, tileAttr("over")], ["Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length, tileAttr("comp")]]) +
+          (isRefined() ? opsPanel("Shift progress", "Collected", opsTable(null, [rfPart("Morning", "06:00–17:30", D.morning), rfPart("Night", "17:31–05:59", D.night)]))
+            : opsPanel("Shift progress", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])));
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars back", back + " / " + d.length, progressBar(back, d.length), hasFeatures() ? "big" : "") +
-          kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length) +
-          kstat("over", "Overstays", d.filter(function (r) { return r.overstay; }).length) +
-          kstat("comp", "Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length) +
+          kstat("way", "On the way", d.filter(function (r) { return r.sent_at && !r.cleared_at; }).length, "", "", "way") +
+          kstat("over", "Overstays", d.filter(function (r) { return r.overstay; }).length, "", "", "over") +
+          kstat("comp", "Complaints", d.filter(function (r) { return r.clear_word === "COMPLAINT" || /^!/.test(r.note); }).length, "", "", "comp") +
           kstat("morn", "Morning 06:00–17:30", D.morning.done + " / " + D.morning.due, miniBar(D.morning.done, D.morning.due)) +
           kstat("night", "Night 17:31–05:59", D.night.done + " / " + D.night.due, miniBar(D.night.done, D.night.due)) + "</div>";
         h += (due.length ? '<div class="section-label">Money due</div><div class="box">' + due.map(function (r) { return '<div class="rowline"><div class="grow"><strong>' + esc(r.reg) + "</strong> · " + esc(r.name) + '<div class="note">' + esc(r.note) + "</div></div></div>"; }).join("") + "</div>" : "");
@@ -3941,18 +4202,23 @@
         p.filter(function (r) { return r.intake === "Collected"; }).forEach(function (r) { var k = hhmm(r.intake_at).slice(0, 2); hours[k] = (hours[k] || 0) + 1; });
         var cin = p.filter(function (r) { return r.intake === "Collected"; }).length;
         if (isOps()) h += opsSub(sh) + '<div class="stats">' + kstat("back", "Cars in", cin + " / " + p.length, progressBar(cin, p.length), "big") + "</div>" +
-          opsStrip([["Still to come", p.filter(function (r) { return !r.intake; }).length], ["No shows", p.filter(function (r) { return r.intake === "No Show"; }).length], ["RTC", p.filter(function (r) { return r.intake === "RTC"; }).length]]) +
+          opsStrip([["Still to come", p.filter(function (r) { return !r.intake; }).length, tileAttr("come")], ["No shows", p.filter(function (r) { return r.intake === "No Show"; }).length, tileAttr("noshow")], ["RTC", p.filter(function (r) { return r.intake === "RTC"; }).length, tileAttr("rtc")]]) +
           opsPanel("Cars in by collection hour", "", hourBars(hours), "By the time each car was taken in. Hourly stats uses the booked arrival time.");
         else h += '<h2 class="title">' + esc(sheetLabel(sh)) + '</h2><div class="stats">' +
           kstat("back", "Cars in", cin + " / " + p.length, progressBar(cin, p.length), hasFeatures() ? "big" : "") +
-          kstat("noshow", "No shows", p.filter(function (r) { return r.intake === "No Show"; }).length) +
-          kstat("rtc", "RTC", p.filter(function (r) { return r.intake === "RTC"; }).length) +
-          kstat("come", "Still to come", p.filter(function (r) { return !r.intake; }).length) + "</div>" +
+          kstat("noshow", "No shows", p.filter(function (r) { return r.intake === "No Show"; }).length, "", "", "noshow") +
+          kstat("rtc", "RTC", p.filter(function (r) { return r.intake === "RTC"; }).length, "", "", "rtc") +
+          kstat("come", "Still to come", p.filter(function (r) { return !r.intake; }).length, "", "", "come") + "</div>" +
           '<div class="section-label">Cars in by hour</div>' + (hasFeatures() ? hourBars(hours) : '<div class="box">' + (Object.keys(hours).sort().map(function (k) { return '<div class="rowline"><span class="num grow">' + k + ':00</span><strong class="num">' + hours[k] + "</strong></div>"; }).join("") || '<div class="empty">None yet.</div>') + "</div>");
       }
     }
     var mid = h.length;
-    if (can("log")) {
+    // Operations Refined: the activity in its own panel, the filters in it.
+    if (can("log") && isRefined()) {
+      h += '<section class="ops-card rf-act"><header><strong>Activity</strong>' + (S.activity ? "<small>" + S.activity.length + " lines</small>" : "") + "</header>" +
+        (S.activity ? activityPremiumHtml() : '<div class="empty">Loading…</div>') + "</section>";
+      if (!S.activity) loadActivity();
+    } else if (can("log")) {
       h += '<div class="section-label">Activity</div>';
       if (!S.activity) { loadActivity(); h += '<div class="empty">Loading…</div>'; }
       else if (hasFeatures()) h += activityPremiumHtml();
@@ -4013,15 +4279,18 @@
     removed: '<path d="M6 6l12 12M18 6 6 18"/>',
     early: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>'
   };
-  function kstat(k, label, value, extra, cls) {
+  // tile: a QUEUES name, so tapping the number opens those cars on the board.
+  function kstat(k, label, value, extra, cls, tile) {
     var zero = /^(0|£0|0 \/ 0)$/.test(String(value));
-    return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + '"><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
+    return '<div class="stat k-' + k + (zero ? " zero" : "") + (cls ? " " + cls : "") + (tile ? ' tap"' + tileAttr(tile) : '"') + '><svg class="ki" viewBox="0 0 24 24" aria-hidden="true">' + (KICON[k] || "") + "</svg><span>" + label + '</span><strong class="num">' + value + "</strong>" + (extra || "") + "</div>";
   }
+  // Operations Refined's shift line: the part of the day and its hours, a thin bar, and "3 of 12".
+  function rfPart(name, hours, x) { return [name + "<small>" + hours + "</small>" + miniBar(x.done, x.due), x.done + " of " + x.due]; }
   function miniBar(done, all) { return '<span class="mbar" aria-hidden="true"><i style="width:' + (all ? Math.round(done / all * 100) : 0) + '%"></i></span>'; }
   function progressBar(done, all) {
     if (!hasFeatures() || !all) return "";
     var pc = Math.round(done / all * 100);
-    return '<div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + all + '" aria-valuenow="' + done + '"><i style="width:' + pc + '%"></i></div><small class="pbar-pc">' + pc + '% done</small><div class="pring" aria-hidden="true" style="--pc:' + pc + '" data-pc="' + pc + '%"></div>';
+    return '<div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + all + '" aria-valuenow="' + done + '"><i style="width:' + pc + '%"></i></div><small class="pbar-pc">' + pc + "% done" + (isRefined() ? " · " + (all - done) + " to go" : "") + '</small><div class="pring" aria-hidden="true" style="--pc:' + pc + '" data-pc="' + pc + '%"></div>';
   }
   // Which part of the work an activity line is about, for the filter chips.
   var PICK_ACTIONS = { INTAKE: 1, PT: 1, "PT PHOTOS": 1, "PT COPY": 1, "SHORT DATES": 1, "COLLECTION TIME": 1 };
@@ -4394,8 +4663,11 @@
     document.documentElement.classList.toggle("pboard", board);
     // Standard with features: Standard plus the bottom bar (stdplus.css).
     // Operations is Standard with features plus its own chrome (ops.css): html.stdplus + html.ops.
-    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops");
+    // Operations Refined is Standard with features plus ops-refined.css only (html.stdplus + html.ops-refined):
+    // the Operations pages and features (isOps), never ops.css.
+    document.documentElement.classList.toggle("stdplus", b.theme === "stdplus" || b.theme === "ops" || b.theme === "ops-refined");
     document.documentElement.classList.toggle("ops", b.theme === "ops");
+    document.documentElement.classList.toggle("ops-refined", b.theme === "ops-refined");
     var mark = String(b.mark || short.charAt(0) || "P").slice(0, 2);
     // Only the wordmark and the board button. NOT ".brand" on its own: the
     Array.prototype.forEach.call(document.querySelectorAll("span.brand, .tobrand"), function (el) {
@@ -4926,7 +5198,7 @@
   // ── Clients (product owner only, database part 19) ──
   // Counts only: this page never sees a client's customers.
   // The looks a client's app can wear (brand.theme): "pro" is pro.css, "cards" is cards.css, "premium" is premium.css, "board" is premium.css + board.css.
-  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"]];
+  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"], ["ops-refined", "Operations Refined"]];
   function lookName(b) { var l = LOOKS.filter(function (x) { return x[0] === ((b && b.theme) || ""); })[0]; return l ? l[1] : "Standard"; }
   function renderClients() {
     if (S.clients === undefined) { S.clients = null; loadClients(); }
@@ -4974,8 +5246,8 @@
       var ink = lightColour(c) ? "#1F1A00" : "#FFFFFF", line = hexMix(c, "#000000", 0.15);
       css += "html body .code." + y + ",html body select.code.pick." + y + ",html body .acts .pyard.on.y-" + y + ",html body .pseg.yard button.on.y-" + y +
         "{background:" + c + ";border-color:" + line + ";color:" + ink + ";}";
-      // Operations on a wide screen: a dot of the yard's colour by its count.
-      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
+      // Operations (and Operations Refined) on a wide screen: a dot of the yard's colour by its count.
+      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before,html.ops-refined body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
     });
     var el = document.getElementById("yardColours");
     if (!el) { el = document.createElement("style"); el.id = "yardColours"; document.head.appendChild(el); }
@@ -5162,14 +5434,14 @@
       }).join("") + '<div class="pbtns"><button type="button" data-health>Refresh</button><button type="button" data-close>Close</button></div>';
   }
 
-  // Mirrors can() in database part 3: what each role gets before any per-person change.
+  // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
   var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
-    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"] };
+    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
   var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
-    ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+    ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
@@ -5289,6 +5561,16 @@
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }
+  // An Actions menu that would open under the bottom bar (the last people on a phone) opens upward,
+  // so Switch on / Switch off stays in view.
+  document.addEventListener("toggle", function (e) {
+    var d = e.target; if (!d || !d.classList || !d.classList.contains("ops-dd")) return;
+    d.classList.remove("up"); if (!d.open) return;
+    var m = d.querySelector(":scope > div"), bn = $("bnav"), low = innerHeight, b = bn && bn.getBoundingClientRect();
+    if (b && b.height && b.top > innerHeight / 2) low = Math.min(low, b.top);
+    var r = m.getBoundingClientRect();
+    if (r.bottom > low - 8 && d.getBoundingClientRect().top - r.height - 4 > 0) d.classList.add("up");
+  }, true);
   async function staffAction(body, busyEl) {
     if (busyEl) busyEl.disabled = true;
     try {
@@ -5420,8 +5702,10 @@
     // Operations: shorter words, so two boxes fit side by side; a note when there are unsaved changes.
     var o = isOps(), base = timing(), dirty = o && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); });
     var hrs = []; for (var h = 0; h <= 24; h++) hrs.push([h, o && h === 24 ? "Midnight" : hourName(h)]);
-    var unsaved = dirty ? '<div class="ops-unsaved"><span>Unsaved changes in Flight checks</span><button type="button" class="btn small" data-savesettings>Save changes</button></div>' : "";
-    var flights = '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px"><strong>Flight checks' + (o ? "<small>Automatic checks " + (String(T.enabled) === "false" ? "off" : "on") + "</small>" : "") + "</strong>" +
+    // Operations Refined says it in the Flight checks box itself, beside its Save.
+    // Looks with features (Operations Refined aside, which says it in each box): a bar names what isn't saved yet.
+    var rf = isRefined(), unsaved = hasFeatures() && !rf ? '<div id="setUnsaved" class="setdirty' + (o ? " ops-unsaved" : "") + '"' + (flightsDirty() ? "" : " hidden") + "><span>Unsaved changes" + (flightsDirty() ? " in Flight checks" : "") + '</span><button type="button" class="btn small" data-savedirty>Save changes</button></div>' : "";
+    var flights = setBox("flights", "Flight checks", "Automatic checks " + (String(T.enabled) === "false" ? "off" : "on"), '<div class="box fchecks" style="padding:14px;margin-top:14px;max-width:560px">',
       (o ? '<p class="note">Set when to check live landing times.</p>' : "") +
       sel("enabled", [["true", "On"], ["false", o ? "Off" : "Off: no automatic checks"]], "Automatic checks") +
       (String(T.enabled) === "false" ? "" :
@@ -5431,28 +5715,113 @@
         sel("before_min", o ? [[30, "30 min before"], [60, "1 hour before"], [90, "90 min before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]]
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div></div>" +
-      "";
-    if (!opsDesk()) return unsaved + capacityHtml() + flights + discordHtml() + ptNumberHtml() + overstayRateHtml() + yardColoursHtml() + exitFeeHtml() + bookingSiteHtml() + backupHtml();
+      '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div>", "fchecks");
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
-    var groups = [["parking", "Parking & yards", capacityHtml() + yardColoursHtml()], ["flights", "Flight checks", flights], ["charges", "Exit fees & charges", exitFeeHtml() + overstayRateHtml()],
-      ["alerts", "Alerts & photos", discordHtml() + ptNumberHtml()], ["bookings", "Booking website", bookingSiteHtml()], ["data", "Backup", backupHtml()]].filter(function (g) { return g[2]; });
+    var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+    // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
+    // (the others stay on the page, hidden, so nothing typed is lost by switching).
+    if (!opsDesk()) {
+      var cur = groups.some(function (g) { return g[0] === S.setTab; }) ? S.setTab : groups[0][0];
+      return unsaved + '<div class="set-tabs" role="tablist" aria-label="Settings sections">' + groups.map(function (g) {
+        return '<button type="button" role="tab" id="settab-' + g[0] + '" data-settab="' + g[0] + '" aria-controls="set-' + g[0] + '" aria-selected="' + (g[0] === cur) + '">' + esc(g[3]) + "</button>";
+      }).join("") + "</div>" + groups.map(function (g) {
+        return '<section class="set-group" id="set-' + g[0] + '" role="tabpanel" aria-labelledby="settab-' + g[0] + '"' + (g[0] === cur ? "" : " hidden") + ">" + g[2] + "</section>";
+      }).join("") +
+        // Under the open section, the others in a line each with what they're set to; a tap opens one.
+        '<div class="set-more">' + groups.map(function (g) {
+          var c = S.company || {}, what = {
+            parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
+            flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
+            charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
+          }[g[0]] || [];
+          return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
+        }).join("") + "</div>";
+    }
     return unsaved + '<div class="set-desk"><nav class="set-nav" aria-label="Settings sections">' + groups.map(function (g) { return '<button type="button" data-setgo="' + g[0] + '">' + esc(g[1]) + "</button>"; }).join("") + "</nav>" +
       '<div class="set-body">' + groups.map(function (g) { return '<section class="set-group" id="set-' + g[0] + '" aria-labelledby="set-' + g[0] + '-h"><h2 class="set-gh" id="set-' + g[0] + '-h">' + esc(g[1]) + "</h2>" + g[2] + "</section>"; }).join("") + "</div></div>";
   }
   // A settings box's title; Operations adds what it's set to on the right.
   function boxTitle(t, aside) { return "<strong>" + esc(t) + (isOps() && aside ? "<small>" + esc(aside) + "</small>" : "") + "</strong>"; }
+  // A settings section. Looks with features on a phone (not Operations Refined,
+  // which has tabs, nor the Operations desktop, which has groups): a header (title,
+  // what it's set to) that opens it, one at a time. Those two keep their boxes,
+  // marked so unsaved changes are noticed. Other looks: the box exactly as before.
+  function setFold() { return hasFeatures() && !opsDesk() && !isRefined(); }
+  function setBox(key, title, aside, open0, inner, cls) {
+    if (!hasFeatures()) return open0 + boxTitle(title, aside) + inner + "</div>";
+    if (!setFold()) return open0.replace('<div class="box', '<div data-sec="' + key + '" data-title="' + esc(title) + '" class="box') + boxTitle(title, aside) + inner + "</div>";
+    var open = S.setOpen === key;
+    return '<section class="box setsec' + (cls ? " " + cls : "") + (open ? " open" : "") + '" data-sec="' + key + '" data-title="' + esc(title) + '">' +
+      '<button type="button" class="sethead" data-setsec="' + key + '" aria-expanded="' + open + '"><b>' + esc(title) + "</b><small>" + esc(aside || "") + "</small></button>" +
+      '<div class="setbody"' + (open ? "" : " hidden") + ">" + inner + "</div></section>";
+  }
+  // Unsaved changes: the flight checks draft, or a field typed in and not saved.
+  function flightsDirty() { var T = S.settingsDraft, base = timing(); return !!T && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); }); }
+  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]),textarea")); }
+  function fieldEdited(el) {
+    if (el.dataset.ycol !== undefined) return el.hasAttribute("data-off") !== el.hasAttribute("data-offdef") || (!el.hasAttribute("data-off") && el.value.toLowerCase() !== el.defaultValue.toLowerCase());
+    return el.value !== el.defaultValue;
+  }
+  function secDirty(sec) { return sec.dataset.sec === "flights" ? flightsDirty() : setFields(sec).some(fieldEdited); }
+  function dirtySecs() {
+    if (S.view !== "settings" || !hasFeatures()) return [];
+    return Array.prototype.filter.call(document.querySelectorAll("#main [data-sec]"), secDirty);
+  }
+  // Back to what's saved: the fields as they were drawn.
+  function discardSec(sec) {
+    if (sec.dataset.sec === "flights") S.settingsDraft = null;
+    setFields(sec).forEach(function (el) { el.value = el.defaultValue; if (el.dataset.ycol !== undefined) el.toggleAttribute("data-off", el.hasAttribute("data-offdef")); });
+  }
+  // Saved: the section's fields (on the page now; it may have been redrawn while saving) start again from what's saved.
+  function savedSec(btn) { var s0 = btn.closest("[data-sec]"), sec = s0 && document.querySelector('#main [data-sec="' + s0.dataset.sec + '"]'); if (sec) discardSec(sec); }
+  function showUnsaved() {
+    var bar = $("setUnsaved"); if (!bar) return;
+    var d = dirtySecs();
+    bar.hidden = !d.length;
+    if (d.length) bar.firstChild.textContent = "Unsaved changes in " + d.map(function (s) { return s.dataset.title; }).join(", ");
+  }
+  // Leaving Settings (or closing a section) with something not saved asks first.
+  function leaveOk(secs) {
+    var d = secs || dirtySecs();
+    return !d.length || confirm("Unsaved changes in " + d.map(function (s) { return s.dataset.title; }).join(", ") + ". Leave without saving?");
+  }
+  function toggleSec(key) {
+    var cur = S.setOpen && document.querySelector('#main [data-sec="' + S.setOpen + '"]');
+    if (cur && secDirty(cur)) { if (!leaveOk([cur])) return; discardSec(cur); }
+    S.setOpen = S.setOpen === key ? null : key; render();
+    var h = document.querySelector('#main [data-setsec="' + key + '"]'); if (h && h.getBoundingClientRect().top < 0) h.scrollIntoView();
+  }
+  // A redraw while a field is being typed in (a live update) keeps what was typed.
+  function setEdits() {
+    var out = [];
+    document.querySelectorAll("#main [data-sec]").forEach(function (sec) {
+      setFields(sec).forEach(function (el, i) { if (fieldEdited(el)) out.push({ sec: sec.dataset.sec, i: i, def: el.defaultValue, val: el.value, off: el.hasAttribute("data-off") }); });
+    });
+    return out;
+  }
+  function settingsDrawn(keep) {
+    (keep || []).forEach(function (k) {
+      var sec = document.querySelector('#main [data-sec="' + k.sec + '"]'), el = sec && setFields(sec)[k.i];
+      if (!el || el.defaultValue !== k.def) return;
+      el.value = k.val;
+      if (el.dataset.ycol !== undefined) { if (k.off) yardOff(el); else el.dispatchEvent(new Event("input", { bubbles: true })); }
+    });
+    showUnsaved();
+  }
   // Car park capacity (database part 71): how many cars fit, in all and per
   // yard. The dashboard shows Parked now against it.
   function capacityHtml() {
     var C = S.company || {}, cap = +C.capacity || 0, yc = C.yard_capacity || {}, ys = C.yards || [];
-    return '<div class="box" style="padding:14px;max-width:560px">' + boxTitle("Car park capacity", cap ? cap + " spaces" : "Not set") +
+    return setBox("cap", "Car park capacity", cap ? cap + " spaces" : "Not set", '<div class="box" style="padding:14px;max-width:560px">',
       '<p class="note">How many cars you can park. Now: <b>' + (cap ? cap + " cars" : "not set") + "</b>.</p>" +
       '<label class="field">Total spaces<input id="capTotal" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 400" value="' + (cap || "") + '"></label>' +
       (ys.length ? '<div class="section-label">Per yard (optional)</div><div class="capyards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0 10px">' + ys.map(function (y) {
         return '<label class="field">' + esc(YARD_LABEL[y] || y) + '<input data-capyard="' + esc(y) + '" type="number" inputmode="numeric" min="0" step="1" value="' + (+yc[y] || "") + '"></label>';
       }).join("") + "</div>" : "") +
-      '<div class="row-actions"><button type="button" class="btn brand" data-savecap>Save capacity</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-savecap>Save capacity</button></div>');
   }
   async function saveCapacity(btn) {
     var yards = {}, bad = "";
@@ -5463,7 +5832,7 @@
     var r = await sb.rpc("set_capacity", { p_total: t ? +t : null, p_yards: yards });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.capacity = r.data.capacity; S.company.yard_capacity = r.data.yard_capacity || {}; S.dash = null;
+    savedSec(btn); S.company.capacity = r.data.capacity; S.company.yard_capacity = r.data.yard_capacity || {}; S.dash = null;
     toast(r.data.capacity ? "Saved: " + r.data.capacity + " spaces" : "Capacity cleared"); render();
   }
   // Operations dashboard panels fold open and closed; each person's choice is kept on their phone.
@@ -5495,23 +5864,29 @@
   }
   function overstayRateHtml() {
     var rate = +(S.company && S.company.overstay_rate) || 0;
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Overstay charges", rate ? money(rate) + " a day" : "Off") +
+    return setBox("overstay", "Overstay charges", rate ? money(rate) + " a day" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">Booked back before ' + esc(((S.company.drops_day_end) || "06:00").slice(0, 5)) + ": free until 12:00 that day, then one day's rate and one more every midnight. Booked back later: free until " + esc(((S.company.drops_day_end) || "06:00").slice(0, 5)) + " the next morning, then one day's rate and one more every morning at that time. 0 switches charging off." + (rate ? " Now: <b>" + money(rate) + " a day</b>." : " Now: <b>off</b>.") + "</p>" +
       '<label class="field">Daily rate (£)<input id="ovRate" type="number" inputmode="decimal" min="0" step="0.5" value="' + rate + '"></label>' +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saverate>Save rate</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saverate>Save rate</button></div>');
   }
   // Yard colours (database part 77): owners only.
   function yardColoursHtml() {
     var ys = (S.company && S.company.yards) || [];
     if (!S.me || S.me.role !== "owner" || !ys.length) return "";
     var set = ys.filter(function (y) { return yardColour(y); }).length;
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Yard colours", set ? set + " of " + ys.length + " set" : "Not set") +
+    return setBox("ycol", "Yard colours", set ? set + " of " + ys.length + " set" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<div class="ycols">' + ys.map(function (y) {
         var c = yardColour(y);
-        return '<div class="ycol"><span class="code ' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + '</span><input type="color" data-ycol="' + esc(y) + '" aria-label="Colour for ' + esc(YARD_LABEL[y] || y) + '" value="' + (c || "#9AA0A6") + '"' + (c ? "" : " data-off") + '>' +
+        return '<div class="ycol"><span class="code ' + esc(y) + '">' + esc(YARD_LABEL[y] || y) + '</span><input type="color" data-ycol="' + esc(y) + '" aria-label="Colour for ' + esc(YARD_LABEL[y] || y) + '" value="' + (c || "#9AA0A6") + '"' + (c ? "" : " data-off" + (hasFeatures() ? " data-offdef" : "")) + '>' +
           (c ? '<button type="button" class="link" data-ycoff="' + esc(y) + '">No colour</button>' : '<span class="note">Not set</span>') + "</div>";
       }).join("") + "</div>" +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saveycol>Save colours</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saveycol>Save colours</button></div>');
+  }
+  // "No colour": the yard's tag goes back to the look's own.
+  function yardOff(yi) {
+    yi.setAttribute("data-off", "");
+    var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style");
+    var b = yi.parentNode.querySelector("[data-ycoff]"); if (b) b.outerHTML = '<span class="note">Not set</span>';
   }
   async function saveYardColours(btn) {
     var cols = {};
@@ -5520,18 +5895,18 @@
     var r = await sb.rpc("set_yard_colours", { p_colours: cols });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.yard_colours = r.data.yard_colours || {}; applyYardColours(S.company);
+    savedSec(btn); S.company.yard_colours = r.data.yard_colours || {}; applyYardColours(S.company);
     toast("Saved: yard colours"); render();
   }
   // Exit fee (database part 76): owners only.
   function exitFeeHtml() {
     if (!S.me || S.me.role !== "owner") return "";
     var fee = exitFee(), free = S.company.exit_free || [];
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Exit fee", fee ? money(fee) : "Off") +
+    return setBox("exit", "Exit fee", fee ? money(fee) : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Exit fee (£)<input id="exitFee" type="number" inputmode="decimal" min="0" max="999" step="0.01" placeholder="0 = off" value="' + (fee || "") + '"></label>' +
       '<label class="field">No exit fee for references starting with<input id="exitFree" autocomplete="off" autocapitalize="characters" placeholder="e.g. CAP, APD, VIP APB-1147" value="' + esc(free.join(", ")) + '"></label>' +
       '<p class="note">Agent codes or whole references, separated by commas.</p>' +
-      '<div class="row-actions"><button type="button" class="btn brand" data-saveexit>Save exit fee</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn brand" data-saveexit>Save exit fee</button></div>');
   }
   async function saveExitFee(btn) {
     var fee = $("exitFee").value.trim(), free = $("exitFree").value.split(/[,\n]+/).map(function (x) { return x.trim(); }).filter(Boolean);
@@ -5540,7 +5915,7 @@
     var r = await sb.rpc("set_exit_fee", { p_fee: +fee || 0, p_free: free });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.exit_fee = r.data.exit_fee; S.company.exit_free = r.data.exit_free || [];
+    savedSec(btn); S.company.exit_fee = r.data.exit_fee; S.company.exit_free = r.data.exit_free || [];
     toast(+r.data.exit_fee ? "Saved: exit fee " + money(r.data.exit_fee) : "Exit fee off"); render();
   }
   async function saveOverstayRate(btn) {
@@ -5548,14 +5923,14 @@
     var r = await sb.rpc("set_overstay_rate", { p_rate: parseFloat($("ovRate").value) || 0 });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.overstay_rate = r.data; toast(r.data ? "Saved: " + money(r.data) + " a day" : "Overstay charges off"); render();
+    savedSec(btn); S.company.overstay_rate = r.data; toast(r.data ? "Saved: " + money(r.data) + " a day" : "Overstay charges off"); render();
   }
   // Owner only: the company's own data, to keep a copy outside the app.
   function backupHtml() {
     if (!S.me || S.me.role !== "owner") return "";
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Backup</strong>' +
+    return setBox("backup", "Backup", "Download a copy", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">A copy of everything is kept automatically every night for 7 days. To keep one of your own as well, download it and save it somewhere safe, like OneDrive. PINs, links and Discord links are not included.</p>' +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-backup>Download a backup</button></div></div>';
+      '<div class="row-actions"><button type="button" class="btn ghost" data-backup>Download a backup</button></div>');
   }
   // Booking website (database part 101): owners only. The address and login the automatic
   // import signs in with; the password is never sent back, only whether one is saved.
@@ -5564,12 +5939,12 @@
     if (S.bsite === undefined) { S.bsite = null; sb.rpc("booking_site_status").then(function (r) { S.bsite = r.error ? false : r.data; if (S.view === "settings") render(); }); }
     if (S.bsite === false) return "";
     var B = S.bsite || {}, set = !!(B.login && B.has_pass);
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Booking website", !S.bsite ? "" : set ? "Saved" : "Not set") +
+    return setBox("bsite", "Booking website", !S.bsite ? "" : set ? "Saved" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Website address<input id="bsUrl" type="url" autocomplete="off" placeholder="https://" value="' + esc(B.url || "") + '"></label>' +
       '<label class="field">Login name<input id="bsLogin" autocomplete="off" autocapitalize="none" spellcheck="false" value="' + esc(B.login || "") + '"></label>' +
       '<label class="field">Password <span class="note">' + (S.bsite ? (B.has_pass ? "✓ saved" : "not set") : "…") + '</span><input id="bsPass" type="password" autocomplete="new-password" placeholder="' + (B.has_pass ? "Type a new one to replace it" : "") + '"></label>' +
       (set && B.saved_at ? '<p class="note">Saved by ' + esc(B.saved_by) + " " + esc(dayShort(B.saved_at)) + " " + esc(hhmm(B.saved_at)) + ".</p>" : "") +
-      '<div class="row-actions">' + (set ? '<button type="button" class="btn ghost small" data-bsclear>Remove login</button>' : "") + '<button type="button" class="btn brand" data-bssave>Save login</button></div></div>';
+      '<div class="row-actions">' + (set ? '<button type="button" class="btn ghost small" data-bsclear>Remove login</button>' : "") + '<button type="button" class="btn brand" data-bssave>Save login</button></div>');
   }
   async function saveBookingSite(btn, clear) {
     var u = clear ? "" : $("bsUrl").value.trim(), l = clear ? "" : $("bsLogin").value.trim(), p = clear ? "" : ($("bsPass").value || null);
@@ -5577,7 +5952,7 @@
     var r = await sb.rpc("booking_site_set", { p_url: u, p_login: l, p_password: p });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
+    savedSec(btn); S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
   }
   async function downloadBackup(btn) {
     btn.disabled = true;
@@ -5595,7 +5970,7 @@
   }
   function ptNumberHtml() {
     var n = (S.company && S.company.pt_whatsapp) || "";
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("PT photos: WhatsApp number", n ? "+" + n : "Not set") +
+    return setBox("pt", "PT photos: WhatsApp number", n ? "+" + n : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<p class="note">PT opens this chat with the reg typed, before the photos are sent.' + (n ? " Now: <b>+" + esc(n) + "</b>" : " Not set.") + "</p>" +
       '<label class="field">Number<input id="ptNumber" type="tel" autocomplete="off" placeholder="07932 029349 or +44 7932 029349" value="' + esc(n ? "+" + n : "") + '"></label>' +
       '<div class="row-actions"><button type="button" class="btn brand" data-savept>Save number</button></div>' +
@@ -5603,7 +5978,7 @@
       '<option value="photos"' + (S.company.pt_method !== "link" && S.company.pt_method !== "pdf" ? " selected" : "") + ">In the WhatsApp chat: reg, then the photos (10 at a time on Android)</option>" +
       '<option value="pdf"' + (S.company.pt_method === "pdf" ? " selected" : "") + ">As one PDF with all the photos (one tap)</option>" +
       '<option value="link"' + (S.company.pt_method === "link" ? " selected" : "") + ">As one link to all the photos (only once PT has agreed)</option></select></label>" +
-      ptIosSelect(S.company.pt_method_ios || S.company.pt_method) + "</div>";
+      ptIosSelect(S.company.pt_method_ios || S.company.pt_method));
   }
   // iPhones have their own choice (part 49); the one above is for every other phone.
   function ptIosSelect(now) {
@@ -5624,7 +5999,7 @@
     var r = await sb.rpc("set_pt_whatsapp", { p_number: $("ptNumber").value });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.company.pt_whatsapp = r.data || "";
+    savedSec(btn); S.company.pt_whatsapp = r.data || "";
     toast(r.data ? "Saved: +" + r.data : "Number removed"); render();
   }
   // Discord links work like passwords for the channel, so the app never shows
@@ -5636,10 +6011,10 @@
     function field(key, label) {
       return '<label class="field">' + label + ' <span class="note">' + (S.discord ? (D[key] ? "✓ set" : "not set") : "…") + '</span><input data-discord="' + key + '" type="url" autocomplete="off" placeholder="' + (D[key] ? "Paste a new link to replace it" : "https://discord.com/api/webhooks/…") + '"></label>';
     }
-    return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">' + boxTitle("Discord alerts", !S.discord ? "" : D.drops || D.picks ? [D.drops && "Drops", D.picks && "Picks"].filter(Boolean).join(" and ") + " set" : "Not set") +
+    return setBox("discord", "Discord alerts", !S.discord ? "" : D.drops || D.picks ? [D.drops && "Drops", D.picks && "Picks"].filter(Boolean).join(" and ") + " set" : "Not set", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       field("drops", "DROPS channel") + field("picks", "PICKS channel") +
       '<div class="row-actions">' + (D.drops || D.picks ? '<button type="button" class="btn ghost small" data-discordtest>Send a test to Discord</button><button type="button" class="btn ghost small" data-discordclear>Remove both</button>' : "") +
-      '<button type="button" class="btn brand" data-discordsave>Save links</button></div></div>';
+      '<button type="button" class="btn brand" data-discordsave>Save links</button></div>');
   }
   async function saveDiscord(btn, clear) {
     var d = clear ? "" : (document.querySelector('[data-discord="drops"]').value.trim() || null);
@@ -5649,7 +6024,7 @@
     var r = await sb.rpc("set_discord", { p_drops: d, p_picks: p });
     btn.disabled = false;
     if (r.error) { toast(r.error.message, true); return; }
-    S.discord = r.data; toast(clear ? "Discord links removed" : "Saved"); render();
+    savedSec(btn); S.discord = r.data; toast(clear ? "Discord links removed" : "Saved"); render();
   }
   async function saveSettings(btn) {
     var T = S.settingsDraft; btn.disabled = true;
@@ -6004,19 +6379,35 @@
       if (S.me && !$("panel").open) render();
     } catch (e) {}
   }
+  // Closing or reloading the app with Settings not saved: the browser asks first.
+  window.addEventListener("beforeunload", function (e) { if (dirtySecs().length) { e.preventDefault(); e.returnValue = ""; } });
   window.addEventListener("error", function (e) { if (e.error || e.message) oops(e.error || e.message); });
   window.addEventListener("unhandledrejection", function (e) { oops(e.reason); });
 
+  // Those numbers are tiles, not buttons: Enter or Space on one taps it.
+  document.addEventListener("keydown", function (e) {
+    var tile = (e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile) { e.preventDefault(); tile.click(); }
+  });
   document.addEventListener("click", async function (e) {
     if (S.me && e.target.closest && e.target.closest("#who.can-switch, [data-switchname]")) return openSwitchName();
     if (e.target.closest("[data-reload]")) return location.reload();
     // The second line of a row opens the car too, not only the reg.
     var opener = e.target.closest("[data-addflight]") ? null : e.target.closest("div[data-open]");
     if (opener && S.me && !$("panel").open) { var or = rowOf(opener); if (or) return openPanel(or); }
+    // A number on Summary, Hourly stats or Flights: its cars (tileAttr, flTileAttr).
+    var tile = S.me && e.target.closest("[data-tileq],[data-fltile]");
+    if (tile && tile.dataset.tileq !== undefined) return openTile(tile.dataset.tileq);
+    if (tile) { S.flTile = (S.flTile || "") === tile.dataset.fltile ? "" : tile.dataset.fltile; return render(); }
     var t = e.target.closest("button,a"); if (!t) return;
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
+    if ((t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
+    if (t.dataset.paydetails) { var pr = S.rows.find(function (x) { return x.id === t.dataset.paydetails; }); if (pr) openBoardPayment(pr); return; }
+    if (t.dataset.paybooking) { var pb = S.rows.find(function (x) { return x.id === t.dataset.paybooking; }); if (pb) { boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); openPanel(pb); } return; }
+    if (t.dataset.payproof) { var pp = S.rows.find(function (x) { return x.id === t.dataset.payproof; }); if (pp) fillBoardPaymentProof(pp); return; }
     // The link opens WhatsApp by itself; just remember it was sent.
     // The link opens WhatsApp by itself; PT is done.
     if (t.dataset.ptlink !== undefined) { if (panelRow) ptSent(panelRow); return; }
@@ -6027,7 +6418,9 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
-    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) { yi.setAttribute("data-off", ""); var yt = yi.parentNode.querySelector(".code"); if (yt) yt.removeAttribute("style"); } t.outerHTML = '<span class="note">Not set</span>'; return; }
+    if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
+    if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
+    if (t.dataset.savedirty !== undefined) { dirtySecs().map(function (d) { return d.querySelector(".row-actions .btn.brand"); }).forEach(function (b) { if (b) b.click(); }); return; }
     if (t.dataset.savecap !== undefined) return saveCapacity(t);
     if (t.dataset.swipestep) { setSwipeChoice(t.dataset.swipestep); render(); return openMenu(); }
     if (t.dataset.swipeleft) { setSwipeLeftChoice(t.dataset.swipeleft); render(); return openMenu(); }
@@ -6041,6 +6434,14 @@
     if (t.dataset.keyretry !== undefined) return loadKeys(S.sheetId);
     if (t.id === "keyBtn") return toggleKeyMode();
     if (t.dataset.flfilter) { S.flFilter = t.dataset.flfilter; return render(); }
+    if (t.dataset.settab) {
+      S.setTab = t.dataset.settab;
+      document.querySelectorAll(".set-tabs [data-settab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.settab === S.setTab); });
+      document.querySelectorAll(".set-more [data-settab]").forEach(function (b) { b.hidden = b.dataset.settab === S.setTab; });
+      document.querySelectorAll("main .set-group").forEach(function (g) { g.hidden = g.id !== "set-" + S.setTab; });
+      if (t.closest(".set-more")) window.scrollTo(0, 0);
+      return;
+    }
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.lpcar) { LP.selected = t.dataset.lpcar; render(); var detail = document.querySelector(".lp-detail"); if (detail && window.innerWidth < 761) detail.scrollIntoView({block:"start"}); return; }
     if (t.dataset.lpreload !== undefined) return loadLanes();
@@ -6053,7 +6454,7 @@
     if (t.dataset.pickshift) return chooseShift(t.dataset.pickshift);
     if (t.dataset.closeshift !== undefined) return $("shiftPick").close();
     if (t.dataset.bn && isOps() && t.dataset.bn === "flBtn") return go("flights");
-    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn") go("board"); return $(t.dataset.bn).click(); }
+    if (t.dataset.bn) { if (S.view !== "board" && t.dataset.bn !== "menuBtn" && go("board") === false) return; return $(t.dataset.bn).click(); }
     if (t.dataset.mode) { setMode(t.dataset.mode); return openMenu(); }
     if (t.id === "logBtn") return go("summary");
     if (t.id === "flBtn") return checkFlights(t);
@@ -6209,6 +6610,7 @@
       if (tag) { tag.style.background = v; tag.style.borderColor = hexMix(v, "#000000", 0.15); tag.style.color = lightColour(v) ? "#1F1A00" : "#FFFFFF"; }
       var nt = e.target.parentNode.querySelector(".note"); if (nt) nt.outerHTML = '<button type="button" class="link" data-ycoff="' + esc(yc) + '">No colour</button>';
     }
+    if (S.view === "settings" && e.target.closest("[data-sec]")) showUnsaved();
   });
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
@@ -6224,7 +6626,7 @@
     }
     if (t.id === "schedOn" && S.autoImport) { var on1 = t.checked; return biSchedChange(S.autoImport, function (d) { d.on = on1; }); }
     if (t.dataset.schedtime !== undefined && S.autoImport) { var v1 = t.value, i1 = Number(t.dataset.schedtime); return biSchedChange(S.autoImport, function (d) { d.times[i1] = v1; }); }
-    if (t.id === "sheetPick") { switchSheet(t.value, {}); return; }
+    if (t.id === "sheetPick") { if (!leaveOk()) { t.value = S.sheetId; return; } switchSheet(t.value, {}); return; }
     if (t.dataset.yard !== undefined) {
       var r = rowOf(t); if (!r) return;
       var y = t.value;

@@ -45,7 +45,7 @@ export async function shots(dir) {
     const AW = process.env.AUDIT_W ? process.env.AUDIT_W.split(",").map((w) => [+w, w > 1100 ? 1000 : 844, w >= 1200 ? "desktop" : w >= 900 ? "tablet" : "phone"]) : [[1440, 1000, "desktop"], [390, 844, "phone"]];
     const AP = process.env.AUDIT_P ? process.env.AUDIT_P.split(",") : null, want = (n) => !AP || AP.includes(n);
     for (const [width, height, name] of AW) {
-      const db = deskDb(); { const bi = biDb("ops"); Object.assign(db, { autoImport: bi.autoImport, reviews: bi.reviews, preview: bi.preview, imports: bi.imports }); } db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
+      const db = deskDb(process.env.SHOTS_THEME || "ops"); { const bi = biDb("ops"); Object.assign(db, { autoImport: bi.autoImport, reviews: bi.reviews, preview: bi.preview, imports: bi.imports }); } db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40; db.dash = dashData(); db.dash.exit = dashExit();
       db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true }, { id: "s5", name: "OLD DRIVER", role: "bongo", active: false });
       db.seen = [{ id: "s2", seen_at: new Date(Date.now() - 120000).toISOString() }, { id: "s3", seen_at: new Date(Date.now() - 3 * 3600000).toISOString() }, { id: "s4", acted_at: new Date(Date.now() - 2 * 86400000).toISOString() }];
       db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }, { at: new Date(Date.now() - 3600000).toISOString(), action: "CALLED", value: "", reg: "CD34EFG", staff_id: "s2", booking_id: "w2" }];
@@ -75,6 +75,40 @@ export async function shots(dir) {
       if (name === "desktop" && await page.locator('.row[data-id="w2"] .flno').count()) {
         await page.click('.row[data-id="w2"] .flno'); await sleep(800); await page.screenshot({ path: path.join(dir, "flight-edit-desktop.png") });
       }
+      await page.context().close();
+    }
+    return;
+  }
+  // SHOTS_ONLY=refined: Operations Refined (theme ops-refined) at 360, 390, tablet and desktop width:
+  // DROPS and PICKS boards, Booking details (DROPS and PICKS, with an unsaved edit), Shift summary,
+  // Settings, Flights and the key check (sample data only). REFINED_W=390,1440 for some widths.
+  if (process.env.SHOTS_ONLY === "refined") {
+    const W = (process.env.REFINED_W || "360,390,768,1024,1440").split(",").map(Number);
+    const RP = process.env.REFINED_P ? process.env.REFINED_P.split(",") : null, want = (n) => !RP || RP.includes(n);
+    for (const width of W) {
+      const name = width >= 1200 ? "desktop-" + width : width >= 700 ? "tablet-" + width : "phone-" + width, height = width >= 1200 ? 1000 : width >= 700 ? 1024 : 800;
+      const db = deskDb(process.env.SHOTS_THEME || "ops-refined"); db.company.overstay_rate = 30; db.company.exit_fee = 10; db.company.exit_free = ["CAP"]; db.company.capacity = 40;
+      db.staff.push({ id: "s3", name: "TERRY JONES", role: "terminal", active: true }, { id: "s4", name: "ALI KHAN", role: "bongo", active: true });
+      db.activity = [{ at: new Date(Date.now() - 600000).toISOString(), action: "SENT", value: "", reg: "KL12PQR", staff_id: "s2", booking_id: "w6" }, { at: new Date(Date.now() - 1800000).toISOString(), action: "CALLED", value: "", reg: "KL12PQR", staff_id: "s1", booking_id: "w6" }, { at: new Date(Date.now() - 3600000).toISOString(), action: "CALLED", value: "", reg: "CD34EFG", staff_id: "s2", booking_id: "w2" }];
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      const shot = async (n, full) => { await sleep(500); if (full) { await page.setViewportSize({ width, height: Math.min(3000, await page.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight))) }); await sleep(250); } await page.screenshot({ path: path.join(dir, name + "-" + n + ".png") }); if (full) await page.setViewportSize({ width, height }); };
+      const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
+      const view = async (v) => { if (!(await page.$("#menu[open]"))) await menu(); await page.click('#menuBody [data-view="' + v + '"]'); await sleep(500); };
+      await open(page); await sleep(400);
+      if (want("drops")) { await shot("drops"); await page.click("#tabAll"); await shot("drops-all", true); await page.click("#tabTodo"); }
+      if (want("car")) {
+        await page.click('.row[data-id="w6"] .reg'); await shot("car-drops");
+        await page.evaluate(() => { const p = document.querySelector("#panel"); p.scrollTop = p.scrollHeight; const b = document.querySelector("#panelBody"); if (b) b.scrollTop = b.scrollHeight; }); await shot("car-drops-end");
+        await page.fill("#noteText", "Customer called. Ready at terminal."); await page.dispatchEvent("#noteText", "input"); await sleep(200); await shot("car-drops-unsaved");
+        await page.keyboard.press("Escape"); await sleep(300);
+      }
+      if (want("keys") && await page.$("#keyBtn")) { await page.click("#keyBtn"); await page.waitForSelector("[data-keystart]").catch(() => {}); if (await page.$("[data-keystart]")) { await page.click("[data-keystart]"); await page.waitForSelector(".kc-row").catch(() => {}); } await shot("keys"); await page.click("#keyBtn").catch(() => {}); await sleep(300); }
+      if (want("picks")) { await pickKind(page, "picks"); await shot("picks"); await page.click('.row[data-id="pk2"] .reg').catch(() => {}); await shot("car-picks"); await page.keyboard.press("Escape"); await sleep(300); await pickKind(page, "drops"); }
+      if (want("summary")) { await page.click('#bnav [data-bn="logBtn"]'); await sleep(600); if (!(await page.$('main[data-view="summary"]'))) await view("summary"); await shot("summary", true); }
+      if (want("settings")) { await view("settings"); await shot("settings", true); }
+      if (want("flights")) { await page.click('#bnav [data-bn="flBtn"]'); await sleep(600); await shot("flights", true); }
+      if (want("stats")) { await view("stats"); await shot("stats", true); }
+      if (want("menu")) { await menu(); await shot("menu"); await page.keyboard.press("Escape"); await sleep(300); }
       await page.context().close();
     }
     return;

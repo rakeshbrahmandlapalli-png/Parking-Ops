@@ -88,6 +88,8 @@
   function canReturn(r) { return can("import") && (r.kind === "picks" || (r.kind === "drops" && !r.early && !r.cleared_at)); }
   function openPanel(r) {
     if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
+    // Operations Refined: drawn again after a tap that saves at once (yard, charge), it keeps what was typed.
+    var draft = isRefined() && $("panel").open && panelRow && panelRow.id === r.id && $("carState") ? carDraft() : null;
     panelRow = r;
     var drops = r.kind === "drops";
     function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(who) : "") : "—"; }
@@ -105,74 +107,91 @@
     }
     // Operations: "Booking details" with the reg under it, the details in two
     // columns, and the boxes in sections, each with a plain name.
-    var o = isOps(), desk = o && opsDesk(), R = "";
+    var o = isOps(), desk = o && opsDesk(), R = "", rf = isRefined();
     var h = o ? '<button type="button" class="ops-x" data-close aria-label="Close">&times;</button><h2 id="panelTitle">Booking details</h2>' +
-        '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+        (rf ? '<p class="sub"><b class="rf-reg">' + esc(r.reg || "NO REG") + "</b>" + (r.num ? ' <span class="rf-num">#' + r.num + "</span>" : "") + " · " + esc(refinedSheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>"
+          : '<p class="sub">' + esc(r.reg || "NO REG") + (r.num ? " #" + r.num : "") + " · " + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>")
       : '<h2 id="panelTitle">' + esc(r.reg || "NO REG") + (r.num ? " <small>#" + r.num + "</small>" : "") + "</h2>" +
       '<p class="sub">' + esc(sheetLabel(sheet() || { day: "", kind: r.kind })) + "</p>";
     var headEnd = h.length;
-    h += (r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "") + opsSec("Customer & vehicle") +
-      '<div class="det">' + det.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
+    var tel = r.phone ? '<a class="tel" href="tel:' + esc(dialable(r.phone)) + '">Call ' + esc(phoneLabel(r.phone)) + "</a>" : "";
+    function detList(list) { return '<div class="det">' + list.map(function (x) { return "<div><b>" + L(x[0]) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>"; }
+    // Operations Refined: a tap here saves at once, unlike the boxes saved by Save changes.
+    var NOW = rf ? '<small class="rf-now">Saves when tapped</small>' : "";
     // A booking can come with no reg: the office can type or correct it, a
     // driver can fill in a missing one when the car comes in.
     var canReg = can("import") || (can("intake") && !r.reg);
     // Swipe instead of buttons: the buttons live here, to undo or fix a swipe.
-    if (drops && swipeOnly()) { var steps = '<label>' + L("STEPS") + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts"); if (desk) R += opsSec("Status") + steps; else h += steps; }
+    var steps = drops && swipeOnly() ? '<label>' + L("STEPS") + NOW + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts") : "";
     var parking = canReg || canReturn(r) || (drops ? can("yard") : picksYard() && can("intake")) || (drops ? can("flights") : canPickFlight());
-    if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
-    if (canReg) h += fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true);
+    var regF = canReg ? fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true) : "";
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
     // finds this car rather than adding it again (database part 48).
     // The booking site moved the drop-off: the office moves the car to that day (part 102).
-    if (!drops && can("import") && !r.removed_at) {
-      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-      h += fld('<label for="dropD">' + L("DROP-OFF DATE AND TIME") + '</label><div class="when2"><input id="dropD" type="date" value="' + esc(dp.key) + '">' + timeBox("dropT", dp.time) + "</div>", true);
+    var dropF = "", retF = "", yardF = "", flightF = "", pickFlightF = "";
+    // Operations Refined: the date and the time as two boxes side by side, each named.
+    function when(d, t, word, p) {
+      return rf ? fld('<label for="' + d + '">' + word + ' date</label><input id="' + d + '" type="date" value="' + esc(p.key) + '">') + fld('<label for="' + t + '">' + word + " time</label>" + timeBox(t, p.time))
+        : fld('<label for="' + d + '">' + L(word === "Drop-off" ? "DROP-OFF DATE AND TIME" : "BACK DATE AND TIME") + '</label><div class="when2"><input id="' + d + '" type="date" value="' + esc(p.key) + '">' + timeBox(t, p.time) + "</div>", true);
     }
-    if (canReturn(r)) {
-      var rp = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-      h += fld('<label for="retD">' + L("BACK DATE AND TIME") + '</label><div class="when2"><input id="retD" type="date" value="' + esc(rp.key) + '">' + timeBox("retT", rp.time) + "</div>", true);
-    }
+    if (!drops && can("import") && !r.removed_at) dropF = when("dropD", "dropT", "Drop-off", r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" });
+    if (canReturn(r)) retF = when("retD", "retT", "Return", r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" });
     if (drops ? can("yard") : picksYard() && can("intake")) {
-      h += fld('<label>' + L(drops ? "YARD" : "LOCATION") + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
-        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '">' + esc(YARD_LABEL[y] || y) + "</button>";
+      yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
+        return '<button type="button" data-setyard="' + esc(y) + '" class="' + (r.yard === y ? "on y-" + esc(y) : "") + '"' + (rf ? ' aria-pressed="' + (r.yard === y) + '"' : "") + ">" + esc(YARD_LABEL[y] || y) + "</button>";
       }).join("") + "</div>", true);
     }
+    var flightNo = "", flightTime = "";
     if (drops && can("flights")) {
-      h += fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
-      if (r.flight === "NO FLIGHT") h += fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
-      else h += fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightNo = fld('<label for="flightText">' + L("FLIGHT NUMBER") + '</label><input id="flightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="or NO FLIGHT">');
+      if (r.flight === "NO FLIGHT") flightTime = fld('<label for="collectText">' + L("COLLECTION TIME") + '</label>' + timeBox("collectText", /^\d{2}:\d{2}$/.test(r.est_time) ? r.est_time : ""));
+      else flightTime = fld('<label for="schedText">' + L("SCHEDULED LANDING") + '</label>' + timeBox("schedText", /^\d{2}:\d{2}$/.test(r.sched_time) ? r.sched_time : ""));
+      flightF = flightNo + flightTime;
     }
     // The return flight, when the booking came without one: it goes on to the DROPS car (database part 78).
-    if (!drops && canPickFlight()) h += fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
-    var docs = docBlockHtml(r); if (!desk) h += docs;
-    if (can("note")) h += opsSec("Notes & status") + fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true);
-    var extra = "";
+    if (!drops && canPickFlight()) pickFlightF = fld('<label for="pickFlightText">' + L("RETURN FLIGHT") + '</label><input id="pickFlightText" value="' + esc(r.flight) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. W43451">');
+    var docs = docBlockHtml(r);
+    var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
+    var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
-      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '">OVERSTAY</button>';
-      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '">COMPLAINT</button>';
+      if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
+      if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
-      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '">CALLED</button>';
-      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '">NEW BOOKING</button>';
-      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '">NO SHOW</button>';
+      extra += '<button type="button" data-pcall="Called" class="' + (r.pick_called === "Called" ? "on" : "") + '"' + AP(r.pick_called === "Called") + ">" + W("CALLED") + "</button>";
+      extra += '<button type="button" data-pcall="New Booking" class="' + (r.pick_called === "New Booking" ? "on nb" : "") + '"' + AP(r.pick_called === "New Booking") + ">" + W("NEW BOOKING") + "</button>";
+      if (picksYard()) extra += '<button type="button" data-pnoshow class="' + (r.intake === "No Show" ? "on n" : "") + '"' + AP(r.intake === "No Show") + ">" + W("NO SHOW") + "</button>";
     }
-    // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
-    var side = "";
-    if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + fld('<label>' + L("MARK AS") + '</label><div class="pseg">' + extra + "</div>", true);
-    if (drops) side += chargePanelHtml(r) + exitPanelHtml(r);
-    side += drops ? earlyHtml(r) : pickEarlyHtml(r);
+    var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
+    var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
+    var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    side += '<div id="ptPhotos"></div>';
-    if (can("import")) side += '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>';
-    if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+    var photos = '<div id="ptPhotos"></div>';
+    var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
-    var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
     var hist = can("log") ? '<div id="carHist"></div>' : "";
-    // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
-    h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
-      : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
+      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
+    else {
+      h += tel + opsSec("Customer & vehicle") + detList(det);
+      if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
+      if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
+      h += regF + dropF + retF + yardF + flightF + pickFlightF;
+      if (!desk) h += docs;
+      if (can("note")) h += opsSec("Notes & status") + noteF;
+      // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
+      var side = "";
+      if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
+      side += pay + early + photos + rm;
+      if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
+      var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
+      // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
+      h = desk ? h.slice(0, headEnd) + '<div class="ops-2col"><div class="ops-sheet">' + h.slice(headEnd) + '</div><div class="ops-sheet ops-carside">' + R + "</div></div>" + hist + foot
+        : o ? h.slice(0, headEnd) + '<div class="ops-sheet">' + h.slice(headEnd) + "</div>" + hist + foot : h + foot + hist;
+    }
     $("panelBody").innerHTML = h;
     $("panel").classList.toggle("ops-car", o);
+    if (rf) { carInit = carFieldVals(); if (draft) Object.keys(draft).forEach(function (k) { if ($(k)) $(k).value = draft[k]; }); carState(); }
     if (o) opsMenuPlace();
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
@@ -180,6 +199,58 @@
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
+  // ── Operations Refined: Booking details in sections ──
+  // Customer & vehicle, Return & parking, Notes & status, then payments,
+  // documents and photos; the read-only details as text, the boxes Save changes
+  // saves as fields, and what saves on a tap marked "Saves when tapped". The same
+  // fields, buttons and saves as Operations; only where they sit changes.
+  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
+  function refinedCar(r, head, P) {
+    // A detail that has its own box below shows once, in the box.
+    var skip = { NAME: 1, CAR: 1, REF: 1 }; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
+    var park = [], stat = [], fee = [];
+    P.det.forEach(function (x) { if (skip[x[0]]) return; (CAR_PARK[x[0]] ? park : x[0] === "EXIT FEE" ? fee : stat).push(x); });
+    // Read-only details: the name on the left, the value on the right, a line each.
+    function lab(t) { var l = L(t); return l === t ? sentence(t) : l; }
+    function kv(list) { list = list.filter(function (x) { return x[1] !== "—"; }); return list.length ? '<div class="rf-kv">' + list.map(function (x) { return "<div><span>" + lab(x[0]) + "</span><b>" + x[1] + "</b></div>"; }).join("") + "</div>" : ""; }
+    // Sent / Called / Clear (or how the car came in): when and who, side by side.
+    function stamps(list) { return list.length ? '<div class="rf-stamps">' + list.map(function (x) { var v = x[1].split(" · "); return '<div class="' + (x[1] === "—" ? "" : "on") + '"><span>' + lab(x[0]) + "</span><b>" + v[0] + "</b>" + (v[1] ? "<small>" + nice(v.slice(1).join(" · ")) + "</small>" : "") + "</div>"; }).join("") + "</div>" : ""; }
+    var was = P.retF && r.orig_return_at ? '<p class="rf-hint">First booked back ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</p>" : "";
+    function sec(cls, title, body, aside) { return body ? '<section class="rf-sec ' + cls + '"><h3 class="rf-h">' + esc(title) + (aside ? "<small>" + esc(aside) + "</small>" : "") + '</h3><div class="ops-sheet rf-grid">' + body + "</div></section>" : ""; }
+    var car = /^[-\s.]*$/.test(r.make || "") ? "" : niceMake(String(r.make).trim());
+    var cv = '<div class="rf-cv"><div><small>Customer</small><b>' + (esc(nice(r.name)) || "—") + "</b>" + (P.tel ? '<span class="rf-tel">' + P.tel + "</span>" : "") + "</div>" +
+      "<div><small>Vehicle</small><b>" + (esc(car) || "—") + '</b><span class="num">' + (esc(r.ref) || "No reference") + "</span></div></div>";
+    // A wide screen: the booking and its return on the left; status, notes, payments and photos on the right.
+    var A = sec("rf-cust", "Customer & vehicle", cv) +
+      sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", P.regF.replace('class="ops-f wide"', 'class="ops-f"') + P.flightNo + P.pickFlightF + P.dropF + P.retF + was + P.flightTime + kv(park) + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
+    var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
+    var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
+      sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
+      sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
+      (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
+    var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
+      : '<button type="button" data-close>Close</button>') + "</div>";
+    return head + (P.desk ? '<div class="ops-2col rf-2col"><div class="rf-col">' + A + '</div><div class="rf-col">' + B + "</div></div>" : A + B) +
+      (P.hist ? '<section class="rf-sec rf-hist">' + P.hist + "</section>" : "") + foot;
+  }
+  // What's typed in the car's boxes and not saved yet (Operations Refined).
+  var CAR_FIELDS = ["regText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
+  function carFieldVals() { var v = {}; CAR_FIELDS.forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
+  function carDraft() { var v = carFieldVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
+  function carState(msg) {
+    var el = $("carState"); if (!el) return;
+    var n = Object.keys(carDraft()).length;
+    el.textContent = msg || (n ? "Unsaved changes" : "No unsaved changes");
+    el.className = "rf-state" + (msg ? " bad" : n ? " dirty" : "");
+  }
+  // A box Save changes can't take: said in the footer too (Operations Refined), always as a message.
+  function saveErr(m) { if (isRefined()) carState(m); return toast(m, true); }
+  ["input", "change"].forEach(function (ev) { $("panelBody").addEventListener(ev, function (e) { if (isRefined() && $("carState") && e.target.id && CAR_FIELDS.indexOf(e.target.id) >= 0) carState(); }); });
+  // A phone keyboard: the box being typed in stays above Cancel / Save changes.
+  $("panelBody").addEventListener("focusin", function (e) {
+    var t = e.target; if (!isRefined() || !$("carState") || !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    setTimeout(function () { if (document.activeElement === t) t.scrollIntoView({ block: "nearest" }); }, 350);
+  });
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
@@ -219,7 +290,7 @@
       return '<a class="ptset" href="/p/' + esc(x.token) + '" target="_blank" rel="noopener"><span><b>' + x.n + " photo" + (x.n === 1 ? "" : "s") + "</b> · " + esc(dayShort(x.at) + " " + hhmm(x.at)) + (x.by ? " · " + esc(x.by) : "") + "</span><i>View ›</i></a>";
     }).join("");
   }
-  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car"); var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
+  $("panel").addEventListener("close", function () { $("panel").classList.remove("ops-car", "payment-sheet"); boardPaymentId = ""; var tv = document.querySelector("#panelBody video"); if (tv) tv.pause(); camStop(); panelRow = null; quick = null; staffEdit = null; render(); setTimeout(bkPump, 500); });
   // Closes on a tap outside only when the press started outside too: selecting
   // text in a box and letting go past the edge must not close it.
   var downOn = {};
@@ -246,27 +317,27 @@
       var saved = false;
       // Check everything first: nothing is queued while any field is invalid.
       var pf = $("pickFlightText") ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
-      if (pf && pf.length > 10) return toast("That does not look like a flight number.", true);
+      if (pf && pf.length > 10) return saveErr("That does not look like a flight number.");
       var g = null;
       if ($("regText")) {
         g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
-        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return toast("Check the reg: letters and numbers only.", true);
+        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
       }
       var rl = null;
       if ($("retD")) {
         var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-        if (rt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (rt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("retD").value !== old.key || (rt || "") !== old.time) {
-          if (!$("retD").value || !rt) return toast("Enter when the car is back: the date and the time.", true);
+          if (!$("retD").value || !rt) return saveErr("Enter when the car is back: the date and the time.");
           rl = $("retD").value + " " + rt;
         }
       }
       var dl = null;
       if ($("dropD")) {
         var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-        if (dt === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
         if ($("dropD").value !== od.key || (dt || "") !== od.time) {
-          if (!$("dropD").value || !dt) return toast("Enter the drop-off: the date and the time.", true);
+          if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
           dl = $("dropD").value + " " + dt;
           if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
         }
@@ -274,7 +345,7 @@
       var f = null, ct, st;
       if ($("flightText")) {
         f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
-        if (ct === null || st === null) return toast("Type the time like 13:20 (or 1320).", true);
+        if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }

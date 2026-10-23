@@ -71,7 +71,7 @@
     document.body.classList.toggle("keychecking", on && S.view === "board");
     if (!can0) return;
     $("keyBtn").classList.toggle("on", on); $("keyBtn").setAttribute("aria-pressed", on);
-    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
+    $("keyBtn").innerHTML = "<b>" + (opsDesk() ? "Key check" : isRefined() ? "Keys" : "K") + "</b>" + (k && k.session && !k.error ? ' <span class="num">' + c.found + "/" + c.all + "</span>" : "");
     $("keyBtn").setAttribute("aria-label", "Key check" + (k && k.session ? ", " + c.found + " of " + c.all + " found" : ""));
     $("keyBtn").title = "Key check: tick each car once its key is found in the cabinet";
     if (on) { $("tabTodo").classList.remove("on"); $("tabAll").classList.remove("on"); $("tabTodo").setAttribute("aria-pressed", "false"); $("tabAll").setAttribute("aria-pressed", "false"); }
@@ -102,7 +102,7 @@
     head += '<div class="kc-columns"><span>RETURN</span><span>REGISTRATION · VEHICLE</span><span>FLIGHT</span><span>CUSTOMER · REF</span><span>YARD</span><span>KEY STATUS</span><span>CHECKED BY</span><span>CONFIRM KEY</span></div>';
     return head + (rows.length ? rows.map(function (r) {
       var st = keyState(r), e = keyEntry(r), locked = disabled || !active || st === "driver" || sh.archived_at;
-      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make || "No vehicle details") + '</div></div>' +
+      return '<div class="row kc-row kc-row-' + st + '" data-id="' + r.id + '"><div class="kc-time num">' + hhmm(r.return_at) + '</div><div class="kc-car"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + '</button>' + (r.num ? '<span class="kc-num num">#' + r.num + '</span>' : '') + '<div class="kc-meta">' + esc(r.make ? (isRefined() ? niceMake(String(r.make).trim()) : r.make) : "No vehicle details") + '</div></div>' +
         '<div class="kc-fl">' + flightCell(r) + (r.name ? '<span class="kc-meta kc-flcu" title="' + esc(r.name) + '">' + esc(nice(r.name)) + '</span>' : '') + '</div>' +
         '<div class="kc-cu"><div class="kc-name" title="' + esc(r.name) + '">' + esc(nice(r.name) || "—") + '</div><div class="kc-meta num">' + esc(r.ref || "") + '</div></div>' +
         '<div class="kc-yard">' + (yardChip(r, true) || '<span class="kc-meta">No yard</span>') + '</div><div class="kc-state"><span class="kc-status kc-status-' + st + '">' + ({found:"Found",unchecked:"Unchecked",missing:"Missing",driver:"With driver"}[st]) + '</span></div><div class="kc-person">' + (st === "driver" ? "Sent by " + esc(byName(r, "sent_by") || "staff") + '<small>' + hhmm(r.sent_at) + '</small>' : e.checked_at ? esc(e.checked_by_name || "Staff") + '<small>' + hhmm(e.checked_at) + '</small>' : '—') + '</div><div class="kc-actions">' + (st === "unchecked" && active ? '<button type="button" data-keymissing="' + r.id + '"' + (locked ? ' disabled' : '') + '>Missing</button>' : '') + (st === "driver" ? '<span class="kc-meta">Sent ' + hhmm(r.sent_at) + '</span>' : '<button type="button" class="kbox' + (st === "found" ? ' on' : '') + '" data-keytick="' + r.id + '" aria-pressed="' + (st === "found") + '" aria-label="' + (st === "found" ? 'Unconfirm' : 'Confirm') + ' key for ' + esc(r.reg) + '"' + (locked ? ' disabled' : '') + '></button>') + '</div></div>';
@@ -115,16 +115,16 @@
     var desk = opsDesk(), h = opsSub(sh) + '<div class="ops-acts"><button type="button" class="btn ghost small" data-copy="stats">Copy stats</button></div>';
     if (sh.kind === "drops") {
       var D = dropsStats(), owed = chargeLines();
-      h += opsStrip([["Due back", D.total.due], ["Sent", D.total.sent], ["Collected", D.total.done], ["Still to collect", D.total.due - D.total.done]]) + statsCols(
+      h += opsStrip([["Due back", D.total.due, tileAttr("")], ["Sent", D.total.sent, tileAttr("sentall")], ["Collected", D.total.done, tileAttr("back")], ["Still to collect", D.total.due - D.total.done, tileAttr("left")]]) + statsCols(
         opsPanel("Returns by booked hour", desk ? "Due and collected" : "", (desk ? statBars(D.hours.map(function (x) { return [x.label, x.due, x.done]; })) : "") + opsTable(["Hour", "Due", "Sent", "Collected"],
           D.hours.map(function (x) { return [esc(x.label), x.due, x.sent, x.done]; }).concat(D.over.due ? [["Overstays", D.over.due, D.over.sent, D.over.done]] : []),
           ["Total", D.total.due, D.total.sent, D.total.done]), D.over.due ? "Overstays are separate from the morning and night shifts." : ""),
         opsPanel("Shift breakdown", "Collected / due", opsTable(null, [["Morning<small>06:00–17:30</small>", D.morning.done + " / " + D.morning.due], ["Night<small>17:31–05:59</small>", D.night.done + " / " + D.night.due]])) +
         opsPanel("Collected lately", "", opsTable(null, [["Last 30 minutes", D.last30], ["Last 60 minutes", D.last60]])) +
-        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));
+        (owed.length ? opsPanel("Overstay money", "", opsTable(null, owed.map(function (x) { var l = [esc(x[0]), x[1]]; l.tap = tileAttr(x[2]); return l; }))) : ""));
     } else {
       var P = picksStats(), cats = catLines();
-      h += opsStrip([["Scheduled", P.totalSched], ["Completed", P.totalDone], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
+      h += opsStrip([["Scheduled", P.totalSched, tileAttr("")], ["Completed", P.totalDone, tileAttr("pdone")], ["Last 30 min", P.last30], ["Last 60 min", P.last60]]) + statsCols(
         opsPanel("Arrivals by booked hour", desk ? "Scheduled and completed" : "", (desk ? statBars(P.hours.map(function (x) { return [x.label, x.sched, x.done]; })) : "") + opsTable(["Hour", "Scheduled", "Completed"], P.hours.map(function (x) { return [esc(x.label), x.sched, x.done]; }), ["Total", P.totalSched, P.totalDone]),
           "Completed counts Collected and RTC, by booked arrival hour."),
         (cats.length ? opsPanel("Return groups", "", opsTable(null, cats.map(function (x) { return [esc(x[0]), x[1]]; }))) : ""));

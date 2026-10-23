@@ -105,7 +105,7 @@ await scenario(async () => {
   check("add charge: the panel shows £30 due and why, with CASH / CARD / WAIVE", /£30 due/.test(acBox) && /return date changed/.test(acBox) && await page.locator('[data-charge="cash"]').count() === 1, acBox);
   if (await page.locator("#panel[open]").count()) await page.click("[data-close]").catch(() => {});
   await sleep(300);
-  check("add charge: the row shows £30 DUE", /£30 DUE/.test(await text(page, '.row[data-id="b1"]')));
+  check("add charge: the board shows £30 due", /Overstay \/ charge £30 · Due/.test(await text(page, '.row[data-id="b1"] .bpay-row')));
   // Overstay payment
   await page.click('.row[data-id="b3"] .reg'); await sleep(400);
   const due = await page.locator(".chgbox").innerText().catch(() => "");
@@ -115,7 +115,7 @@ await scenario(async () => {
   check("overstay: SET AS DUE saves the amount typed", !!agr && agr.args.p_amount === 40, agr && agr.args);
   const agreedBox = await page.locator(".chgbox").innerText().catch(() => "");
   check("overstay: the panel shows the agreed amount and what it was", /£40 due/.test(agreedBox) && /agreed · was £\d+/.test(agreedBox), agreedBox);
-  check("overstay: the row shows the agreed amount due", /£40 DUE/.test(await text(page, '.row[data-id="b3"]')));
+  check("overstay: the board shows the agreed amount due", /Overstay \/ charge £40 · Due/.test(await text(page, '.row[data-id="b3"] .bpay-row')));
   await page.click('.chgbox [data-chargeagreed=""]'); await sleep(500);
   check("overstay: Undo puts back the daily-rate sum", db.calls.some((c) => c.fn === "set_overstay_agreed" && c.args.p_amount === null) && !/agreed/.test(await page.locator(".chgbox").innerText().catch(() => "")));
   await page.fill("#chgAmount", "85"); await page.click('[data-charge="cash"]'); await sleep(500);
@@ -123,7 +123,7 @@ await scenario(async () => {
   check("overstay: CASH records the amount typed", !!pay && pay.args.p_amount === 85 && pay.args.p_method === "cash", pay && pay.args);
   if (await page.locator("#panel[open]").count()) await page.click("[data-close]").catch(() => {});
   await sleep(300);
-  check("overstay: the row shows it paid", /£85 CASH/.test(await text(page, '.row[data-id="b3"]')));
+  check("overstay: the board shows the recorded £85 collection", /Overstay \/ charge £85 · Collected/.test(await text(page, '.row[data-id="b3"] .bpay-row')));
   // Remove and put back
   await page.click('.row[data-id="b2"] .reg'); await sleep(400);
   await page.click("[data-removecar]"); await sleep(300);

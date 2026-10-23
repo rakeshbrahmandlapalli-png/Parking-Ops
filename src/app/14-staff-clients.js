@@ -9,7 +9,7 @@
   // ── Clients (product owner only, database part 19) ──
   // Counts only: this page never sees a client's customers.
   // The looks a client's app can wear (brand.theme): "pro" is pro.css, "cards" is cards.css, "premium" is premium.css, "board" is premium.css + board.css.
-  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"]];
+  var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"], ["ops-refined", "Operations Refined"]];
   function lookName(b) { var l = LOOKS.filter(function (x) { return x[0] === ((b && b.theme) || ""); })[0]; return l ? l[1] : "Standard"; }
   function renderClients() {
     if (S.clients === undefined) { S.clients = null; loadClients(); }
@@ -57,8 +57,8 @@
       var ink = lightColour(c) ? "#1F1A00" : "#FFFFFF", line = hexMix(c, "#000000", 0.15);
       css += "html body .code." + y + ",html body select.code.pick." + y + ",html body .acts .pyard.on.y-" + y + ",html body .pseg.yard button.on.y-" + y +
         "{background:" + c + ";border-color:" + line + ";color:" + ink + ";}";
-      // Operations on a wide screen: a dot of the yard's colour by its count.
-      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
+      // Operations (and Operations Refined) on a wide screen: a dot of the yard's colour by its count.
+      css += "html.ops body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before,html.ops-refined body.ops-desk #tally button[data-tally=\"" + y + "\"] span::before{display:inline-block;background:" + c + ";}";
     });
     var el = document.getElementById("yardColours");
     if (!el) { el = document.createElement("style"); el.id = "yardColours"; document.head.appendChild(el); }
@@ -245,14 +245,14 @@
       }).join("") + '<div class="pbtns"><button type="button" data-health>Refresh</button><button type="button" data-close>Close</button></div>';
   }
 
-  // Mirrors can() in database part 3: what each role gets before any per-person change.
+  // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
   var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
-    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"] };
+    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
   var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
-    ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+    ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
@@ -372,6 +372,16 @@
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }
+  // An Actions menu that would open under the bottom bar (the last people on a phone) opens upward,
+  // so Switch on / Switch off stays in view.
+  document.addEventListener("toggle", function (e) {
+    var d = e.target; if (!d || !d.classList || !d.classList.contains("ops-dd")) return;
+    d.classList.remove("up"); if (!d.open) return;
+    var m = d.querySelector(":scope > div"), bn = $("bnav"), low = innerHeight, b = bn && bn.getBoundingClientRect();
+    if (b && b.height && b.top > innerHeight / 2) low = Math.min(low, b.top);
+    var r = m.getBoundingClientRect();
+    if (r.bottom > low - 8 && d.getBoundingClientRect().top - r.height - 4 > 0) d.classList.add("up");
+  }, true);
   async function staffAction(body, busyEl) {
     if (busyEl) busyEl.disabled = true;
     try {

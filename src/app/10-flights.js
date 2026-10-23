@@ -63,12 +63,15 @@
 
   // ── flights ───────────────────────────────
   var FLIGHT_WORD = { noflight: "No flight number · collection time", "": "Not checked yet", scheduled: "Scheduled", expected: "Running late", airborne: "In the air", delayed: "DELAY", landed: "Landed", cancelled: "CANCELLED" };
+  // A tapped number on a phone's Flights page shows only those flights (S.flTile; "" = all).
+  function flTileOk(r) { var t = S.flTile || "", st = r.flight_status; return !t || st === t || (t === "delayed" && st === "expected"); }
+  function flTileAttr(k) { var on = (S.flTile || "") === k; return ' data-fltile="' + k + '" role="button" tabindex="0" aria-pressed="' + on + '"'; }
   function renderFlights() {
     var sh = sheet();
     if (!sh || sh.kind !== "drops") return '<div class="msg">Choose a DROPS sheet at the top to see its flights.</div>';
     if (!S.runs) loadRuns();
     var all = S.rows.filter(function (r) { return r.flight; }).sort(function (a, b) { return orderAt(a) < orderAt(b) ? -1 : 1; });
-    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); });
+    var manual = all.filter(flightToCheck), rows = all.filter(function (r) { return !flightToCheck(r); }), shown = rows.filter(flTileOk);
     function n(st) { return rows.filter(function (r) { return r.flight_status === st; }).length; }
     function last(src) {
       var run0 = (S.runs || []).filter(function (x) { return x.source === src; })[0];
@@ -77,40 +80,41 @@
       return esc(dayShort(run0.at) + " " + hhmm(run0.at)) + (res.error ? ' · <span class="bad">' + esc(res.error) + "</span>" : "");
     }
     if (opsDesk()) return opsFlightsDesk(sh);
-    if (isOps()) return opsFlights(sh, all, rows, manual, n);
+    if (isOps()) return opsFlights(sh, all, rows, manual, n, shown);
     var h = '<div class="pad"><h2 class="title">' + esc(sheetLabel(sh)) + "</h2>" +
-      '<div class="stats"><div class="stat"><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat"><span>Landed</span><strong class="num">' + n("landed") +
-      '</strong></div><div class="stat"><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat"><span>Cancelled</span><strong class="num">' + n("cancelled") +
+      '<div class="stats"><div class="stat tap"' + flTileAttr("") + '><span>Flights</span><strong class="num">' + all.length + '</strong></div><div class="stat tap"' + flTileAttr("landed") + '><span>Landed</span><strong class="num">' + n("landed") +
+      '</strong></div><div class="stat tap"' + flTileAttr("delayed") + '><span>Delayed or late</span><strong class="num">' + (n("delayed") + n("expected")) + '</strong></div><div class="stat tap"' + flTileAttr("cancelled") + '><span>Cancelled</span><strong class="num">' + n("cancelled") +
       '</strong></div></div><p class="note">Timetable last checked: ' + last("schedule") + "<br>Live positions last checked: " + last("live") + "</p>" +
       (canCheckFlights() ? '<div class="row-actions">' + checksLeftHtml() + '<button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
       "</div>" + missingHtml() + manualHtml(manual) + (missingFlights().length || manual.length ? '<div class="sec">WITH FLIGHT NUMBERS</div>' : "");
-    return h + (rows.length ? rows.map(function (r) {
+    return h + (shown.length ? shown.map(function (r) {
       return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
         '<div class="l2 num"><span class="l2a">' + esc(FLIGHT_WORD[r.flight_status] || r.flight_status) + (r.flight_note ? " · " + esc(r.flight_note) : "") + '</span><span class="l2b">' + (isPremium() ? "" : " · ") + esc(r.sched_time || hhmm(r.return_at)) +
         (r.est_time ? ' &rarr; <span class="eta' + (r.est_time === "DELAY" ? " dly" : "") + '">' + esc(r.est_time) + "</span>" : "") + "</span></div></div></div>";
-    }).join("") : '<div class="msg">No flight numbers on this sheet.</div>');
+    }).join("") : '<div class="msg">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</div>");
   }
   // Operations: the numbers in a strip, then each flight with its times and a status badge.
-  function opsFlights(sh, all, rows, manual, n) {
+  function opsFlights(sh, all, rows, manual, n, shown) {
     function run(src) { return (S.runs || []).filter(function (x) { return !src || x.source === src; })[0]; }
     var lastRun = run(), tt = run("schedule");
     var h = opsSub(sh) + '<div class="ops-acts ops-check"><span class="ops-dot' + (lastRun ? "" : " never") + '">' + (lastRun ? "Checked at " + esc(hhmm(lastRun.at)) : "Not checked yet") + "</span>" +
       (canCheckFlights() ? checksLeftHtml() + '<button type="button" class="btn ghost small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights</button>' : "") + "</div>" +
-      opsStrip([["Flights", all.length], ["Landed", n("landed")], ["Delayed", n("delayed") + n("expected")], ["Cancelled", n("cancelled")]]) +
+      opsStrip([["Flights", all.length, flTileAttr("")], ["Landed", n("landed"), flTileAttr("landed")], ["Delayed", n("delayed") + n("expected"), flTileAttr("delayed")], ["Cancelled", n("cancelled"), flTileAttr("cancelled")]]) +
       missingHtml() + manualHtml(manual);
     function mins(t) { return /^\d{2}:\d{2}$/.test(t || "") ? +t.slice(0, 2) * 60 + +t.slice(3) : null; }
-    var list = rows.map(function (r) {
+    var list = shown.map(function (r) {
       var st = r.flight_status || "", sched = r.sched_time || hhmm(r.return_at), est = r.est_time || "";
       var late = mins(est) !== null && mins(sched) !== null ? (mins(est) - mins(sched) + 1440 + 720) % 1440 - 720 : 0;
       var word = st === "landed" ? "Landed" : st === "cancelled" ? "Cancelled" : (st === "delayed" || st === "expected") && late > 0 ? "Delayed +" + late + " min" : st === "delayed" ? "Delayed" : FLIGHT_WORD[st] || st;
       var tone = st === "landed" ? "ok" : st === "cancelled" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
       return '<div class="ops-fl fs-' + esc(st || "none") + '" data-id="' + r.id + '"><div class="ops-flin" data-open>' +
         '<b class="num">' + esc(r.flight) + '</b><span class="ops-flcar"><span class="num">' + esc(r.reg) + "</span><small>" + esc(nice(r.name)) + "</small></span>" +
-        '<span class="ops-flt"><small>Scheduled</small><span class="num">' + esc(sched || "—") + "</span></span>" +
-        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
-        '<em class="ops-badge ' + tone + '">' + esc(word) + (r.flight_note && st !== "landed" ? " · " + esc(r.flight_note) : "") + "</em></div></div>";
+        // Operations Refined: a flight per line on a phone, in the board's words (Sch, Est).
+        '<span class="ops-flt"><small>' + (isRefined() ? "Sch" : "Scheduled") + '</small><span class="num">' + esc(sched || "—") + "</span></span>" +
+        (est ? '<span class="ops-flt"><small>' + (st === "landed" ? "Landed" : isRefined() ? "Est" : "Expected") + '</small><span class="num">' + esc(est === "DELAY" ? "Delayed" : est) + "</span></span>" : "<span></span>") +
+        '<em class="ops-badge ' + tone + '">' + (isRefined() && r.flight_note && st !== "landed" && r.flight_note.indexOf(word) === 0 ? "" : esc(word) + (r.flight_note && st !== "landed" ? " · " : "")) + (r.flight_note && st !== "landed" ? esc(r.flight_note) : "") + "</em></div></div>";
     }).join("");
-    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">No flight numbers on this sheet.</p>');
+    return h + opsPanel("Flight status", tt ? "Timetable updated at " + hhmm(tt.at) : "", list || '<p class="ops-foot">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</p>");
   }
   // Fill times and Check flights: owners, managers and the office any time;
   // drivers and terminal staff 2 an hour between both (the server counts).

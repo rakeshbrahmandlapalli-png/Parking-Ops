@@ -36,7 +36,7 @@
     if (premium && sh) $("cShift").innerHTML = cShiftHtml(sh);
     show("kindSeg", cardsLook && board && !!sh);
     // Operations: Drops | Picks in the top bar.
-    var opsLook = document.documentElement.classList.contains("ops");
+    var opsLook = isOps();
     show("kindBar", opsLook && !S.platform && !!sh);
     if (opsLook && sh) Array.prototype.forEach.call($("kindBar").querySelectorAll("[data-kind]"), function (b) { b.setAttribute("aria-pressed", b.dataset.kind === sh.kind); });
     if (cardsLook && sh) {
@@ -176,14 +176,15 @@
     if (id === (S.switching ? S.switching.id : S.sheetId)) return;
     // Operations: Drops | Picks on Hourly stats or Shift summary stays on that page.
     var stay = isOps() && (S.view === "summary" || S.view === "stats");
+    if (!stay && !leaveOk()) return;
     switchSheet(id, { stay: stay });
   }
   function pickerHtml(shift) {
     // Operations: Drops | Picks sits beside the picker, so it lists only that
     // kind's days, without the word ("7TH OCT · today").
-    var cur = sheet(), oneKind = document.documentElement.classList.contains("ops") && cur ? cur.kind : "";
+    var cur = sheet(), oneKind = isOps() && cur ? cur.kind : "";
     var sheets = oneKind ? S.sheets.filter(function (s) { return s.kind === oneKind; }) : S.sheets;
-    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? sheetLabel(s).replace(/^\S+ /, "") : sheetLabel(s)) + (s.day === shift ? " · today" : "") + "</option>"; }
+    function opt(s) { return '<option value="' + s.id + '"' + (s.id === (S.switching ? S.switching.id : S.sheetId) ? " selected" : "") + ">" + esc(oneKind ? (isRefined() && s.day ? refinedDay(s.day, s.day === shift) : sheetLabel(s).replace(/^\S+ /, "")) : sheetLabel(s)) + (s.day === shift && !(isRefined() && oneKind && s.day) ? " · today" : "") + "</option>"; }
     var ahead = sheets.filter(function (s) { return s.day >= shift; }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.kind < b.kind ? -1 : 1; });
     var h = ahead.length ? '<optgroup label="TODAY AND COMING UP">' + ahead.map(opt).join("") + "</optgroup>" : "";
     var months = {};
@@ -234,7 +235,9 @@
       html = '<div class="msg">This screen couldn\'t be shown just now.<br><br>' + (S.view !== "board" ? '<button type="button" class="btn brand" data-view="board">Back to the board</button> ' : "") +
         '<button type="button" class="btn ghost" data-reload>Reload the app</button></div>';
     }
+    var keep = S.view === "settings" && $("main").dataset.view === "settings" && hasFeatures() ? setEdits() : null;
     setMain(html, S.view);
+    if (S.view === "settings" && hasFeatures()) settingsDrawn(keep);
     snapSave();
     if (flashId) { var el = document.querySelector('[data-id="' + flashId + '"]'); if (el) { el.classList.add("flash"); setTimeout(function () { el.classList.remove("flash"); }, 1500); } flashId = null; }
   }
@@ -250,5 +253,5 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 

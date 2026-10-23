@@ -1,3 +1,50 @@
+/* Board collections: shared structure; each look keeps its own tokens. */
+.bpay-head{flex:0 0 100%;grid-column:1/-1;order:6;min-width:0;margin:6px 0 0;padding:0 10px;background:var(--card);border:1px solid var(--line);border-radius:6px;color:var(--ink);}
+.bpay-caption{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;font-size:12px;}
+.bpay-caption span{font-size:11px;color:var(--ink-2);}
+.bpay-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:5px 0;border-top:1px solid var(--line);}
+.bpay-totals>div{min-width:0;padding:0 7px;border-left:1px solid var(--line);}
+.bpay-totals>div:first-child{padding-left:0;border-left:0;}
+.bpay-totals span{display:block;min-height:25px;font-size:10px;line-height:1.2;color:var(--ink-2);}
+.bpay-totals b{display:block;font-size:16px;line-height:1.3;}
+.bpay-filters{display:flex;gap:3px;padding:3px 0 5px;border-top:1px solid var(--line);}
+.bpay-filters button{flex:1;min-width:0;min-height:36px;padding:3px 2px;background:var(--card);border:1px solid var(--line);border-radius:4px;color:var(--ink-2);font-size:10px;line-height:1.2;}
+.bpay-filters button b{font-weight:650;}
+.bpay-filters button[aria-pressed=true]{background:var(--bp-selected,var(--ink));border-color:var(--bp-selected,var(--ink));color:var(--bp-selected-ink,var(--card));}
+.row.with-payments{flex-wrap:wrap;row-gap:0;}
+.bpay-row{display:flex;align-items:center;flex-wrap:wrap;flex:0 0 100%;grid-column:1/-1;grid-row:auto;gap:2px 10px;width:100%;min-width:0;min-height:40px;margin:4px 0 -1px;padding:4px 0;background:none;border:0;border-top:1px solid var(--line);text-align:left;color:var(--ink);font-family:inherit;font-size:11px;font-weight:500;line-height:1.3;}
+.bpay-row .bpay-status{min-width:0;}
+.bpay-status.paid{color:var(--ok-tx,var(--ok));}
+.bpay-status.due,.bpay-check{color:var(--amb-tx,#915600);}
+.bpay-status.free{color:var(--ink-2);}
+.bpay-check{font-size:10px;font-weight:600;}
+.bpay-arrow{margin-left:auto;font-size:20px;line-height:1;}
+dialog.sheet.payment-sheet{background:var(--card);color:var(--ink);}
+.bpay-title{display:flex;align-items:start;justify-content:space-between;gap:8px;}
+.bpay-title>div{min-width:0;}
+.bpay-title>div>span{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-2);}
+.bpay-title h2{font-size:25px;line-height:1.3;margin:2px 0;}
+.bpay-title p{overflow-wrap:anywhere;font-size:12px;color:var(--ink-2);}
+.bpay-title button{flex:none;width:44px;height:44px;background:none;border:1px solid var(--line);border-radius:4px;font-size:26px;}
+.bpay-balance{margin:14px 0 8px;padding:9px 12px;background:var(--ok-bg,var(--ok-soft));color:var(--ok-tx,var(--ok));font-size:14px;font-weight:650;}
+.bpay-balance.due{background:var(--amb-bg,#fff4df);color:var(--amb-tx,#915600);}
+.bpay-summary{display:flex;gap:16px;padding:4px 0 10px;font-size:12px;color:var(--ink-2);}
+.bpay-summary b{margin-left:4px;color:var(--ink);}
+.bpay-record{padding:14px 0;border-top:1px solid var(--line);}
+.bpay-record-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:13px;}
+.bpay-record-head h3{flex:1;min-width:110px;font-size:14px;}
+.bpay-record-head>.bpay-status{padding:3px 6px;border:1px solid currentColor;border-radius:4px;font-size:11px;}
+.bpay-record dl{display:grid;gap:5px;margin:10px 0 0;}
+.bpay-record dl:empty{display:none;}
+.bpay-kv{display:grid;grid-template-columns:108px minmax(0,1fr);gap:8px;font-size:12px;}
+.bpay-kv dt{color:var(--ink-2);}.bpay-kv dd{margin:0;overflow-wrap:anywhere;}
+.bpay-proof{padding:0 0 14px;font-size:12px;}
+.bpay-proof a,.bpay-proof button{display:inline-flex;align-items:center;min-height:40px;color:var(--info);background:none;border:0;}
+.bpay-footer{display:flex;gap:8px;margin-top:8px;}
+.bpay-footer button{flex:1;min-height:44px;padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--card);font-size:12px;font-weight:600;}
+.bpay-footer button:last-child{background:var(--bp-selected,var(--ink));border-color:var(--bp-selected,var(--ink));color:var(--bp-selected-ink,var(--card));}
+.bpay-note{font-size:12px;color:var(--ink-2);padding:4px 0 10px;}
+
 /* The product look: white, dense, one line a car. Deliberately neutral —
    every company's own colour arrives from companies.brand at sign-in. */
 :root{
@@ -739,3 +786,7 @@ span.bi-undo{color:var(--ink-2);}
 .bi-time{display:inline-flex;gap:8px;align-items:center;}
 .bi-time input[type=time]{min-height:40px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;}
 .bi-sched .btn[disabled]{opacity:.45;cursor:not-allowed;}
+/* A number that opens its cars (Summary, Hourly stats) or filters Flights: tappable. */
+.tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.tap:active{opacity:.7;}
+.stat.tap[aria-pressed="true"]:not([data-fltile=""]){box-shadow:inset 0 0 0 2px currentColor;}

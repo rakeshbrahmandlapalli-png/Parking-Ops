@@ -235,7 +235,18 @@ function rpc(db, fn, a) {
     case "admin_usage": return { db_bytes: 25709715, store_bytes: 0, store_files: 0, clients: [{ id: "c1", name: "TAKEOFF", cars_30d: 2074, sheets_30d: 18, pt_sets_30d: 134, pt_photos_30d: 4277, fr24_calls_30d: 209, fr24_calls_today: 46, timetable_runs_30d: 148, timetable_last_ok: now(), timetable_last_error: "", activity_30d: 5805 }] };
     case "set_handover_note": { db.handover = { note: a.p_note, at: now(), by: "RAKESH" }; return db.handover; }
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
-    case "my_permissions": return db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]));
+    case "my_permissions": {
+      const extra = db.me.extra || [];
+      const collections = !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
+      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
+    }
+    case "set_staff_access": {
+      if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
+      const p = db.staff.find((p) => p.id === a.p_staff && (!p.company_id || p.company_id === db.me.company_id) && !p.removed_at);
+      if (!p) throw new Error("Person not found.");
+      if (p.id === db.me.id || (p.role === "owner" && db.me.role !== "owner")) throw new Error("You cannot change that person's access.");
+      p.extra = a.p_extra || []; return p;
+    }
     case "tap_drop": {
       // part 98: the name picked on a shared login rides with the stamp.
       function byName(b, c) { b.by_name = { ...(b.by_name || {}) }; if (b[c] && db.me && db.me.acting) b.by_name[c] = db.me.acting; else delete b.by_name[c]; }
@@ -280,6 +291,7 @@ function rpc(db, fn, a) {
     case "booking_site_status": return db.bsite || { url: "", login: "", has_pass: false, saved_by: "", saved_at: null };
     case "booking_site_set": { const clear = !a.p_url && !a.p_login && !a.p_password, prev = db.bsite || {};
       db.bsite = clear ? { url: "", login: "", has_pass: false, saved_by: "", saved_at: null } : { url: a.p_url, login: a.p_login, has_pass: a.p_password == null ? !!prev.has_pass : a.p_password !== "", saved_by: "RAKESH", saved_at: now() }; return db.bsite; }
+    case "set_flight_settings": db.company.flight_settings = a.p; return a.p;
     case "set_exit_fee": db.company.exit_fee = a.p_fee; db.company.exit_free = a.p_free.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")); return { exit_fee: a.p_fee, exit_free: db.company.exit_free };
     case "set_exit_paid": { const b = row(a.p_booking); Object.assign(b, { exit_method: a.p_method, exit_amount: a.p_method ? db.company.exit_fee : null, exit_at: a.p_method ? new Date().toISOString() : null, exit_by: a.p_method ? "s1" : null, exit_photo: a.p_photo || "" }); return b; }
     case "set_overstay_paid": { const b = row(a.p_booking); Object.assign(b, { charge_amount: a.p_amount, charge_method: a.p_method, charge_at: a.p_method ? new Date().toISOString() : null, charge_by: a.p_method ? "s1" : null }); return b; }
@@ -336,6 +348,7 @@ async function backend(ctx, db) {
       const a = JSON.parse(req.postData() || "{}"); (db.staffCalls = db.staffCalls || []).push(a);
       // Opening a client: from now on the phone is that client's owner.
       if (a.action === "client_open") { db.company = db.clientCompany; db.me = { ...db.me, company_id: db.company.id, name: "RAKESH (PARKING OPS)" }; return reply(200, { token_hash: "th", name: db.company.name }); }
+      if (a.action === "on" || a.action === "off") { const q = db.staff.find((x) => x.id === a.staff_id); q.active = a.action === "on"; return reply(200, { staff_id: q.id, active: q.active }); }
       return reply(400, { error: "not in the test" });
     }
     if (p.startsWith("/functions/v1/flights")) {

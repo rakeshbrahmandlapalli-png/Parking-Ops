@@ -7,7 +7,11 @@
    and the car panel's fields. The job rows (.row, .acts, .sec, the column
    head) are left exactly as Standard's; a browser test checks that.
    Everything here sits under html.ops, so no other look changes. */
-html.ops{--op-ink:#18283b;--op-deep:#0f1c2e;--op-mut:#526174;--op-line:#dce2e9;--op-field:#d5dde7;--op-bg:#f5f7fa;}
+html.ops{--op-ink:#18283b;--op-deep:#0f1c2e;--op-mut:#526174;--op-line:#dce2e9;--op-field:#d5dde7;--op-bg:#f5f7fa;--bp-selected:#18283b;--bp-selected-ink:#fff;}
+html.ops #boardPayments{order:6;border-color:var(--op-line);}
+html.ops .drow .bpay-row{grid-column:1/-1;padding:5px 12px;margin:0;border-color:var(--op-line);}
+/* The connection warning otherwise pushes Refresh beyond a narrow screen. */
+@media(max-width:430px){html.ops body.on-board:has(#boardPayments:not(.hidden)) .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}}
 /* During a phone key check, retain the sync status as an accessible dot so
    the brand, shift and refresh control fit on narrow screens. */
 @media(max-width:430px){html.ops body.keychecking .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}html.ops body.keychecking .bar #sheetPick{min-width:0;flex-shrink:1;}}
@@ -218,6 +222,7 @@ html.ops .ops-dd summary{display:flex;align-items:center;gap:8px;height:36px;pad
 html.ops .ops-dd summary::-webkit-details-marker{display:none;}
 html.ops .ops-dd summary::after{content:"";width:5px;height:5px;margin-top:-3px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);}
 html.ops .ops-dd > div{position:absolute;right:0;top:calc(100% + 4px);z-index:5;display:flex;flex-direction:column;min-width:170px;padding:4px;border:1px solid var(--op-line);border-radius:6px;background:#fff;box-shadow:0 8px 24px rgb(15 28 46 / .16);}
+html.ops .ops-dd.up > div{top:auto;bottom:calc(100% + 4px);}
 html.ops .ops-dd > div button{padding:11px 12px;border:0;border-radius:4px;background:none;color:var(--op-ink);font-size:13.5px;text-align:left;}
 html.ops .ops-dd > div button:hover{background:var(--op-bg);}
 html.ops .ops-add .ops-fields{padding:4px 14px 0;}
@@ -237,6 +242,19 @@ html.ops main[data-view="settings"] .box.fchecks .field{grid-column:auto;margin:
 html.ops main[data-view="settings"] .box.fchecks .pair{display:contents;}
 html.ops main[data-view="settings"] .box.fchecks .section-label{display:none;}
 html.ops main[data-view="settings"] .box.fchecks select{min-width:0;}
+/* Settings on a phone: each section a header that opens it (app.js setBox) */
+html.ops main[data-view="settings"] .box.setsec{display:block;padding:0 !important;margin-top:14px;border-radius:6px;}
+html.ops main[data-view="settings"] .box.setsec:first-of-type{margin-top:0;}
+html.ops main[data-view="settings"] .setsec > .setbody{margin-bottom:0;padding:4px 14px 0;}
+html.ops main[data-view="settings"] .sethead{padding:15px 14px 14px;}
+html.ops main[data-view="settings"] .sethead small{font-size:12px;font-weight:500;color:var(--op-mut);}
+html.ops main[data-view="settings"] .setsec.open .sethead{border-bottom-color:#e4e9ef;}
+html.ops main[data-view="settings"] .setbody > .row-actions{justify-content:flex-end;margin:14px -14px 0;padding:12px 14px;border-top:1px solid #e4e9ef;}
+html.ops main[data-view="settings"] .setbody > :last-child:not(.row-actions){margin-bottom:14px;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:12px;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody > *{grid-column:1 / -1;}
+html.ops main[data-view="settings"] .setsec.fchecks .setbody > .field{grid-column:auto;}
+html.ops .setdirty.ops-unsaved{max-width:none;}
 html.ops .ops-unsaved{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:12px 14px;border:1px solid #f0d9a8;border-radius:6px;background:#fdf6e7;color:#5c4510;font-size:13px;}
 html.ops .ops-unsaved .btn{flex:none;}
 
@@ -605,3 +623,6 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk .od-records .ops-record:nth-of-type(3n){border-right:1px solid var(--od-soft);}
  html.ops body.ops-desk .od-records .ops-record:nth-of-type(2n){border-right:0;}
 }
+/* Summary, Hourly stats and Flights numbers open their cars: pressed and chosen states. */
+html.ops .ops-strip > .tap:active,html.ops .ops-tr.tap:active{background:#eef2f7;opacity:1;}
+html.ops .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){box-shadow:inset 0 -3px 0 var(--brand);}

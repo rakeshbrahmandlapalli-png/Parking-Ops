@@ -125,7 +125,7 @@ await scenario(async () => {
   await page.waitForSelector('.row[data-id="b1"] .reg', { timeout: 8000 }).catch(() => {});
   const row1 = await page.locator('.row[data-id="b1"]').innerText();
   check("changed return shows WAS and the day first booked", new RegExp("WAS " + String(+addDays(TONIGHT, -3).slice(8, 10)).padStart(2, "0")).test(row1));
-  check("changed return is charged from the first date", /£\d+ DUE/.test(row1), row1);
+  check("changed return is charged from the first date", /Overstay \/ charge £\d+ · Due/.test(row1), row1);
   check("marked OVERSTAY today: the block says staying longer", /staying longer/i.test(await page.locator("#main").innerText()) && !/earlier days/i.test(await page.locator("#main").innerText()));
   await page.click('.row[data-id="b1"] .reg'); await sleep(400);
   check("the car panel shows the first booked return", /BACK\n.*was /.test(await page.locator("#panelBody").innerText()));
