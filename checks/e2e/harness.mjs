@@ -323,6 +323,7 @@ async function backend(ctx, db) {
     if (p.startsWith("/rest/v1/rpc/")) {
       const fn = p.slice(13), args = JSON.parse(req.postData() || "{}");
       db.calls.push({ fn, args });
+      if (db.dashGate && fn === "owner_dashboard") await db.dashGate; // held open so a test can see the Loading… state
       if (db.keyGate && fn.startsWith('key_check_')) { const error = await db.keyGate(fn,args); if (error) return reply(400,{message:error}); }
       try { return reply(200, rpc(db, fn, args)); } catch(e) { return reply(400,{message:e.message}); }
     }
@@ -471,6 +472,7 @@ async function scenario(fn, tag) {
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;
+  if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
