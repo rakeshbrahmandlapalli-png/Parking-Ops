@@ -1,4 +1,4 @@
-  // ── customer texts (database part 115) ──
+  // ── customer texts (database part 116) ──
   // An add-on (Parking Ops → Clients → Edit, brand.texts): the app texts the
   // customer by itself when their flight lands, when a driver is SENT, and the
   // day before a PICKS drop-off. Owners set it in Settings → Customer texts;
@@ -44,7 +44,8 @@
   }
   function phoneHealthHtml() {
     setTimeout(loadPhoneHealth, 0);
-    return '<div class="section-label">Company phone</div><p id="phoneHealth" class="note" role="status">Checking the company phone…</p><button type="button" class="btn" data-phone-health>Refresh phone status</button>';
+    return '<div class="section-label">Company phone</div><p id="phoneHealth" class="note" role="status">Checking the company phone…</p><div id="phonePair"></div><button type="button" class="btn" data-phone-health>Refresh phone status</button>' +
+      (S.me && S.me.role === 'owner' ? ' <a class="btn" href="/phone/takeoff-phone.apk" download>TakeOff Phone app (Android)</a>' : '');
   }
   async function loadPhoneHealth() {
     if (!$('phoneHealth')) return;
@@ -55,11 +56,33 @@
     el.textContent = status + (h.paired && !h.sms_ready ? ' SMS access or default SIM needs attention.' : '') +
       (h.battery !== null && h.battery !== undefined ? ' Battery ' + h.battery + '%.' : '') +
       ' ' + (+h.queued || 0) + ' waiting; ' + (+h.needs_review || 0) + ' to review; ' + (+h.expired || 0) + ' expired in the last day.' +
-      (h.last_seen && !h.online ? ' Last seen ' + dayShort(h.last_seen) + ' ' + hhmm(h.last_seen) + '.' : '');
+      (h.last_seen && !h.online ? ' Last seen ' + dayShort(h.last_seen) + ' ' + hhmm(h.last_seen) + '.' : '') +
+      (h.paired && h.paired_as ? ' Signed in as ' + h.paired_as + '.' : '');
+    // Pairing (part 118): the handset signs in with the office login and asks; an owner approves it here.
+    var pair = $('phonePair'), own = !!(S.me && S.me.role === 'owner'), p = h.pending, o = '';
+    if (pair) {
+      if (own && h.paired && h.paired_as_owner) o += '<p class="note">This phone is signed in with an owner\'s login. Sign it in with the office login and approve it here instead.</p>';
+      if (own && p) o += '<p class="note"><b>A phone is asking to be paired</b>, signed in as ' + esc(p.name || '?') + ' (' + dayShort(p.at) + ' ' + hhmm(p.at) + ').' + (h.paired ? ' Approving it replaces the paired phone.' : '') + '</p>' +
+        '<button type="button" class="btn" data-phonepair="approve" data-device="' + esc(p.device) + '">Approve this phone</button> <button type="button" class="btn" data-phonepair="refuse">Refuse</button>';
+      if (own && h.paired) o += ' <button type="button" class="btn" data-phonepair="unpair">Unpair the phone</button>';
+      pair.innerHTML = o;
+    }
+  }
+  async function phonePairing(btn) {
+    var a = btn.dataset.phonepair;
+    if (a === 'approve' && !confirm('Approve this phone? It sends the customer texts from now on.')) return;
+    if (a === 'unpair' && !confirm('Unpair the company phone? It stops sending texts until a phone is approved again.')) return;
+    btn.disabled = true;
+    var got = await sb.rpc('phone_pairing', { p_action: a, p_device: btn.dataset.device || null });
+    btn.disabled = false;
+    if (got.error) { toast(got.error.message, true); return; }
+    toast(a === 'approve' ? 'Phone approved. Tap Go online on it.' : a === 'unpair' ? 'Phone unpaired.' : 'Refused.');
+    loadPhoneHealth();
   }
   setInterval(function () { if (S.view === 'settings' && document.visibilityState !== 'hidden' && $('phoneHealth')) loadPhoneHealth(); }, 30000);
   document.addEventListener('click', async function (e) {
     if (e.target.closest('[data-phone-health]')) loadPhoneHealth();
+    var pb = e.target.closest('[data-phonepair]'); if (pb) { phonePairing(pb); return; }
     var review = e.target.closest('[data-reviewtext]');
     if (!review) return;
     if (!confirm('Have you checked the send outcome on the company phone? Marking reviewed does not send another message.')) return;
@@ -160,7 +183,7 @@
     catch (e) { btn.disabled = false; return toast(e.message, true); }
     carTexts(r);
   }
-  // ── incoming calls (database part 116) ──
+  // ── incoming calls (database part 117) ──
   // An add-on (brand.calls): the TakeOff Android companion screens calls on
   // the company SIM, matches them to a booking and records the call. The app
   // never answers or redirects a call; staff use the normal phone controls.

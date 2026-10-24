@@ -135,8 +135,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
-        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, canCalledTap(r), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, canCalledTap(r), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -334,7 +334,9 @@
       return;
     }
     var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
-    rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
+    // Collected counts the whole sheet (a paid car is usually done and off TO DO); Outstanding follows the cars shown.
+    S.rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.saving = total.saving || p.saving; });
+    rows.forEach(function (r) { total.due += paymentFacts(r).due; });
     var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
     var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
     el.classList.toggle("folded", folded);
@@ -442,9 +444,13 @@
   function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
   // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
   // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  // The row's CALLED button: whoever can press CALLED, or (AT DESK permission, part 115)
+  // on any car that is not OVERSTAY: the tap is AT DESK, which calls a car not called yet.
+  function canCalledTap(r) { return can("called") || (can("desk") && r.called_word !== "Overstay"); }
   function tapCalled(r) {
     if (atDesk(r)) return tapDrop(r, "desk");
     if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    if (!can("called")) return tapDrop(r, "desk");   // AT DESK only (part 115): straight to the desk, which calls it too
     return tapDrop(r, "called");
   }
   function tapDrop(r, action, word) {

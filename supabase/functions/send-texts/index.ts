@@ -1,9 +1,10 @@
-// Supabase Edge Function: send-texts (database part 115)
+// Supabase Edge Function: send-texts (database part 116)
 //
 // Texts to customers through the company's Android SIM, for clients with the Customer texts add-on
 // (companies.brand.texts) and texts switched on in Settings (companies.texts):
-//   landed    DROPS: the flight landed          } the database trigger bookings_text,
-//   sent      DROPS: a driver was SENT          } { type: "booking", id, rule }, x-timer header
+//   landed    DROPS: the flight landed          } the database trigger bookings_text writes an
+//   sent      DROPS: a driver was SENT          } outbox line and nudges { type: "outbox" };
+//                                                 the minute timer retries open lines (part 118)
 //   reminder  PICKS: the day before drop-off, at the owner's time: the 10-minute
 //             timer, { type: "reminders" }, x-timer header
 //   manual    the office, from the car's Texts: { type: "manual", booking, rule }, with a sign-in
@@ -61,23 +62,45 @@ async function send(company: { id: string; name: string; texts: Cfg }, rule: Rul
   return row;
 }
 
-// The trigger: a DROPS car landed or was SENT. Re-checked here before anything goes.
+// A DROPS car landed or was SENT. Re-checked here before anything goes; the answer
+// is what happened (written on the outbox line).
+async function bookingText(id: string, rule: "landed" | "sent") {
+  const { data: b, error } = await db.from("bookings").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!b || b.kind !== "drops" || b.cleared_at || b.removed_at || !b.phone) return "not due";
+  const now = Date.now(), fresh = (iso: string | null) => !!iso && now - new Date(iso).getTime() < FRESH_MIN * 60000;
+  if (rule === "landed" && (b.flight_status !== "landed" || b.sent_at || b.overstay || (b.est_at && !fresh(b.est_at)))) return "not due";
+  if (rule === "sent" && !fresh(b.sent_at)) return "not due";
+  // The return is tonight's: not a car booked back days away whose flight number happens to land today.
+  if (Math.abs(new Date(b.return_at).getTime() - now) > 12 * 3600000) return "not tonight";
+  const co = await companyOf(b.company_id);
+  const cfg = co?.texts ?? {};
+  if (!co || cfg.on !== true || (cfg[rule] as any)?.on === false) return "off";
+  const row = await send(co, rule, b, b.phone, fillText(rule, b, cfg, co.name), `text:${rule}:${b.id}`);
+  return "duplicate" in row ? "already queued" : row.status;
+}
 async function onBooking(req: Request, msg: Record<string, unknown>) {
   if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
   const rule = msg.rule === "landed" || msg.rule === "sent" ? msg.rule : null;
   if (!rule || typeof msg.id !== "string") return reply(400, { error: "Bad request." });
-  const { data: b } = await db.from("bookings").select("*").eq("id", msg.id).maybeSingle();
-  if (!b || b.kind !== "drops" || b.cleared_at || b.removed_at || !b.phone) return reply(200, { skipped: "not due" });
-  const now = Date.now(), fresh = (iso: string | null) => !!iso && now - new Date(iso).getTime() < FRESH_MIN * 60000;
-  if (rule === "landed" && (b.flight_status !== "landed" || b.sent_at || b.overstay || (b.est_at && !fresh(b.est_at)))) return reply(200, { skipped: "not due" });
-  if (rule === "sent" && !fresh(b.sent_at)) return reply(200, { skipped: "not due" });
-  // The return is tonight's: not a car booked back days away whose flight number happens to land today.
-  if (Math.abs(new Date(b.return_at).getTime() - now) > 12 * 3600000) return reply(200, { skipped: "not tonight" });
-  const co = await companyOf(b.company_id);
-  const cfg = co?.texts ?? {};
-  if (!co || cfg.on !== true || (cfg[rule] as any)?.on === false) return reply(200, { skipped: "off" });
-  const row = await send(co, rule, b, b.phone, fillText(rule, b, cfg, co.name), `text:${rule}:${b.id}`);
-  return reply(200, { status: row.status });
+  return reply(200, { status: await bookingText(msg.id, rule) });
+}
+// The outbox (part 118): the booking trigger's lines, nudged at once and retried by the
+// minute timer. A line is done only once its text is queued or known not due.
+async function onOutbox(req: Request) {
+  if (!(await fromTimer(req))) return reply(403, { error: "Not the timer." });
+  const { data: lines, error } = await db.rpc("text_outbox_take", { p_limit: 50 });
+  if (error) throw error;
+  let done = 0, failed = 0;
+  for (const l of (lines ?? []) as { id: number; booking_id: string; rule: "landed" | "sent" }[]) {
+    try {
+      const result = await bookingText(l.booking_id, l.rule);
+      const { error: e2 } = await db.rpc("text_outbox_done", { p_id: l.id, p_result: result });
+      if (e2) throw e2;
+      done++;
+    } catch (e) { console.error(e); failed++; }   // left open: the next minute tries again
+  }
+  return reply(200, { done, failed });
 }
 
 // Every 10 minutes: companies whose reminder time has come today text tomorrow's PICKS customers.
@@ -148,6 +171,7 @@ Deno.serve(async (req) => {
   try {
     let msg: Record<string, unknown>;
     try { msg = await req.json(); } catch { return reply(400, { error: "Bad request." }); }
+    if (msg.type === "outbox") return await onOutbox(req);
     if (msg.type === "booking") return await onBooking(req, msg);
     if (msg.type === "reminders") return await onReminders(req);
     if (msg.type === "manual") return await onManual(req, msg);

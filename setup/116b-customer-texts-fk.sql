@@ -1,4 +1,4 @@
--- Parking Ops — database part 115b: the car link on customer_texts (with part 115).
+-- Parking Ops — database part 116b: the car link on customer_texts (with part 116).
 -- Kept apart because the Supabase MCP hangs on SQL holding the word for removing
 -- rows: when a booking goes, its texts stay (for the record) without the link.
 do $$ begin

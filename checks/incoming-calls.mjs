@@ -1,4 +1,4 @@
-// Setup part 115 (incoming calls) on a throwaway in-memory Postgres (PGlite), on top of part 114.
+// Setup part 117 (incoming calls) on a throwaway in-memory Postgres (PGlite), on top of part 114.
 //   cd checks && npm install @electric-sql/pglite && node incoming-calls.mjs
 import { PGlite } from "@electric-sql/pglite";
 import fs from "fs";
@@ -33,7 +33,7 @@ insert into staff(company_id, name, role, acting) select id, 'OFFICE', 'office',
 insert into staff(company_id, name, role) select id, 'ALI', 'bongo' from companies where slug = 'takeoff';
 insert into staff(company_id, name, role) select id, 'ADMIN', 'platform' from companies where slug = 'platform';
 `);
-for (const f of ["115-customer-texts.sql", "115b-customer-texts-fk.sql", "116-incoming-calls.sql", "116-incoming-calls.sql"]) await db.exec(fs.readFileSync(new URL("../setup/" + f, import.meta.url), "utf8"));
+for (const f of ["116-customer-texts.sql", "116b-customer-texts-fk.sql", "117-incoming-calls.sql", "117-incoming-calls.sql"]) await db.exec(fs.readFileSync(new URL("../setup/" + f, import.meta.url), "utf8"));
 const q = async (s, p) => (await db.query(s, p)).rows;
 const as = (name) => db.exec(`delete from cur; insert into cur select id from staff where name = '${name}'`);
 const err = async (s, p) => { try { await db.query(s, p); return ""; } catch (e) { return e.message; } };
@@ -113,6 +113,14 @@ const t = (await q(`select (call_take($1)).handled_name n`, [r3.call]))[0].n;
 ok("call_take: the shared login's picked name", t === "KAMU");
 ok("call_take: activity Called back", /^Called back 07000000001$/.test((await q(`select value from activity where action = 'CALL' order by id desc limit 1`))[0].value));
 ok("Only the server can call call_in", !(await q(`select has_function_privilege('authenticated', 'call_in(text,text,text)', 'execute') p`))[0].p);
+
+// The live order: 116, 116b, 117, then 118 and 118b on top, each safe to run twice.
+for (const f of ["118-android-sim-bridge.sql", "118b-customer-sms-fk.sql", "118-android-sim-bridge.sql", "118b-customer-sms-fk.sql"]) await db.exec(fs.readFileSync(new URL("../setup/" + f, import.meta.url), "utf8"));
+ok("Part 118 on top: the phone tables and the outbox are there", (await q(`select to_regclass('public.company_phones') a, to_regclass('public.customer_sms') b, to_regclass('private.text_outbox') c`)).every((r) => r.a && r.b && r.c));
+ok("Part 118 on top: one bookings_text trigger", (await q(`select count(*)::int n from pg_trigger where tgname = 'bookings_text'`))[0].n === 1);
+ok("Part 118b: replies keep when a booking goes", (await q(`select confdeltype from pg_constraint where conname = 'customer_sms_booking_id_fkey'`))[0].confdeltype === "n");
+await as("RAKESH");
+ok("Part 118: Settings → Calls keeps only on/off", JSON.stringify((await q(`select set_calls($1) c`, [{ on: true, auto: "on", ring: ["07700 900123"] }]))[0].c) === '{"on":true}');
 
 console.log(fails ? fails + " failed" : "all passed");
 process.exit(fails ? 1 : 0);

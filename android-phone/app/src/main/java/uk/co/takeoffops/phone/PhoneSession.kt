@@ -18,7 +18,7 @@ object PhoneSession {
         val previous=PhoneSession.access(context)
         fun subject(token: String) = runCatching { org.json.JSONObject(String(android.util.Base64.decode(token.split('.')[1],android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))).getString("sub") }.getOrNull()
         if(previous!=null && subject(previous)!=subject(access)) {
-            prefs(context).edit().remove("company").putBoolean("online",false).commit()
+            prefs(context).edit().remove("company").remove("pending").putBoolean("online",false).commit()
             context.stopService(android.content.Intent(context,PhoneBridgeService::class.java))
         }
         prefs(context).edit().putString("access", access).putString("refresh", refresh).commit()
@@ -29,11 +29,17 @@ object PhoneSession {
         prefs(context).edit().putString("device", it).commit()
     }
     fun company(context: Context) = prefs(context).getString("company", null)
+    fun pending(context: Context) = prefs(context).getBoolean("pending", false)
+    /** Active SIMs, or -1 when Android won't say (no phone-state permission). */
+    fun activeSims(context: Context): Int {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_PHONE_STATE) != android.content.pm.PackageManager.PERMISSION_GRANTED) return -1
+        return try { context.getSystemService(android.telephony.SubscriptionManager::class.java).activeSubscriptionInfoCount } catch (_: SecurityException) { -1 }
+    }
     fun online(context: Context) = prefs(context).getBoolean("online", false)
     fun setOnline(context: Context, on: Boolean) { prefs(context).edit().putBoolean("online", on).commit() }
     fun clear(context: Context) {
         // Keep the durable SMS journal until outstanding modem callbacks have resolved.
-        prefs(context).edit().remove("access").remove("refresh").remove("company").putBoolean("online", false).commit()
+        prefs(context).edit().remove("access").remove("refresh").remove("company").remove("pending").putBoolean("online", false).commit()
         context.stopService(android.content.Intent(context, PhoneBridgeService::class.java))
     }
 }

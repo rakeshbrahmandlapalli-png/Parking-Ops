@@ -1,7 +1,7 @@
--- Legacy call-schema prerequisite for the Android SIM bridge in part 117.
--- Apply part 117 afterwards; it replaces the settings RPC and adds the phone RPCs.
+-- Legacy call-schema prerequisite for the Android SIM bridge in part 118.
+-- Apply part 118 afterwards; it replaces the settings RPC and adds the phone RPCs.
 -- The original Twilio endpoint is not included in this branch.
--- Parking Ops — database part 116: incoming calls (24 Oct, NOT applied until the user says so).
+-- Parking Ops — database part 117: incoming calls (24 Oct, NOT applied until the user says so).
 --
 -- Customers ring the office when they land (DROPS) and when they're on their way
 -- to drop the car off (PICKS). The user chose "Both": a caller pop-up with a call
@@ -18,8 +18,8 @@
 -- An add-on (brand.calls, Clients → Edit); owners set it in Settings → Calls
 -- (set_calls): the Twilio number, up to 3 numbers to ring, auto-answer Off / On /
 -- between two times, and its words.
--- Needs part 115 first (admin_save_client below is part 115's plus brand.calls).
--- Safe to run twice. Rollback: setup/rollback/116-*.
+-- Needs part 116 first (admin_save_client below is part 116's plus brand.calls).
+-- Safe to run twice. Rollback: setup/rollback/117-*.
 begin;
 
 alter table companies add column if not exists calls jsonb not null default '{}';
@@ -209,7 +209,7 @@ do $$ begin
   end if;
 end $$;
 
--- Platform page: the add-on switch. Part 115's admin_save_client with brand.calls.
+-- Platform page: the add-on switch. Part 116's admin_save_client with brand.calls.
 create or replace function admin_save_client(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -227,9 +227,9 @@ declare
   -- Part 109: the Collections add-on, kept as true or false so part 109's
   -- one-time switch-on never comes back after it has been switched off.
   set_co boolean := coalesce(p->'brand', '{}') ? 'collections';
-  -- Part 115: the Customer texts add-on, the same way.
+  -- Part 116: the Customer texts add-on, the same way.
   set_tx boolean := coalesce(p->'brand', '{}') ? 'texts';
-  -- Part 116: the Calls add-on, the same way.
+  -- Part 117: the Calls add-on, the same way.
   set_cl boolean := coalesce(p->'brand', '{}') ? 'calls';
   made boolean := coalesce(p->>'id', '') = '';
 begin

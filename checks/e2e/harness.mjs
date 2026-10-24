@@ -238,7 +238,7 @@ function rpc(db, fn, a) {
     case "my_permissions": {
       const extra = db.me.extra || [];
       const collections = db.company.slug !== "platform" && db.company.brand?.collections !== false && !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
-      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
+      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
     }
     case "set_staff_access": {
       if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
@@ -253,6 +253,9 @@ function rpc(db, fn, a) {
       const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared", desk: "desk" }[a.p_action];
       // part 112: AT DESK, only on a CALLED car (calls it if not), never OVERSTAY; CALLED off or OVERSTAY takes it off.
       if (a.p_action === "desk") {
+        // part 115: AT DESK is its own permission; a car not called yet is called too.
+        const pm = db.perms || {};
+        if (pm.desk === false) throw new Error("Not allowed for your role (terminal): desk");
         if (a.p_on && b.called_word === "Overstay") throw new Error("Take OVERSTAY off first.");
         if (a.p_on && !b.called_at) { b.called_at = now(); b.called_by = "s1"; b.called_word = "Called"; byName(b, "called_by"); }
         if (!a.p_on || !b.desk_at) { b.desk_at = a.p_on ? now() : null; b.desk_by = a.p_on ? "s1" : null; byName(b, "desk_by"); }
@@ -319,6 +322,7 @@ function rpc(db, fn, a) {
       db.bsite = clear ? { url: "", login: "", has_pass: false, saved_by: "", saved_at: null } : { url: a.p_url, login: a.p_login, has_pass: a.p_password == null ? !!prev.has_pass : a.p_password !== "", saved_by: "RAKESH", saved_at: now() }; return db.bsite; }
     case "set_flight_settings": db.company.flight_settings = a.p; return a.p;
     case "phone_bridge_status": return db.phoneHealth || { paired: true, online: true, sms_ready: true, calls_ready: true, battery: 86, queued: 0, needs_review: 0, expired: 0, last_seen: now() };
+    case "phone_pairing": { const h = db.phoneHealth || (db.phoneHealth = {}); if (a.p_action === "approve" && h.pending) Object.assign(h, { paired: true, online: false, paired_as: h.pending.name, paired_as_owner: false, pending: null }); else if (a.p_action === "refuse") h.pending = null; else if (a.p_action === "unpair") Object.assign(h, { paired: false, online: false, paired_as: null }); return h; }
     case "phone_text_review": { const t=(db.texts || []).find(x => +x.id===+a.p_id); if(t) t.reviewed_at=now(); return !!t; }
     case "set_calls": { if (db.me.role !== "owner") throw new Error("Only an owner can change calls."); db.company.calls = a.p; return a.p; }
     case "call_take": { const k = (db.callsLog || []).find((x) => x.id === a.p_call); k.handled_by = db.me.id; k.handled_name = db.me.name || "RAKESH"; return k; }

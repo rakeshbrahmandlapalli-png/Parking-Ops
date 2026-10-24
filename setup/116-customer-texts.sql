@@ -1,4 +1,4 @@
--- Parking Ops — database part 115: customer texts (24 Oct, NOT applied until the user says so).
+-- Parking Ops — database part 116: customer texts (24 Oct, NOT applied until the user says so).
 --
 -- The user asked for a "call system" and chose automatic texts to customers:
 --   landed    DROPS: the customer's flight has landed (flight_status becomes 'landed')
@@ -15,8 +15,8 @@
 -- The Android app sends queued texts from the company SIM; the carrier plan may
 -- charge. Safe to run twice.
 -- The Supabase MCP hangs on SQL containing the word for removing rows: the
--- foreign key below is in 115b, applied separately.
--- Rollback: setup/rollback/115-*.
+-- foreign key below is in 116b, applied separately.
+-- Rollback: setup/rollback/116-*.
 begin;
 
 alter table companies add column if not exists texts jsonb not null default '{}';
@@ -29,7 +29,7 @@ create table if not exists customer_texts (
   rule        text not null check (rule in ('landed', 'sent', 'reminder', 'manual', 'test')),
   to_number   text not null default '',
   body        text not null default '',
-  status      text not null default 'queued' check (status in ('queued', 'sent', 'delivered', 'failed', 'skipped', 'demo')),
+  status      text not null default 'queued' check (status in ('queued', 'sending', 'sent', 'delivered', 'failed', 'skipped', 'demo', 'uncertain', 'expired')),
   error       text not null default '',
   provider_id text,
   parts       int not null default 1,
@@ -150,7 +150,7 @@ declare
   -- Part 109: the Collections add-on, kept as true or false so part 109's
   -- one-time switch-on never comes back after it has been switched off.
   set_co boolean := coalesce(p->'brand', '{}') ? 'collections';
-  -- Part 115: the Customer texts add-on, the same way.
+  -- Part 116: the Customer texts add-on, the same way.
   set_tx boolean := coalesce(p->'brand', '{}') ? 'texts';
   made boolean := coalesce(p->>'id', '') = '';
 begin

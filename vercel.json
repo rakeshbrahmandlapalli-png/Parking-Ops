@@ -32,6 +32,14 @@
   ],
   "headers": [
     {
+      "source": "/phone/(.*).apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"takeoff-phone.apk\"" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    {
       "source": "/sw.js",
       "headers": [
         {

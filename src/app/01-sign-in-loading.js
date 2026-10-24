@@ -279,7 +279,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "parking_positions", filter: "company_id=eq." + S.company.id }, laneChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_sessions", filter: "company_id=eq." + S.company.id }, keyChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged);
-    // A customer calling (part 115): every office phone pops it up. Only with the add-on, so the table is there.
+    // A customer calling (part 117): every office phone pops it up. Only with the add-on, so the table is there.
     if (callsAddon()) ch.on("postgres_changes", { event: "*", schema: "public", table: "customer_calls", filter: "company_id=eq." + S.company.id }, function (p) { window.dispatchEvent(new CustomEvent("takeoff:call", { detail: p.new })); });
     if (textsAddon()) ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "customer_sms", filter: "company_id=eq." + S.company.id }, function (p) { if (panelRow && p.new && p.new.booking_id === panelRow.id) carTexts(panelRow); });
     ch.subscribe(function (status) {

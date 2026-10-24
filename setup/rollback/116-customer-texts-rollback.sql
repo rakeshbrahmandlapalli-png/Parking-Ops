@@ -1,15 +1,15 @@
--- Rollback for part 116 (incoming calls): run in the SQL editor. Restore the app
--- without Calls and remove the Twilio number's webhook first. admin_save_client goes
--- back to part 115's; customer_calls and companies.calls are kept (the record).
+-- Rollback for part 116 (customer texts): run in the SQL editor (it removes things,
+-- which the Supabase MCP won't run). Restore the app without Customer texts and
+-- undeploy send-texts first. admin_save_client goes back to part 109's.
+-- customer_texts and companies.texts are kept (the record of what was sent).
 begin;
-drop function if exists call_in(text, text, text);
-drop function if exists call_digit(text, text);
-drop function if exists call_end(text, text, int);
-drop function if exists call_take(bigint);
-drop function if exists set_calls(jsonb);
+drop trigger if exists bookings_text on bookings;
+drop function if exists bookings_text();
+select cron.unschedule('customer-text-reminders') where exists (select 1 from cron.job where jobname = 'customer-text-reminders');
+drop function if exists set_texts(jsonb);
 
-create or replace function admin_save_client(p jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
+create or replace function admin_save_client(p jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
 declare
   c companies;
   y text;
@@ -25,8 +25,6 @@ declare
   -- Part 109: the Collections add-on, kept as true or false so part 109's
   -- one-time switch-on never comes back after it has been switched off.
   set_co boolean := coalesce(p->'brand', '{}') ? 'collections';
-  -- Part 115: the Customer texts add-on, the same way.
-  set_tx boolean := coalesce(p->'brand', '{}') ? 'texts';
   made boolean := coalesce(p->>'id', '') = '';
 begin
   if not is_platform_admin() then raise exception 'Not allowed.'; end if;
@@ -45,8 +43,7 @@ begin
     'host', nullif(lower(b->>'host'), ''), 'logo', nullif(b->>'logo', ''), 'theme', nullif(b->>'theme', ''),
     'picks_yard', case when coalesce(b->>'picks_yard', '') = 'true' then true end,
     'lane_planner', case when coalesce(b->>'lane_planner', '') = 'true' then true end,
-    'collections', case when set_co then coalesce(b->>'collections', '') = 'true' end,
-    'texts', case when set_tx then coalesce(b->>'texts', '') = 'true' end));
+    'collections', case when set_co then coalesce(b->>'collections', '') = 'true' end));
 
   if made then
     if coalesce(p->>'slug', '') !~ '^[a-z0-9][a-z0-9-]{1,39}$' then raise exception 'The short code is lower-case letters, numbers and dashes, like airport-parking-bay.'; end if;
@@ -59,7 +56,7 @@ begin
     -- Standard drops the theme key: merging alone could never take it away.
     update companies set name = trim(p->>'name'), yards = ys,
       drops_day_end = coalesce(nullif(p->>'drops_day_end', '')::time, drops_day_end),
-      brand = (case when set_look then brand - 'theme' else brand end) - (case when set_py then 'picks_yard' else '' end) - (case when set_lp then 'lane_planner' else '' end) - (case when set_co then 'collections' else '' end) - (case when set_tx then 'texts' else '' end) || b
+      brand = (case when set_look then brand - 'theme' else brand end) - (case when set_py then 'picks_yard' else '' end) - (case when set_lp then 'lane_planner' else '' end) - (case when set_co then 'collections' else '' end) || b
     where id = (p->>'id')::uuid and slug <> 'platform' returning * into c;
     if not found then raise exception 'Client not found.'; end if;
   end if;
@@ -69,8 +66,7 @@ begin
       ', yards ' || array_to_string(c.yards, ' ') ||
       ', PICKS location ' || case when (c.brand->>'picks_yard')::boolean then 'on' else 'off' end ||
       ', Yard planner ' || case when (c.brand->>'lane_planner')::boolean then 'on' else 'off' end ||
-      ', Collections ' || case when (c.brand->>'collections')::boolean then 'on' else 'off' end ||
-      ', Customer texts ' || case when (c.brand->>'texts')::boolean then 'on' else 'off' end end
+      ', Collections ' || case when (c.brand->>'collections')::boolean then 'on' else 'off' end end
   from me() s;
   return to_jsonb(c);
 end;

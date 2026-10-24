@@ -58,7 +58,7 @@ These commands run from the repository root after installing `@electric-sql/pgli
 
 ## Deployment order and acceptance
 
-The prepared schema order is setup 115, 115b, 116, then 117. Deploy the matching `send-texts` function and web bundle before a handset pilot. None of those database or deployment actions have been performed in this branch.
+The prepared schema order is setup 116, 116b, 117, then 118. Deploy the matching `send-texts` function and web bundle before a handset pilot. None of those database or deployment actions have been performed in this branch.
 
 Before a live release, validate on the actual company phone and SIM: locked screen, battery restrictions, airplane-mode recovery, reboot, multi-part SMS success/failure, carrier delivery reports, offline replies, zero-duration answered/missed/rejected calls, app sign-out, phone replacement and company isolation. Measure actual queue-to-send time. Source checks and a debug APK build do not establish carrier/device reliability.
 
@@ -68,6 +68,6 @@ The debug APK assembled successfully with the checked-in Gradle wrapper configur
 
 Android lint completed with zero errors and 21 warnings: deliberately synchronous durable preference writes, English UI strings, JavaScript required by the trusted web app and the existing square launcher artwork. These were not hidden with a lint baseline. Real handset/carrier testing and an end-to-end pilot remain outstanding; no production schema or deployment was changed.
 
-The phone parts were renumbered on 24 October to avoid the already merged/applied `114-move-pick-same-time.sql` desk-booking fix on main `f6633eb`. Parts 115/115b/116/117 are the prepared phone feature; do not reapply the old part numbers from Claude’s abandoned feature branch.
+The phone parts were renumbered on 24 October to avoid the already merged/applied `114-move-pick-same-time.sql` desk-booking fix on main `f6633eb`. Parts 116/116b/117/118 are the prepared phone feature; do not reapply the old part numbers from Claude’s abandoned feature branch.
 
 Handoff verification after combining the newer main desk-booking fix: the focused real-web-app browser suites passed 99 text checks and 77 call checks with a mocked backend. Preview screenshots use fabricated booking data; the separate native wrapper picture is a labelled layout mockup. The deployed handset/carrier flow remains untested.

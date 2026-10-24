@@ -1,6 +1,7 @@
--- Parking Ops — part 117: use the company's Android phone and SIM for calls/texts.
--- Apply after 115, 115b and 116. This part is prepared for review; do not apply
--- until the companion APK and its Supabase function changes are ready.
+-- Parking Ops — part 118: use the company's Android phone and SIM for calls/texts.
+-- Apply after 116, 116b and 117, with send-texts deployed. Reviewed 24 Oct: an office
+-- login pairs the handset and an owner approves it in Settings; automatic texts go
+-- through a retried outbox; a caller or reply matching two bookings is never linked.
 begin;
 
 -- Android pulls queued texts from the company phone. A text marked sending is
@@ -28,13 +29,19 @@ begin
   return new;
 end $$;
 revoke all on function private.phone_text_queued_activity() from public,anon,authenticated;
-drop trigger if exists phone_text_queued_activity on customer_texts;
-create trigger phone_text_queued_activity after insert on customer_texts for each row execute function private.phone_text_queued_activity();
+create or replace trigger phone_text_queued_activity after insert on customer_texts for each row execute function private.phone_text_queued_activity();
 
 create table if not exists company_phones (
   company_id uuid primary key references companies(id),
-  device_id uuid not null,
-  staff_id uuid not null references staff(id),
+  -- The approved handset and the login it signs in with (an office login, not an owner's).
+  device_id uuid,
+  staff_id uuid references staff(id),
+  -- A handset that asked to be paired, waiting for an owner (Settings → Customer texts).
+  pending_device uuid,
+  pending_staff uuid references staff(id),
+  pending_at timestamptz,
+  paired_by text,
+  paired_at timestamptz,
   seen_at timestamptz,
   ready boolean not null default false,
   battery int,
@@ -48,24 +55,64 @@ do $$ begin
   end if;
 end $$;
 grant select on company_phones,customer_texts to authenticated;
-revoke insert,update,delete on company_phones from anon,authenticated;
+revoke all on company_phones from anon,authenticated;
+grant select on company_phones to authenticated;
 
--- Pair only one handset per company. Replacing it is an explicit owner action.
+-- Pair only one handset per company. The handset signs in with the login it will
+-- use (normally the office login) and asks; an owner approves it in Settings, which
+-- is also how a handset is replaced. An owner signed in on the handset pairs it at once.
 create or replace function phone_connect(p_device uuid,p_replace boolean default false)
-returns uuid language plpgsql security definer set search_path=public as $$
-declare s staff:=me(); current_phone company_phones;
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare s staff:=me(); cur company_phones;
 begin
   if s.id is null or not can('called') then raise exception 'Only the office can connect the company phone.'; end if;
   if p_device is null then raise exception 'Invalid device.'; end if;
+  if not private.texts_on(s.company_id) and not private.calls_on(s.company_id) then raise exception 'The company phone isn''t switched on for this company.'; end if;
   perform 1 from companies where id=s.company_id for update;
-  select * into current_phone from company_phones where company_id=s.company_id;
-  if current_phone.device_id=p_device and current_phone.staff_id=s.id then return s.company_id; end if;
-  if s.role<>'owner' then raise exception 'An owner must pair the company phone.'; end if;
-  if current_phone.device_id is not null and not coalesce(p_replace,false) then raise exception 'Another company phone is paired. An owner must explicitly replace it.'; end if;
-  insert into company_phones(company_id,device_id,staff_id) values(s.company_id,p_device,s.id)
-    on conflict(company_id) do update set device_id=p_device,staff_id=s.id,ready=false,seen_at=null,sms_ready=false,calls_ready=false,battery=null;
-  insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,s.name,'SETTINGS','Company Android phone paired');
-  return s.company_id;
+  select * into cur from company_phones where company_id=s.company_id;
+  if cur.device_id=p_device and cur.staff_id=s.id then return jsonb_build_object('status','paired','company',s.company_id); end if;
+  if s.role='owner' and (cur.device_id is null or coalesce(p_replace,false)) then
+    insert into company_phones(company_id,device_id,staff_id,paired_by,paired_at) values(s.company_id,p_device,s.id,s.name,now())
+      on conflict(company_id) do update set device_id=p_device,staff_id=s.id,paired_by=s.name,paired_at=now(),ready=false,seen_at=null,sms_ready=false,calls_ready=false,battery=null,
+        pending_device=null,pending_staff=null,pending_at=null;
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'SETTINGS',
+      case when cur.device_id is null then 'Company phone paired' else 'Company phone replaced' end||' (signed in as '||s.name||')');
+    return jsonb_build_object('status','paired','company',s.company_id);
+  end if;
+  if s.role='owner' then raise exception 'Another company phone is paired. An owner must explicitly replace it.'; end if;
+  insert into company_phones(company_id,pending_device,pending_staff,pending_at) values(s.company_id,p_device,s.id,now())
+    on conflict(company_id) do update set pending_device=p_device,pending_staff=s.id,pending_at=now();
+  if cur.pending_device is distinct from p_device or cur.pending_staff is distinct from s.id then
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'SETTINGS','Company phone asked to be paired (signed in as '||s.name||')');
+  end if;
+  return jsonb_build_object('status','pending','company',s.company_id);
+end $$;
+
+-- Owners: approve the waiting handset (it replaces any paired one), refuse it, or unpair.
+create or replace function phone_pairing(p_action text,p_device uuid default null)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare s staff:=me(); cur company_phones; who text;
+begin
+  if s.id is null or s.role<>'owner' then raise exception 'Only an owner can pair the company phone.'; end if;
+  perform 1 from companies where id=s.company_id for update;
+  select * into cur from company_phones where company_id=s.company_id;
+  if p_action='approve' then
+    if cur.pending_device is null or cur.pending_device is distinct from p_device then raise exception 'That phone is no longer waiting. Refresh and try again.'; end if;
+    select name into who from staff where id=cur.pending_staff and active;
+    if who is null then raise exception 'The login on that phone is switched off.'; end if;
+    update company_phones set device_id=pending_device,staff_id=pending_staff,paired_by=s.name,paired_at=now(),ready=false,seen_at=null,sms_ready=false,calls_ready=false,battery=null,
+      pending_device=null,pending_staff=null,pending_at=null where company_id=s.company_id;
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'SETTINGS',
+      case when cur.device_id is null then 'Company phone approved' else 'Company phone replaced' end||' (signed in as '||who||')');
+  elsif p_action='refuse' then
+    update company_phones set pending_device=null,pending_staff=null,pending_at=null where company_id=s.company_id;
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'SETTINGS','Company phone pairing refused');
+  elsif p_action='unpair' then
+    if cur.device_id is null then return phone_bridge_status(); end if;
+    update company_phones set device_id=null,staff_id=null,ready=false,sms_ready=false,calls_ready=false where company_id=s.company_id;
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'SETTINGS','Company phone unpaired: it stops sending texts');
+  else raise exception 'Unknown action.'; end if;
+  return phone_bridge_status();
 end $$;
 
 create or replace function phone_heartbeat(p_device uuid,p_ready boolean,p_sms boolean,p_calls boolean,p_battery int default null)
@@ -89,20 +136,20 @@ begin
     'needs_review',count(*) filter(where reviewed_at is null and (status in ('failed','uncertain') or (status='sending' and claimed_at<now()-interval '2 minutes'))),
     'expired',count(*) filter(where status='expired' or (status='queued' and expires_at<=now()))) into counts
     from customer_texts where company_id=s.company_id and at>now()-interval '24 hours';
-  return counts||jsonb_build_object('paired',h.device_id is not null,'online',coalesce(h.ready and h.seen_at>now()-interval '90 seconds',false),
-    'sms_ready',coalesce(h.sms_ready,false),'calls_ready',coalesce(h.calls_ready,false),'last_seen',h.seen_at,'battery',h.battery);
+  return counts||jsonb_build_object('paired',h.device_id is not null,'online',coalesce(h.device_id is not null and h.ready and h.seen_at>now()-interval '90 seconds',false),
+    'sms_ready',coalesce(h.sms_ready,false),'calls_ready',coalesce(h.calls_ready,false),'last_seen',h.seen_at,'battery',h.battery,
+    'paired_as',(select name from staff where id=h.staff_id),'paired_as_owner',(select role='owner' from staff where id=h.staff_id),'paired_by',h.paired_by,'paired_at',h.paired_at,
+    'pending',case when h.pending_device is not null and s.role='owner' then jsonb_build_object('device',h.pending_device,'name',(select name from staff where id=h.pending_staff),'at',h.pending_at) end);
 end $$;
-revoke all on function phone_connect(uuid,boolean),phone_heartbeat(uuid,boolean,boolean,boolean,int),phone_bridge_status() from public,anon;
-grant execute on function phone_connect(uuid,boolean),phone_heartbeat(uuid,boolean,boolean,boolean,int),phone_bridge_status() to authenticated;
+revoke all on function phone_connect(uuid,boolean),phone_pairing(text,uuid),phone_heartbeat(uuid,boolean,boolean,boolean,int),phone_bridge_status() from public,anon;
+grant execute on function phone_connect(uuid,boolean),phone_pairing(text,uuid),phone_heartbeat(uuid,boolean,boolean,boolean,int),phone_bridge_status() to authenticated;
 
-alter table customer_texts drop constraint if exists customer_texts_status_check;
-alter table customer_texts add constraint customer_texts_status_check
-  check (status in ('queued', 'sending', 'sent', 'delivered', 'failed', 'skipped', 'demo', 'uncertain', 'expired'));
+-- customer_texts' status list (part 116) already has sending, uncertain and expired.
 
 create table if not exists customer_sms (
   id bigint generated always as identity primary key,
   company_id uuid not null references companies(id),
-  booking_id uuid references bookings(id) on delete set null,
+  booking_id uuid,   -- the car link (keeps replies if a booking goes) is in part 118b
   external_id text not null,
   at timestamptz not null default now(),
   from_number text not null default '',
@@ -121,8 +168,8 @@ do $$ begin
     alter publication supabase_realtime add table customer_sms;
   end if;
 end $$;
+revoke all on customer_sms from anon, authenticated;
 grant select on customer_sms to authenticated;
-revoke insert, update, delete on customer_sms from anon, authenticated;
 
 create or replace function phone_text_review(p_id bigint)
 returns boolean language plpgsql security definer set search_path=public as $$
@@ -184,22 +231,43 @@ end $$;
 revoke all on function phone_texts_claim(uuid),phone_texts_finish(uuid,bigint,uuid,text,text) from public,anon;
 grant execute on function phone_texts_claim(uuid),phone_texts_finish(uuid,bigint,uuid,text,text) to authenticated;
 
+-- The one current booking for a caller or a reply: tonight's DROPS car not cleared,
+-- else today's PICKS car not taken in. Two cars on one number is never guessed.
+create or replace function private.phone_booking(p_company uuid,p_from text,p_at timestamptz)
+returns jsonb language plpgsql stable security definer set search_path=public as $$
+declare n text:=private.phone10(p_from); co companies; d uuid[]; k uuid[];
+begin
+  if length(n)<>10 then return jsonb_build_object('match','none'); end if;
+  select * into co from companies where id=p_company;
+  select array_agg(bk.id) into d from bookings bk join sheets sh on sh.id=bk.sheet_id
+    where bk.company_id=p_company and bk.removed_at is null and bk.kind='drops' and bk.cleared_at is null
+      and private.phone10(bk.phone)=n and sh.day=drops_day_of(coalesce(p_at,now()),co);
+  if cardinality(d)=1 then return jsonb_build_object('match','one','id',d[1]); end if;
+  if cardinality(d)>1 then return jsonb_build_object('match','several','count',cardinality(d)); end if;
+  select array_agg(bk.id) into k from bookings bk join sheets sh on sh.id=bk.sheet_id
+    where bk.company_id=p_company and bk.removed_at is null and bk.kind='picks' and coalesce(bk.intake,'')=''
+      and private.phone10(bk.phone)=n and sh.day=(coalesce(p_at,now()) at time zone coalesce(co.time_zone,'Europe/London'))::date;
+  if cardinality(k)=1 then return jsonb_build_object('match','one','id',k[1]); end if;
+  if cardinality(k)>1 then return jsonb_build_object('match','several','count',cardinality(k)); end if;
+  return jsonb_build_object('match','none');
+end $$;
+revoke all on function private.phone_booking(uuid,text,timestamptz) from public,anon,authenticated;
+
 -- Store replies observed on the company handset, associated with the
 -- current booking where a matching mobile number is found.
 create or replace function phone_sms_inbound(p_external text,p_from text,p_body text,p_at timestamptz default now())
 returns customer_sms language plpgsql security definer set search_path=public as $$
-declare s staff := me(); b bookings; m customer_sms; n text := private.phone10(p_from);
+declare s staff := me(); b bookings; m customer_sms; hit jsonb;
 begin
   if s.id is null or not can('called') then raise exception 'Only the office can save customer replies.'; end if;
   if not private.texts_on(s.company_id) then raise exception 'Customer texts are not enabled for this company.'; end if;
   if coalesce(p_external,'')='' or length(p_external)>120 or length(coalesce(p_body,''))>5000 then raise exception 'Invalid message.'; end if;
-  if length(n)=10 then
-    select bk.* into b from bookings bk join sheets sh on sh.id=bk.sheet_id
-    where bk.company_id=s.company_id and bk.removed_at is null
-      and private.phone10(bk.phone)=n
-      and ((bk.kind='drops' and bk.cleared_at is null and sh.day=drops_day_of(coalesce(p_at,now()),(select c from companies c where c.id=s.company_id)))
-        or (bk.kind='picks' and coalesce(bk.intake,'')='' and sh.day=(coalesce(p_at,now()) at time zone (select time_zone from companies where id=s.company_id))::date))
-    order by (bk.kind='drops') desc limit 1;
+  hit:=private.phone_booking(s.company_id,p_from,p_at);
+  if hit->>'match'='one' then select * into b from bookings where id=(hit->>'id')::uuid; end if;
+  -- One number on two cars tonight: which car it's about is the office's call, so the
+  -- words stay on the phone and the log says a reply came.
+  if hit->>'match'='several' and not exists(select 1 from activity where company_id=s.company_id and action='TEXT' and value='Reply from '||left(coalesce(p_from,''),40)||' matches '||(hit->>'count')||' bookings: read it on the company phone' and at>now()-interval '10 minutes') then
+    insert into activity(company_id,staff_id,staff_name,action,value) values(s.company_id,s.id,coalesce(nullif(s.acting,''),s.name),'TEXT','Reply from '||left(coalesce(p_from,''),40)||' matches '||(hit->>'count')||' bookings: read it on the company phone');
   end if;
   -- General/private SMS are not stored in the parking database.
   if b.id is null then return null; end if;
@@ -221,20 +289,16 @@ grant execute on function phone_sms_inbound(text,text,text,timestamptz) to authe
 -- from the Android call log after the call. It never answers or redirects calls.
 create or replace function phone_call_event(p_event text,p_from text,p_status text,p_at timestamptz default now(),p_seconds int default null)
 returns customer_calls language plpgsql security definer set search_path=public as $$
-declare s staff := me(); b bookings; k customer_calls; old_status text; event_key text := 'phone:'||left(coalesce(p_event,''),100); n text := private.phone10(p_from);
+declare s staff := me(); b bookings; k customer_calls; old_status text; event_key text := 'phone:'||left(coalesce(p_event,''),100); hit jsonb;
 begin
   if s.id is null or not can('called') then raise exception 'Only the office can log customer calls.'; end if;
   if not private.calls_on(s.company_id) or coalesce((select (calls->>'on')::boolean from companies where id=s.company_id),false) is not true then
     raise exception 'Calls are not enabled for this company.';
   end if;
   if coalesce(p_event,'')='' or p_status is null or p_status not in ('ringing','answered','missed') then raise exception 'Invalid call event.'; end if;
-  if length(n)=10 then
-    select bk.* into b from bookings bk join sheets sh on sh.id=bk.sheet_id
-    where bk.company_id=s.company_id and bk.removed_at is null and private.phone10(bk.phone)=n
-      and ((bk.kind='drops' and bk.cleared_at is null and sh.day=drops_day_of(coalesce(p_at,now()),(select c from companies c where c.id=s.company_id)))
-        or (bk.kind='picks' and coalesce(bk.intake,'')='' and sh.day=(coalesce(p_at,now()) at time zone (select time_zone from companies where id=s.company_id))::date))
-    order by (bk.kind='drops') desc limit 1;
-  end if;
+  -- Two cars on the caller's number: the call shows no car rather than a guess.
+  hit:=private.phone_booking(s.company_id,p_from,p_at);
+  if hit->>'match'='one' then select * into b from bookings where id=(hit->>'id')::uuid; end if;
   perform pg_advisory_xact_lock(hashtextextended(s.company_id::text||':'||event_key,0));
   select status into old_status from customer_calls where sid=event_key and company_id=s.company_id;
   insert into customer_calls(company_id,sid,at,from_number,booking_id,kind,reg,name,status,seconds)
@@ -278,4 +342,78 @@ do $$ declare tab text; begin
     end if;
   end loop;
 end $$;
+-- Automatic texts survive a lost call to send-texts: the booking change writes an
+-- outbox line in its own transaction, send-texts is nudged at once, and the
+-- minute timer retries what is still open. customer_texts.dedupe_key
+-- ('text:<rule>:<booking>') keeps a retry from ever queueing a second text.
+create table if not exists private.text_outbox (
+  id bigint generated always as identity primary key,
+  company_id uuid not null,
+  booking_id uuid not null,
+  rule text not null check (rule in ('landed','sent')),
+  at timestamptz not null default now(),
+  tries int not null default 0,
+  tried_at timestamptz,
+  done_at timestamptz,
+  result text not null default '',
+  unique (booking_id, rule)
+);
+create index if not exists text_outbox_open_idx on private.text_outbox(at) where done_at is null;
+
+create or replace function bookings_text()
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
+declare url text; r text;
+begin
+  if new.kind <> 'drops' or new.cleared_at is not null or new.removed_at is not null then return null; end if;
+  r := case when new.flight_status = 'landed' and old.flight_status is distinct from 'landed' then 'landed'
+            when new.sent_at is not null and old.sent_at is null then 'sent' end;
+  if r is null or coalesce(new.phone, '') = '' then return null; end if;
+  if not coalesce((select (c.texts->>'on')::boolean and (c.texts->r->>'on')::boolean is not false and private.texts_on(c.id)
+                   from companies c where c.id = new.company_id), false) then return null; end if;
+  insert into private.text_outbox(company_id, booking_id, rule) values (new.company_id, new.id, r) on conflict (booking_id, rule) do nothing;
+  select function_url into url from private.text_config;
+  if url is not null then
+    perform net.http_post(url := url, body := jsonb_build_object('type', 'outbox'),
+      headers := jsonb_build_object('Content-Type', 'application/json', 'x-timer', (select value from private.settings where name = 'timer_secret')),
+      timeout_milliseconds := 10000);
+  end if;
+  return null;
+exception when others then
+  raise warning 'text skipped: %', sqlerrm;   -- a text must never block a tap
+  return null;
+end;
+$$;
+create or replace trigger bookings_text after update of flight_status, sent_at on bookings
+  for each row execute function bookings_text();
+
+-- For send-texts only (service role): take open lines (each at most once a minute,
+-- 10 tries, the last hour), then mark each one done with what happened.
+create or replace function text_outbox_take(p_limit int default 50)
+returns table(id bigint, booking_id uuid, rule text) language plpgsql security definer set search_path = public as $$
+begin
+  update private.text_outbox o set done_at = now(), result = 'gave up'
+    where o.done_at is null and (o.tries >= 10 or o.at < now() - interval '1 hour');
+  return query with picked as (
+    select o.id from private.text_outbox o where o.done_at is null and (o.tried_at is null or o.tried_at < now() - interval '50 seconds')
+    order by o.at limit greatest(1, least(coalesce(p_limit, 50), 200)) for update skip locked
+  ) update private.text_outbox o set tries = o.tries + 1, tried_at = now() from picked where o.id = picked.id
+    returning o.id, o.booking_id, o.rule;
+end $$;
+create or replace function text_outbox_done(p_id bigint, p_result text)
+returns void language sql security definer set search_path = public as $$
+  update private.text_outbox set done_at = now(), result = left(coalesce(p_result, ''), 80) where id = p_id;
+$$;
+revoke all on function text_outbox_take(int), text_outbox_done(bigint, text) from public, anon, authenticated;
+grant execute on function text_outbox_take(int), text_outbox_done(bigint, text) to service_role;
+
+select cron.unschedule('customer-text-outbox') where exists (select 1 from cron.job where jobname = 'customer-text-outbox');
+select cron.schedule('customer-text-outbox', '* * * * *', $job$
+  select net.http_post(
+    url := (select function_url from private.text_config),
+    headers := jsonb_build_object('Content-Type', 'application/json',
+      'x-timer', (select value from private.settings where name = 'timer_secret')),
+    body := '{"type":"outbox"}'::jsonb,
+    timeout_milliseconds := 30000)
+  where exists (select 1 from private.text_outbox where done_at is null)
+$job$);
 commit;

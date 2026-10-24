@@ -43,10 +43,14 @@ object SupabasePhoneApi {
             request("/rest/v1/rpc/$name", args, latest)
         }
     }
+    /** "paired", or "pending" while an owner hasn't approved this handset in Settings yet. */
     fun connect(context: Context, replace: Boolean = false): String {
-        val company = rpc(context, "phone_connect", JSONObject().put("p_device", PhoneSession.device(context)).put("p_replace", replace)).trim().trim('"')
-        PhoneSession.prefs(context).edit().putString("company", company).commit()
-        return company
+        val result = JSONObject(rpc(context, "phone_connect", JSONObject().put("p_device", PhoneSession.device(context)).put("p_replace", replace)))
+        val status = result.getString("status")
+        val edit = PhoneSession.prefs(context).edit().putBoolean("pending", status == "pending")
+        if (status == "paired") edit.putString("company", result.getString("company")) else edit.remove("company")
+        edit.commit()
+        return status
     }
     fun heartbeat(context: Context, ready: Boolean) {
         val battery = context.getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)

@@ -1,4 +1,4 @@
-// Setup part 115 (customer texts) on a throwaway in-memory Postgres (PGlite), and
+// Setup part 116 (customer texts) on a throwaway in-memory Postgres (PGlite), and
 // send-texts' words and numbers (supabase/functions/send-texts/texts.mjs).
 //   cd checks && npm install @electric-sql/pglite && node customer-texts.mjs
 const { PGlite } = await import(process.env.PGLITE_MODULE || "@electric-sql/pglite");
@@ -49,10 +49,10 @@ insert into staff(company_id, name, role) select id, 'RAKESH', 'owner' from comp
 insert into staff(company_id, name, role) select id, 'KAMU', 'office' from companies where slug = 'takeoff';
 insert into staff(company_id, name, role) select id, 'ADMIN', 'platform' from companies where slug = 'platform';
 `);
-const sql = fs.readFileSync(new URL("../setup/115-customer-texts.sql", import.meta.url), "utf8");
+const sql = fs.readFileSync(new URL("../setup/116-customer-texts.sql", import.meta.url), "utf8");
 await db.exec(sql); await db.exec(sql); // safe to run twice
-await db.exec(fs.readFileSync(new URL("../setup/115b-customer-texts-fk.sql", import.meta.url), "utf8"));
-await db.exec(fs.readFileSync(new URL("../setup/115b-customer-texts-fk.sql", import.meta.url), "utf8"));
+await db.exec(fs.readFileSync(new URL("../setup/116b-customer-texts-fk.sql", import.meta.url), "utf8"));
+await db.exec(fs.readFileSync(new URL("../setup/116b-customer-texts-fk.sql", import.meta.url), "utf8"));
 const q = async (s, p) => (await db.query(s, p)).rows;
 const as = (name) => db.exec(`delete from cur; insert into cur select id from staff where name = '${name}'`);
 const err = async (s, p) => { try { await db.query(s, p); return ""; } catch (e) { return e.message; } };

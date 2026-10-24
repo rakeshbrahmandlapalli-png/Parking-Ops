@@ -31,6 +31,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private lateinit var online: Button
     private var lastWebToken: String?=null
+    // The sign-in bridge answers only while the trusted TakeOff page is showing.
+    @Volatile private var trustedPage=false
     private val executor=Executors.newSingleThreadExecutor()
     private val handler=Handler(Looper.getMainLooper())
     private val statusTick=object: Runnable { override fun run() { updateStatus(); handler.postDelayed(this,2000) } }
@@ -56,6 +58,8 @@ class MainActivity : AppCompatActivity() {
             settings.javaScriptEnabled=true; settings.domStorageEnabled=true; settings.allowFileAccess=false; settings.allowContentAccess=false
             addJavascriptInterface(SessionBridge(this@MainActivity),"TakeOffPhone")
             webViewClient=object: WebViewClient() {
+                override fun onPageStarted(view: WebView?,url: String?,favicon: android.graphics.Bitmap?) { trustedPage=trusted(url) }
+                override fun doUpdateVisitedHistory(view: WebView?,url: String?,isReload: Boolean) { trustedPage=trusted(url) }
                 override fun shouldOverrideUrlLoading(view: WebView?,request: WebResourceRequest?): Boolean {
                     val uri=request?.url ?: return true
                     return uri.scheme!="https" || uri.host !in ALLOWED_HOSTS
@@ -70,6 +74,8 @@ class MainActivity : AppCompatActivity() {
         if(PhoneSession.online(this) && !PhoneSession.access(this).isNullOrBlank()) ContextCompat.startForegroundService(this,Intent(this,PhoneBridgeService::class.java))
         if(::web.isInitialized) web.evaluateJavascript("window.dispatchEvent(new Event('takeoff:phone-session'));",null)
         PhoneQueueWorker.runNow(this); CallLogWorker.runNow(this)
+        // Asked to be paired: an owner may have approved it in Settings since.
+        if(PhoneSession.pending(this) && !PhoneSession.access(this).isNullOrBlank()) connectPhone(false,true)
     }
     override fun onPause() { handler.removeCallbacks(statusTick); super.onPause() }
     override fun onDestroy() { executor.shutdown(); if(::web.isInitialized) web.destroy(); super.onDestroy() }
@@ -92,20 +98,22 @@ class MainActivity : AppCompatActivity() {
         val missing=need.filter { ContextCompat.checkSelfPermission(this,it)!=PackageManager.PERMISSION_GRANTED }
         if(missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
     }
-    private fun connectPhone(replace: Boolean) {
+    private fun connectPhone(replace: Boolean,quiet: Boolean=false) {
         if(PhoneSession.access(this).isNullOrBlank()) { status.text="Sign in to TakeOff below first."; return }
+        if(quiet && !online.isEnabled) return
         if(ContextCompat.checkSelfPermission(this,Manifest.permission.SEND_SMS)!=PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this,Manifest.permission.RECEIVE_SMS)!=PackageManager.PERMISSION_GRANTED) { requestAccess(); return }
         if(android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()<0) { status.text="Choose the company SIM as Android's default SMS SIM first."; return }
         online.isEnabled=false
         executor.execute {
             try {
-                SupabasePhoneApi.connect(this,replace)
+                if(SupabasePhoneApi.connect(this,replace)=="pending") { runOnUiThread { online.isEnabled=true; updateStatus() }; return@execute }
                 runOnUiThread {
                     PhoneSession.setOnline(this,true)
                     ContextCompat.startForegroundService(this,Intent(this,PhoneBridgeService::class.java)); online.isEnabled=true; updateStatus()
                 }
             } catch(e: Exception) { runOnUiThread {
-                online.isEnabled=true; status.text=e.message ?: "Could not connect. Check internet and sign in again."
+                online.isEnabled=true; if(quiet) return@runOnUiThread
+                status.text=e.message ?: "Could not connect. Check internet and sign in again."
                 if(!replace && e.message?.contains("Another company phone")==true) AlertDialog.Builder(this)
                     .setTitle("Replace the paired company phone?").setMessage("Only this handset will send new customer texts. The previous handset will stop claiming them. Any uncertain sends still need review.")
                     .setNegativeButton("Cancel",null).setPositiveButton("Replace phone") { _,_ -> connectPhone(true) }.show()
@@ -124,15 +132,20 @@ class MainActivity : AppCompatActivity() {
         val sms=ContextCompat.checkSelfPermission(this,Manifest.permission.SEND_SMS)==PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(this,Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED
         val screening=getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
         val log=ContextCompat.checkSelfPermission(this,Manifest.permission.READ_CALL_LOG)==PackageManager.PERMISSION_GRANTED
+        if(PhoneSession.pending(this) && !PhoneSession.online(this)) { status.text="Waiting for an owner to approve this phone: TakeOff → Settings → Customer texts → Company phone. Then tap Go online."; return }
         status.text="${if(active) PhoneSession.prefs(this).getString("service_status","Online") else "Offline · customer texts wait for this phone"}\nSMS: ${if(sms) "Allowed" else "Needs access"} · Caller ID: ${if(screening) "On" else "Needs setup"} · Call log: ${if(log) "On" else "Off"}"
     }
     private inner class SessionBridge(private val context: Context) {
-        @JavascriptInterface fun setSession(access: String,refresh: String) { PhoneSession.save(context,access,refresh); PhoneQueueWorker.runNow(context); CallLogWorker.runNow(context) }
+        @JavascriptInterface fun setSession(access: String,refresh: String) { if(!trustedPage) return; PhoneSession.save(context,access,refresh); PhoneQueueWorker.runNow(context); CallLogWorker.runNow(context) }
         @JavascriptInterface fun latestSession(): String {
+            if(!trustedPage) return "{}"
             runCatching { if(!PhoneSession.access(context).isNullOrBlank()) SupabasePhoneApi.token(context) }
             return JSONObject().put("access_token",PhoneSession.access(context)).put("refresh_token",PhoneSession.refresh(context)).toString()
         }
-        @JavascriptInterface fun clearSession() { PhoneSession.clear(context) }
+        @JavascriptInterface fun clearSession() { if(trustedPage) PhoneSession.clear(context) }
     }
-    companion object { private val ALLOWED_HOSTS=setOf("takeoff-ops.vercel.app","parkingbay-ops.vercel.app") }
+    companion object {
+        private val ALLOWED_HOSTS=setOf("takeoff-ops.vercel.app","parkingbay-ops.vercel.app")
+        fun trusted(url: String?)=runCatching { val u=android.net.Uri.parse(url); u.scheme=="https" && u.host in ALLOWED_HOSTS }.getOrDefault(false)
+    }
 }

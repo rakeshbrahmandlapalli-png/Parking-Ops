@@ -438,7 +438,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "parking_positions", filter: "company_id=eq." + S.company.id }, laneChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_sessions", filter: "company_id=eq." + S.company.id }, keyChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged);
-    // A customer calling (part 115): every office phone pops it up. Only with the add-on, so the table is there.
+    // A customer calling (part 117): every office phone pops it up. Only with the add-on, so the table is there.
     if (callsAddon()) ch.on("postgres_changes", { event: "*", schema: "public", table: "customer_calls", filter: "company_id=eq." + S.company.id }, function (p) { window.dispatchEvent(new CustomEvent("takeoff:call", { detail: p.new })); });
     if (textsAddon()) ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "customer_sms", filter: "company_id=eq." + S.company.id }, function (p) { if (panelRow && p.new && p.new.booking_id === panelRow.id) carTexts(panelRow); });
     ch.subscribe(function (status) {
@@ -1518,8 +1518,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
-        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, canCalledTap(r), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, canCalledTap(r), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -1717,7 +1717,9 @@
       return;
     }
     var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
-    rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
+    // Collected counts the whole sheet (a paid car is usually done and off TO DO); Outstanding follows the cars shown.
+    S.rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.saving = total.saving || p.saving; });
+    rows.forEach(function (r) { total.due += paymentFacts(r).due; });
     var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
     var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
     el.classList.toggle("folded", folded);
@@ -1825,9 +1827,13 @@
   function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
   // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
   // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  // The row's CALLED button: whoever can press CALLED, or (AT DESK permission, part 115)
+  // on any car that is not OVERSTAY: the tap is AT DESK, which calls a car not called yet.
+  function canCalledTap(r) { return can("called") || (can("desk") && r.called_word !== "Overstay"); }
   function tapCalled(r) {
     if (atDesk(r)) return tapDrop(r, "desk");
     if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    if (!can("called")) return tapDrop(r, "desk");   // AT DESK only (part 115): straight to the desk, which calls it too
     return tapDrop(r, "called");
   }
   function tapDrop(r, action, word) {
@@ -3065,8 +3071,10 @@
     var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
       // CALLED and AT DESK here too: the row's button goes CALLED ↔ AT DESK, so CALLED comes off here (part 112).
-      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>" +
-        (r.called_word === "Overstay" ? "" : '<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
+      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>";
+      // AT DESK needs its own permission only (part 115).
+      if (can("desk") && r.called_word !== "Overstay") extra +=
+        ('<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
       if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
       if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
@@ -5613,17 +5621,17 @@
   }
 
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
-  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
+  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
     import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
-  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
+  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
     ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
   function permShown(x) { return x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
-  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
+  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
   function canChange(p) { return p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner") && (p.role !== "manager" || S.me.role === "owner" || S.me.role === "manager"); }
   function canManage(p) { return (S.me.role === "manager" || S.me.role === "owner") && p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner"); }
@@ -6512,7 +6520,7 @@
     var pos=e.target.selectionStart; LP.query=e.target.value; render(); var q=$('lpQuery'); q.focus(); try { q.setSelectionRange(pos,pos); } catch(e) {}
   });
   setInterval(function(){ if(S.me && S.view==='lanes' && document.visibilityState==='visible') laneChanged(); },15000);
-  // ── customer texts (database part 115) ──
+  // ── customer texts (database part 116) ──
   // An add-on (Parking Ops → Clients → Edit, brand.texts): the app texts the
   // customer by itself when their flight lands, when a driver is SENT, and the
   // day before a PICKS drop-off. Owners set it in Settings → Customer texts;
@@ -6558,7 +6566,8 @@
   }
   function phoneHealthHtml() {
     setTimeout(loadPhoneHealth, 0);
-    return '<div class="section-label">Company phone</div><p id="phoneHealth" class="note" role="status">Checking the company phone…</p><button type="button" class="btn" data-phone-health>Refresh phone status</button>';
+    return '<div class="section-label">Company phone</div><p id="phoneHealth" class="note" role="status">Checking the company phone…</p><div id="phonePair"></div><button type="button" class="btn" data-phone-health>Refresh phone status</button>' +
+      (S.me && S.me.role === 'owner' ? ' <a class="btn" href="/phone/takeoff-phone.apk" download>TakeOff Phone app (Android)</a>' : '');
   }
   async function loadPhoneHealth() {
     if (!$('phoneHealth')) return;
@@ -6569,11 +6578,33 @@
     el.textContent = status + (h.paired && !h.sms_ready ? ' SMS access or default SIM needs attention.' : '') +
       (h.battery !== null && h.battery !== undefined ? ' Battery ' + h.battery + '%.' : '') +
       ' ' + (+h.queued || 0) + ' waiting; ' + (+h.needs_review || 0) + ' to review; ' + (+h.expired || 0) + ' expired in the last day.' +
-      (h.last_seen && !h.online ? ' Last seen ' + dayShort(h.last_seen) + ' ' + hhmm(h.last_seen) + '.' : '');
+      (h.last_seen && !h.online ? ' Last seen ' + dayShort(h.last_seen) + ' ' + hhmm(h.last_seen) + '.' : '') +
+      (h.paired && h.paired_as ? ' Signed in as ' + h.paired_as + '.' : '');
+    // Pairing (part 118): the handset signs in with the office login and asks; an owner approves it here.
+    var pair = $('phonePair'), own = !!(S.me && S.me.role === 'owner'), p = h.pending, o = '';
+    if (pair) {
+      if (own && h.paired && h.paired_as_owner) o += '<p class="note">This phone is signed in with an owner\'s login. Sign it in with the office login and approve it here instead.</p>';
+      if (own && p) o += '<p class="note"><b>A phone is asking to be paired</b>, signed in as ' + esc(p.name || '?') + ' (' + dayShort(p.at) + ' ' + hhmm(p.at) + ').' + (h.paired ? ' Approving it replaces the paired phone.' : '') + '</p>' +
+        '<button type="button" class="btn" data-phonepair="approve" data-device="' + esc(p.device) + '">Approve this phone</button> <button type="button" class="btn" data-phonepair="refuse">Refuse</button>';
+      if (own && h.paired) o += ' <button type="button" class="btn" data-phonepair="unpair">Unpair the phone</button>';
+      pair.innerHTML = o;
+    }
+  }
+  async function phonePairing(btn) {
+    var a = btn.dataset.phonepair;
+    if (a === 'approve' && !confirm('Approve this phone? It sends the customer texts from now on.')) return;
+    if (a === 'unpair' && !confirm('Unpair the company phone? It stops sending texts until a phone is approved again.')) return;
+    btn.disabled = true;
+    var got = await sb.rpc('phone_pairing', { p_action: a, p_device: btn.dataset.device || null });
+    btn.disabled = false;
+    if (got.error) { toast(got.error.message, true); return; }
+    toast(a === 'approve' ? 'Phone approved. Tap Go online on it.' : a === 'unpair' ? 'Phone unpaired.' : 'Refused.');
+    loadPhoneHealth();
   }
   setInterval(function () { if (S.view === 'settings' && document.visibilityState !== 'hidden' && $('phoneHealth')) loadPhoneHealth(); }, 30000);
   document.addEventListener('click', async function (e) {
     if (e.target.closest('[data-phone-health]')) loadPhoneHealth();
+    var pb = e.target.closest('[data-phonepair]'); if (pb) { phonePairing(pb); return; }
     var review = e.target.closest('[data-reviewtext]');
     if (!review) return;
     if (!confirm('Have you checked the send outcome on the company phone? Marking reviewed does not send another message.')) return;
@@ -6674,7 +6705,7 @@
     catch (e) { btn.disabled = false; return toast(e.message, true); }
     carTexts(r);
   }
-  // ── incoming calls (database part 116) ──
+  // ── incoming calls (database part 117) ──
   // An add-on (brand.calls): the TakeOff Android companion screens calls on
   // the company SIM, matches them to a booking and records the call. The app
   // never answers or redirects a call; staff use the normal phone controls.

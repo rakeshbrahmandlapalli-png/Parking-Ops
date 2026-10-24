@@ -1,6 +1,6 @@
 import { check, sleep, makeDb, phone, open, scenario, browser } from "../harness.mjs";
 
-// Customer texts (setup 115): an add-on; owners set it in Settings → Customer texts; the car's
+// Customer texts (setup 116): an add-on; owners set it in Settings → Customer texts; the car's
 // Texts list what was sent, and the office sends one by hand after seeing the words. Every look.
 const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
 const CFG = { on: true, sender: "TAKEOFF", office: "0161 496 0000", meet: "Terminal 2", at: "18:00" };
@@ -128,6 +128,30 @@ await scenario(async () => {
   Object.assign(db.phoneHealth, { online: false, queued: 3, last_seen: ago(20) });
   await page.click('[data-phone-health]'); await sleep(250);
   check("SIM bridge: offline status explains waiting messages", /Company phone offline.*3 waiting.*Last seen/.test(await page.innerText("#phoneHealth")));
+  // Pairing (part 118): the handset signed in with the office login asks; the owner approves here.
+  Object.assign(db.phoneHealth, { paired: true, paired_as: "RAKESH", paired_as_owner: true, pending: { device: "dev-2", name: "OFFICE", at: ago(2) } });
+  const asked = []; page.removeAllListeners("dialog"); page.on("dialog", (d) => { asked.push(d.message()); d.accept(); });
+  await page.click('[data-phone-health]'); await sleep(250);
+  const pt = await page.innerText("#phonePair");
+  check("SIM bridge: an owner's login on the phone is flagged", /signed in with an owner's login/.test(pt), pt);
+  check("SIM bridge: the waiting phone shows who it's signed in as", /asking to be paired[\s\S]*OFFICE[\s\S]*replaces the paired phone/.test(pt), pt);
+  await page.click('[data-phonepair="approve"]'); await sleep(300);
+  const ap = db.calls.filter((x) => x.fn === "phone_pairing").pop();
+  check("SIM bridge: Approve asks first, then sends that phone", asked.length === 1 && ap && ap.args.p_action === "approve" && ap.args.p_device === "dev-2", ap);
+  check("SIM bridge: after approval it says the office login", /Signed in as OFFICE/.test(await page.innerText("#phoneHealth")) && !/asking to be paired/.test(await page.innerText("#phonePair")));
+  await page.click('[data-phonepair="unpair"]'); await sleep(300);
+  check("SIM bridge: Unpair asks first and unpairs", asked.length === 2 && db.calls.filter((x) => x.fn === "phone_pairing").pop().args.p_action === "unpair" && /No company phone paired/.test(await page.innerText("#phoneHealth")));
   check("SIM bridge: no browser errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "texts");
+
+// The office sees the phone's state but never the pairing buttons.
+await scenario(async () => {
+  const db = textsDb("ops"); db.me = { ...db.me, role: "office" };
+  db.phoneHealth = { paired: false, online: false, pending: null, queued: 0, needs_review: 0, expired: 0 };
+  const page = await phone(browser, db); await open(page);
+  await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await sleep(300);
+  const s = await page.$('#menuBody [data-view="settings"]'); if (s) { await s.click(); await sleep(500); }
+  check("SIM bridge: office gets no pairing buttons", !(await page.$("[data-phonepair]")));
   await page.context().close();
 }, "texts");

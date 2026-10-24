@@ -10,7 +10,10 @@ class IncomingSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context,intent: Intent) {
         if(intent.action!=Telephony.Sms.Intents.SMS_RECEIVED_ACTION || PhoneSession.company(context).isNullOrBlank()) return
         val subscription=intent.getIntExtra(android.telephony.SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,intent.getIntExtra("subscription",-1))
-        if(subscription!=android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()) return
+        // Some handsets leave the SIM out of the broadcast: then only a phone with one
+        // active SIM can be sure the reply came to the company SIM.
+        if(subscription<0) { if(PhoneSession.activeSims(context)!=1) return }
+        else if(subscription!=android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()) return
         val messages=Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if(messages.isEmpty()) return
         val from=messages.first().originatingAddress.orEmpty()

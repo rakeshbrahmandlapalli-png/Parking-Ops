@@ -25,7 +25,7 @@ export async function shots(dir) {
     }
     return;
   }
-  // SHOTS_ONLY=calls: incoming calls (part 115): the pop-up on the board, the car's calls and texts, Menu → Calls, Settings → Calls.
+  // SHOTS_ONLY=calls: incoming calls (part 117): the pop-up on the board, the car's calls and texts, Menu → Calls, Settings → Calls.
   if (process.env.SHOTS_ONLY === "calls") {
     const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
     for (const [theme, width, height, name] of [["stdplus", 390, 844, "phone"], ["ops", 1440, 1000, "desktop"], ["premium", 390, 844, "premium-phone"]]) {

@@ -51,3 +51,32 @@ await scenario(async () => {
   check("At desk (ops desktop): OVERSTAY taps off as before", c.args.p_action === "called" && c.args.p_on === false, c.args);
   check("At desk (ops desktop): no errors", page.__errors.length === 0, page.__errors);
 }, "atdesk");
+
+// Part 115: Terminal has AT DESK without CALLED or OVERSTAY. The row button works only on a car already
+// CALLED (CALLED → AT DESK → CALLED); an uncalled car and OVERSTAY stay greyed; the panel has AT DESK only.
+for (const theme of ["", "ops", "ops-refined", "premium"]) await scenario(async () => {
+  const db = makeDb(); if (theme) db.company.brand = { theme, colour: "#F9A01B", ink: "#172536", short: "TakeOff" };
+  const look = theme || "standard";
+  db.perms = { sent: false, called: false, desk: true, clear: true, yard: false, note: true, intake: true, flights: false, picksinfo: true };
+  Object.assign(db.bookings.find((b) => b.id === "b2"), { called_at: ago(10), called_by: "s2", called_word: "Called" });
+  const page = await phone(browser, db);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await open(page);
+  check("Terminal AT DESK (" + look + "): the button on a car not called yet can be tapped", !(await btn(page, "b1").isDisabled()));
+  check("Terminal AT DESK (" + look + "): CALLED on a called car can be tapped", !(await btn(page, "b2").isDisabled()));
+  await btn(page, "b2").click(); await sleep(300);
+  const c = db.calls.filter((x) => x.fn === "tap_drop").pop();
+  check("Terminal AT DESK (" + look + "): the tap sends desk on", c.args.p_action === "desk" && c.args.p_on === true && /^AT DESK/.test(await word(page, "b2")), c.args);
+  await btn(page, "b2").click(); await sleep(300);
+  check("Terminal AT DESK (" + look + "): the next tap goes back to CALLED", db.calls.filter((x) => x.fn === "tap_drop").pop().args.p_on === false && /^CALLED/.test(await word(page, "b2")));
+  await page.click('.row[data-id="b2"] .reg'); await page.waitForSelector("#panel[open]");
+  check("Terminal AT DESK (" + look + "): the panel has AT DESK but no CALLED or OVERSTAY",
+    await page.locator('#panel [data-word="desk:"]').count() === 1 && await page.locator('#panel [data-word="called:Called"], #panel [data-word="called:Overstay"]').count() === 0);
+  await page.click("#panel [data-close]").catch(() => {}); await sleep(200);
+  // A customer who comes straight to the desk: AT DESK on a car not called yet calls it too.
+  await btn(page, "b1").click(); await sleep(300);
+  const b1 = db.bookings.find((b) => b.id === "b1");
+  check("Terminal AT DESK (" + look + "): a car not called yet goes straight to AT DESK", /^AT DESK/.test(await word(page, "b1")) && !!b1.called_at && !!b1.desk_at, [await word(page, "b1"), b1.called_at]);
+  check("Terminal AT DESK (" + look + "): no errors", page.__errors.length === 0, page.__errors);
+}, "atdesk");
+

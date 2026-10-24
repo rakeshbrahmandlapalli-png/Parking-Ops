@@ -1,6 +1,6 @@
 import { check, sleep, makeDb, phone, open, scenario, browser } from "../harness.mjs";
 
-// Incoming calls (setup 116): an add-on. A call pops up on office phones with the caller's car and a CALLED
+// Incoming calls (setup 117): an add-on. A call pops up on office phones with the caller's car and a CALLED
 // button; the car lists its calls; Menu → Calls lists the last day's, missed first; owners set it in Settings → Calls.
 const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
 const callsDb = (theme, addon = true) => {
