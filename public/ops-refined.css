@@ -1118,3 +1118,6 @@ html.ops-refined .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){bo
 @media(max-width:430px){html.ops-refined body:has(main[data-view="import"]) .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}html.ops-refined body:has(main[data-view="import"]) .bar #sheetPick{min-width:0;flex-shrink:1;}}
 @media(max-width:430px){html.ops-refined body:has(main[data-view="import"]) .bar #sync.on{margin:0;order:0;border:0;letter-spacing:0;}html.ops-refined body:has(main[data-view="import"]) .bar #sync.on::before{display:none;}}
 @media(max-width:899px){html.ops-refined .bi-range>.bi-presets{grid-column:1/-1;min-width:0;}}
+
+/* Booking import: the chosen date shortcut in white on navy (24 Oct: .btn.ghost kept navy text). */
+html.ops-refined .bi .bi-presets .btn[aria-pressed=true]{background:var(--op-deep);border-color:var(--op-deep);color:#fff;}
