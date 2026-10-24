@@ -112,6 +112,7 @@ html.pro .sec.old span{color:#8E6235;}
 /* ── a car ── */
 html.pro .row{gap:8px;padding:7px 10px;border-bottom:1px solid var(--line-soft);font-size:15px;color:var(--ink);}
 html.pro .row.called{background:#EEF4FC;box-shadow:inset 3px 0 0 var(--brand);}
+html.pro .row.atdesk{box-shadow:inset 3px 0 0 #7B4CC2;}
 html.pro .row.warn{background:#FFF6DB;box-shadow:inset 3px 0 0 #E8A400;}
 html.pro .row.late{background:#FDE8E5;box-shadow:inset 3px 0 0 var(--bad);}
 html.pro .row.done{background:#F7F8FA;}
@@ -169,6 +170,7 @@ html.pro .acts button.on.p{background:#3D5A80;border-color:#3D5A80;color:#fff;}
 html.pro .acts button.on.x,html.pro .acts button.on.n{background:#5B6573;border-color:#5B6573;color:#fff;}
 html.pro .acts button.on.r,html.pro .acts button.on.x.cm{background:var(--bad);border-color:var(--bad);color:#fff;}
 html.pro .acts button.on.c.ov{background:var(--amber);border-color:var(--amber);color:#fff;}
+html.pro .acts button.on.c.dk{background:#6B3FB0;border-color:#6B3FB0;color:#fff;}
 
 /* ── other-day search hits, messages ── */
 html.pro .otherhit b{font:700 17px/1.1 var(--cond);letter-spacing:.07em;}

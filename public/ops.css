@@ -395,6 +395,7 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops .drow .tag.pd{padding:1px 5px;border-radius:4px;background:#e6f4ea;color:#137333;}
  html.ops .drow .st-n{font-weight:500;color:var(--op-mut);}
  html.ops .drow .st-c{color:#0b3d78;}html.ops .drow .st-s{color:#1e6b3a;}html.ops .drow .st-o{color:#b06000;}html.ops .drow .st-x{color:#3c4043;}
+ html.ops .drow .st-d{color:#5b2a9a;}
  html.ops .drow .fx{font-weight:650;color:var(--op-ink);}
  html.ops .drow .fx.bad{color:#b42318;}html.ops .drow .fx.warn{color:#9a5b00;}html.ops .drow .fx.ok{color:#1e6b3a;}
  html.ops .drow .code{padding:3px 8px;font-size:12px;}

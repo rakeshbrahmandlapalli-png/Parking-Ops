@@ -45,7 +45,7 @@
         '<button type="button" class="swtoggle" data-swipeonlyme role="switch" aria-checked="' + shown + '"><span>Show buttons on drops</span><i aria-hidden="true"></i></button>');
   }
   function stepStatus(r) {
-    var parts = [["sent_at", "sent_by", "Sent", "s"], ["called_at", "called_by", r.called_word === "Overstay" ? "Overstay" : "Called", "c"], ["cleared_at", "cleared_by", r.clear_word === "COMPLAINT" ? "Complaint" : "Clear", "x"]]
+    var parts = [["sent_at", "sent_by", "Sent", "s"], atDesk(r) ? ["desk_at", "desk_by", "At desk", "c dk"] : ["called_at", "called_by", r.called_word === "Overstay" ? "Overstay" : "Called", "c"], ["cleared_at", "cleared_by", r.clear_word === "COMPLAINT" ? "Complaint" : "Clear", "x"]]
       .filter(function (p) { return r[p[0]]; }).map(function (p) {
         var who = nice(byName(r, p[1]).trim().split(/\s+/)[0]);
         return '<span class="st ' + p[3] + '"><b>' + p[2] + '</b><small class="num">' + esc(hhmm(r[p[0]])) + "</small>" + (who ? "<em>" + esc(who) + "</em>" : "") + "</span>";

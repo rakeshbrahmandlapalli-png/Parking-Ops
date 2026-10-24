@@ -231,6 +231,8 @@ select.code.pick.unset{color:#7a5c00;background:#fff2cc;border:1px dashed #d4a72
 .acts button.on.p{background:#c9daf8;border-color:#9fb9e8;color:#0b3d78;}
 .acts button.on.c.ov{background:#f9cb9c;border-color:#e0aa73;color:#7a3e00;}
 .acts button.on.x.cm{background:#f4c7c3;border-color:#e09b95;color:#8c1d18;}
+.acts button.on.c.dk{background:#ddcdf6;border-color:#a98bd8;color:#47197a;}
+.row.atdesk{box-shadow:inset 4px 0 0 #7b4cc2;}
 
 /* car panel and menu: a sheet from the bottom on a phone */
 dialog.sheet{width:min(520px,100%);max-width:100%;max-height:92dvh;margin:auto auto 0;overflow:auto;border:0;border-top:3px solid #202124;border-radius:12px 12px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));color:#202124;}

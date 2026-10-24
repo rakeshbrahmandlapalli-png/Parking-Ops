@@ -70,6 +70,7 @@
     switch (a.action) {
       case "SENT": return /CLEARED|OFF/.test(v) ? "x" : "s";
       case "CALLED": return /CLEARED|OFF/.test(v) ? "x" : /OVERSTAY/.test(v) ? "o" : "c";
+      case "DESK": return /CLEARED|OFF/.test(v) ? "x" : "d";
       case "CLEAR": return /COMPLAINT/.test(v) ? "r" : /CLEARED|OFF/.test(v) ? "x" : "s";
       case "INTAKE": return /RTC/.test(v) ? "r" : /NO SHOW/.test(v) ? "o" : /COLLECTED/.test(v) ? "s" : "x";
       case "PT": case "PT PHOTOS": case "PT COPY": return "p";

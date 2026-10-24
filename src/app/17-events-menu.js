@@ -179,7 +179,7 @@
     if (r && t.dataset.addflight !== undefined) return openQuickFlight(r, S.view === "flights");
     if (t.dataset.fillflights !== undefined) { var m0 = missingFlights()[0]; if (m0) openQuickFlight(m0, true); return; }
     if (r && t.dataset.open !== undefined) return openPanel(r);
-    if (r && t.dataset.act) { if (t.closest(".pacts") && $("panel").open) $("panel").close(); return tapDrop(r, t.dataset.act); }
+    if (r && t.dataset.act) { if (t.closest(".pacts") && $("panel").open) $("panel").close(); return t.dataset.act === "called" ? tapCalled(r) : tapDrop(r, t.dataset.act); }
     if (r && t.dataset.pick) return tapPick(r, "intake", t.dataset.pick);
     if (r && t.dataset.pt !== undefined) {
       if (r.pt_at) return tapPick(r, "pt");

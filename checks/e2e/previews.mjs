@@ -3,6 +3,28 @@ import { healthData, BASE, fs, path, ROOT, check, sleep, addDays, TONIGHT, iso, 
 // ── previews (SHOTS=dir) ─────────────────────────────────────────────────
 export async function shots(dir) {
   fs.mkdirSync(dir, { recursive: true });
+  // SHOTS_ONLY=atdesk: AT DESK on the CALLED button (part 112), Airport Parking Bay's board in Operations, Standard with features and Premium, phone and desktop, and the car's panel.
+  if (process.env.SHOTS_ONLY === "atdesk") {
+    const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+    for (const theme of ["ops", "stdplus", "premium", "ops-refined"]) for (const [width, height, name] of [[390, 1100, "phone"], [1440, 1000, "desktop"]]) {
+      if (theme !== "ops" && name === "desktop") continue;
+      const db = deskDb(theme); db.company = { ...db.company, ...apbDb(theme).company, yards: ["GS", "MY", "T"], yard_colours: { GS: "#E8590C", MY: "#2F9E44", T: "#FFE600" } };
+      db.company.brand.picks_yard = true;
+      db.staff.push({ id: "s3", name: "KAMU", role: "office", active: true });
+      db.bookings.forEach((b) => { if (b.yard) b.yard = { CP: "GS", NY: "MY", S: "T" }[b.yard] || b.yard; });
+      const by = (id) => db.bookings.find((b) => b.id === id);
+      Object.assign(by("w1"), { called_at: ago(4), called_by: "s3", called_word: "Called" });
+      Object.assign(by("w2"), { called_at: ago(9), called_by: "s3", called_word: "Called" });
+      Object.assign(by("w3"), { called_at: ago(12), called_by: "s3", called_word: "Called", desk_at: ago(3), desk_by: "s3" });
+      Object.assign(by("w6"), { desk_at: ago(2), desk_by: "s2" });
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await open(page); await sleep(600);
+      await page.screenshot({ path: path.join(dir, "at-desk-" + theme + "-" + name + ".png") });
+      if (theme === "ops") { await page.click('.row[data-id="w3"] .reg'); await sleep(600); await page.screenshot({ path: path.join(dir, "at-desk-" + theme + "-" + name + "-car.png") }); }
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=bsite: Settings → Booking website on Airport Parking Bay's look (phone) and the Operations desk, empty and saved.
   if (process.env.SHOTS_ONLY === "bsite") {
     for (const [theme, width, height, name] of [["premium", 390, 844, "apb-phone"], ["ops", 1440, 1000, "ops-desktop"]]) for (const saved of [false, true]) {

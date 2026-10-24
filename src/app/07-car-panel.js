@@ -100,7 +100,9 @@
       det.push(["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at)) + (r.orig_return_at ? ' <span class="hint">· was ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</span>" : "")]);
       det.push(["FLIGHT", esc(r.flight || "—") + (r.sched_time ? " · sched " + esc(r.sched_time) : "")]);
       if (r.est_time || r.flight_note) det.push(["ARRIVAL", (r.est_time ? "<b>" + esc(r.est_time) + "</b> " : "") + '<span class="hint">' + esc(r.flight_note) + "</span>"]);
-      det.push(["SENT", by(r.sent_at, byName(r, "sent_by"))], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, byName(r, "called_by"))], [r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, byName(r, "cleared_by"))]);
+      det.push(["SENT", by(r.sent_at, byName(r, "sent_by"))], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, byName(r, "called_by"))]);
+      if (atDesk(r)) det.push(["AT DESK", by(r.desk_at, byName(r, "desk_by"))]);
+      det.push([r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, byName(r, "cleared_by"))]);
     } else {
       det.push(["DROP-OFF", esc(dayShort(r.drop_at) + " " + hhmm(r.drop_at))], ["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at))]);
       if (r.intake) det.push([esc(r.intake.toUpperCase()), by(r.intake_at, byName(r, "intake_by"))]);
@@ -155,6 +157,9 @@
     var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
     var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
+      // CALLED and AT DESK here too: the row's button goes CALLED ↔ AT DESK, so CALLED comes off here (part 112).
+      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>" +
+        (r.called_word === "Overstay" ? "" : '<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
       if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
       if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
@@ -204,7 +209,7 @@
   // documents and photos; the read-only details as text, the boxes Save changes
   // saves as fields, and what saves on a tap marked "Saves when tapped". The same
   // fields, buttons and saves as Operations; only where they sit changes.
-  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
+  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, "AT DESK": 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
   function refinedCar(r, head, P) {
     // A detail that has its own box below shows once, in the box.
     var skip = { NAME: 1, CAR: 1, REF: 1 }; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
@@ -253,7 +258,7 @@
   });
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
-  var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
+  var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
     "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", "DROP-OFF DATE AND TIME": "Drop-off date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
     "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
   function L(t) { return isOps() && OPS_LABEL[t] || t; }
