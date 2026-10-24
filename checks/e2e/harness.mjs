@@ -318,6 +318,8 @@ function rpc(db, fn, a) {
     case "booking_site_set": { const clear = !a.p_url && !a.p_login && !a.p_password, prev = db.bsite || {};
       db.bsite = clear ? { url: "", login: "", has_pass: false, saved_by: "", saved_at: null } : { url: a.p_url, login: a.p_login, has_pass: a.p_password == null ? !!prev.has_pass : a.p_password !== "", saved_by: "RAKESH", saved_at: now() }; return db.bsite; }
     case "set_flight_settings": db.company.flight_settings = a.p; return a.p;
+    case "set_calls": { if (db.me.role !== "owner") throw new Error("Only an owner can change calls."); db.company.calls = a.p; return a.p; }
+    case "call_take": { const k = (db.callsLog || []).find((x) => x.id === a.p_call); k.handled_by = db.me.id; k.handled_name = db.me.name || "RAKESH"; return k; }
     case "set_texts": { if (db.me.role !== "owner") throw new Error("Only an owner can change customer texts."); db.company.texts = a.p; return a.p; }
     case "set_exit_fee": db.company.exit_fee = a.p_fee; db.company.exit_free = a.p_free.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")); return { exit_fee: a.p_fee, exit_free: db.company.exit_free };
     case "set_exit_paid": { const b = row(a.p_booking); Object.assign(b, { exit_method: a.p_method, exit_amount: a.p_method ? db.company.exit_fee : null, exit_at: a.p_method ? new Date().toISOString() : null, exit_by: a.p_method ? "s1" : null, exit_photo: a.p_photo || "" }); return b; }
@@ -421,6 +423,7 @@ async function backend(ctx, db) {
     }
     // Summary → Activity: all activity, newest first.
     if (p === "/rest/v1/activity") return reply(200, (db.activity || []).slice().sort((x, y) => (x.at < y.at ? 1 : -1)));
+    if (p === "/rest/v1/customer_calls") return reply(200, (db.callsLog || []).filter((k) => !q.booking_id || k.booking_id === q.booking_id.replace(/^eq\./, "")).sort((x, y) => (x.at < y.at ? 1 : -1)));
     if (p === "/rest/v1/customer_texts") return reply(200, (db.texts || []).filter((t) => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")).sort((x, y) => (x.at < y.at ? 1 : -1)));
     if (p === "/rest/v1/flight_runs") return reply(200, db.flightRuns || []);
     if (p === "/rest/v1/staff") return reply(200, db.staff);
@@ -528,6 +531,7 @@ async function scenario(fn, tag) {
   if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
   if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   if (process.env.TEXTS_ONLY && tag !== 'texts') return;
+  if (process.env.CALLS_ONLY && tag !== 'calls') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));

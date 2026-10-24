@@ -419,8 +419,10 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "parking_lanes", filter: "company_id=eq." + S.company.id }, laneChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "parking_positions", filter: "company_id=eq." + S.company.id }, laneChanged)
       .on("postgres_changes", { event: "*", schema: "public", table: "key_check_sessions", filter: "company_id=eq." + S.company.id }, keyChanged)
-      .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged)
-      .subscribe(function (status) {
+      .on("postgres_changes", { event: "*", schema: "public", table: "key_check_entries", filter: "company_id=eq." + S.company.id }, keyChanged);
+    // A customer calling (part 115): every office phone pops it up. Only with the add-on, so the table is there.
+    if (callsAddon()) ch.on("postgres_changes", { event: "*", schema: "public", table: "customer_calls", filter: "company_id=eq." + S.company.id }, function (p) { window.dispatchEvent(new CustomEvent("takeoff:call", { detail: p.new })); });
+    ch.subscribe(function (status) {
         if (ch !== channel) return;   // an old link closing late (after sign-out and back in)
         var was = S.live; S.live = status === "SUBSCRIBED"; renderSync();
         // Back after the live link dropped: changes made meanwhile were missed.
@@ -639,7 +641,7 @@
   // The header is the one the team already knows from the Sheet app: sheet
   // picker, who is signed in, and a row of icon buttons. The yard tally, TO DO /
   // ALL, search and column captions belong to the board only.
-  var OPS_TITLE = { summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
+  var OPS_TITLE = { calls: "Calls", summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
   var VIEW_TITLE = { lanes: "Yard planner", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
   var YARD_LABEL = { Y: "NB", S: "S YARD" };
   // The tally reads left to right as the Sheet's did; any yard not listed follows.
@@ -863,7 +865,7 @@
     document.body.classList.toggle("on-lanes", S.view === "lanes");
     document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
-    var fn = { lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
+    var fn = { calls: renderCalls, lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
     if (S.switching && S.view === "board" || S.switching && S.switching.o.archive) { boardChunks = null; html = loadingHtml(S.switching); setMain(html, "loading"); return; }
     // One screen going wrong never takes the app down: it says so and offers a way out.
@@ -890,7 +892,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -3050,7 +3052,7 @@
       // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
       var side = "";
       if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
-      side += pay + early + (texts ? opsSec("Texts") + texts : "") + photos + rm;
+      side += pay + early + (texts ? opsSec(carCommsTitle()) + texts : "") + photos + rm;
       if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
       var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
       // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
@@ -3065,6 +3067,7 @@
     ptPhotosList(r);
     carHistory(r);
     carTexts(r);
+    carCalls(r);
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
@@ -3095,7 +3098,7 @@
     var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
     var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
       sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
-      sec("rf-texts", "Texts", P.texts) +
+      sec("rf-texts", carCommsTitle(), P.texts) +
       sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
       (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
     var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
@@ -5401,6 +5404,7 @@
       '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5416,7 +5420,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked, calls: $("clCalls").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -5852,11 +5856,11 @@
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div>", "fchecks");
-    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), txt = textsHtml(), back = backupHtml();
-    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + txt + back;
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), txt = textsHtml(), cls = callsHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + txt + cls + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
     var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
-      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["texts", "Customer texts", txt, "Texts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["texts", "Customer texts", txt, "Texts"], ["calls", "Calls", cls, "Calls"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
     // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
     // (the others stay on the page, hidden, so nothing typed is lost by switching).
     if (!opsDesk()) {
@@ -5872,6 +5876,7 @@
             parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
             flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
             texts: [textsOn() ? "On" : "Off"],
+            calls: [callsOn() ? "On" : "Off"],
             charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
           }[g[0]] || [];
           return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
@@ -6562,7 +6567,8 @@
   });
   // ── the car's texts ──
   // What was sent to this customer, when and how it went; the office sends one by hand.
-  function carTextsHtml(r) { return textsAddon() && (r.phone || textsOn()) ? '<div id="carTexts"></div>' : ""; }
+  function carTextsHtml(r) { return (textsAddon() && (r.phone || textsOn()) ? '<div id="carTexts"></div>' : "") + (callsAddon() && can("called") ? '<div id="carCalls"></div>' : ""); }
+  function carCommsTitle() { return textsAddon() && callsAddon() && can("called") ? "Calls & texts" : callsAddon() && can("called") ? "Calls" : "Texts"; }
   var TEXT_STATE = { queued: "Sending", sent: "Sent", delivered: "Delivered", failed: "Not delivered", skipped: "Not sent", demo: "Demo, not sent" };
   async function carTexts(r) {
     var el = $("carTexts"); if (!el) return;
@@ -6594,6 +6600,135 @@
     try { await callFunction("send-texts", { type: "manual", booking: r.id, rule: btn.dataset.txsend }, true); toast(textsCfg().demo ? "Demo: written on the car, not sent" : "Text sent to " + phoneLabel(r.phone)); }
     catch (e) { btn.disabled = false; return toast(e.message, true); }
     carTexts(r);
+  }
+  // ── incoming calls (database part 115) ──
+  // An add-on (brand.calls): the office number is forwarded to a Twilio number.
+  // Each call is written to customer_calls with the caller's car (tonight's
+  // DROPS or today's PICKS), and every office phone pops it up with a CALLED
+  // button. At busy times auto-answer asks the customer to press 1 (landed) or 2
+  // (on the way to drop off) and marks the car itself. The car lists its calls;
+  // Menu → Calls lists today's, missed first, to ring back.
+  function callsAddon() { return !!(S.company && S.company.brand && S.company.brand.calls === true); }
+  function callsCfg() { var c = (S.company && S.company.calls) || {}; return { on: c.on === true, number: c.number || "", ring: c.ring || [], auto: c.auto || "off", from: c.from || "20:00", to: c.to || "02:00", words: c.words || "" }; }
+  function callsOn() { return callsAddon() && callsCfg().on; }
+  var CALL_STATE = { ringing: "Ringing", answered: "Answered", missed: "Missed", auto: "Auto-answered" };
+  function callSecs(s) { s = +s || 0; return s ? Math.floor(s / 60) + ":" + pad(s % 60) : ""; }
+  function callWhat(k) { return k.status === "answered" ? "Answered" + (k.seconds ? " · " + callSecs(k.seconds) : "") : CALL_STATE[k.status] || k.status; }
+  function callMarked(k) { return k.marked === "CALLED" ? (k.kind === "picks" ? "Pressed 2: on the way, marked CALLED" : "Pressed 1: landed, marked CALLED") : ""; }
+  // ── the pop-up ──
+  var POP = { calls: [], timers: {} };
+  function callEvent(k) {
+    if (!k || !callsOn() || !can("called") || k.company_id && S.company && k.company_id !== S.company.id) return;
+    var i = POP.calls.findIndex(function (x) { return x.id === k.id; });
+    if (i >= 0) POP.calls[i] = Object.assign({}, POP.calls[i], k);
+    else if (k.status === "ringing" || k.status === "auto") POP.calls.unshift(k); else return;
+    POP.calls = POP.calls.slice(0, 3);
+    // Answered or auto-answered: it goes by itself after a little while; missed stays until closed.
+    if (k.status === "answered" || k.status === "auto") { clearTimeout(POP.timers[k.id]); POP.timers[k.id] = setTimeout(function () { callGone(k.id); }, 15000); }
+    if (S.view === "calls") S.callsList = null;
+    callPopDraw();
+  }
+  function callGone(id) { POP.calls = POP.calls.filter(function (x) { return x.id !== id; }); callPopDraw(); }
+  window.addEventListener("takeoff:call", function (e) { callEvent(e.detail); });
+  function callRow(k) { return k.booking_id ? (S.rows || []).find(function (r) { return r.id === k.booking_id; }) : null; }
+  function callPopDraw() {
+    var el = $("callPop");
+    if (!POP.calls.length) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement("div"); el.id = "callPop"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
+      el.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:60;max-width:520px;margin:0 auto;display:grid;gap:6px";
+      document.body.appendChild(el);
+    }
+    el.innerHTML = POP.calls.map(function (k) {
+      var r = callRow(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed";
+      var who = k.booking_id ? "<b>" + esc(k.reg || "NO REG") + "</b> · " + esc(nice(k.name) || "Customer") + " · " + (k.kind === "picks" ? "PICKS, dropping off" : "DROPS, flying back" + (r && r.flight ? " · " + esc(r.flight) + (r.est_time ? " " + esc(r.est_time) : "") : ""))
+        : "<b>Not on today's cars</b>";
+      return '<div class="callpop" data-callid="' + k.id + '" style="background:#fff;color:#16181D;border:2px solid ' + (bad ? "#C62828" : "#1B7F3B") + ';border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:15px">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + (bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k)) + " · " + esc(phoneLabel(k.from_number) || "Number hidden") + "</span>" +
+        '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:20px;line-height:1;color:inherit">&times;</button></div>' +
+        '<div style="margin-top:4px">' + who + "</div>" + (callMarked(k) ? '<div style="margin-top:4px;color:#1B7F3B">' + esc(callMarked(k)) + "</div>" : "") +
+        (k.handled_name ? '<div style="margin-top:4px">' + esc(k.handled_name) + " has it</div>" : "") +
+        '<div class="row-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
+          (r && !done && !r.removed_at ? '<button type="button" class="btn brand small" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint">CALLED ✓</span>' : "") +
+          (r ? '<button type="button" class="btn ghost small" data-callopen="' + k.id + '">Open car</button>' : "") +
+          (!k.handled_name ? '<button type="button" class="btn ghost small" data-calltake="' + k.id + '">' + (bad ? "I'll call back" : "I've got it") + "</button>" : "") +
+          (bad && k.from_number ? '<a class="btn ghost small" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") +
+        "</div></div>";
+    }).join("");
+  }
+  async function callTake(id, btn) {
+    if (btn) btn.disabled = true;
+    var r = await sb.rpc("call_take", { p_call: +id });
+    if (r.error) { if (btn) btn.disabled = false; return toast(r.error.message, true); }
+    callEvent(r.data); if (S.view === "calls") loadCalls();
+  }
+  function callMark(id) {
+    var k = POP.calls.find(function (x) { return String(x.id) === String(id); }), r = k && callRow(k); if (!r) return;
+    if (r.kind === "drops") { if (!r.called_at) tapDrop(r, "called"); } else if (!r.pick_called) tapPick(r, "called", "Called");
+    callPopDraw();
+  }
+  // ── on the car: its calls, with the texts ──
+  async function carCalls(r) {
+    var el = $("carCalls"); if (!el) return;
+    var q = await sb.from("customer_calls").select("id, at, from_number, status, seconds, marked, kind, handled_name").eq("booking_id", r.id).order("at", { ascending: false }).limit(20);
+    el = $("carCalls"); if (!el || panelRow !== r) return;
+    var list = q.error ? null : q.data || [];
+    el.innerHTML = (isOps() ? '<div class="hint" style="margin-top:8px">Calls</div>' : "<label>CALLS</label>") + (list === null ? '<p class="hint">Couldn\'t load the calls.</p>' : !list.length ? '<p class="hint">No calls from this customer yet.</p>' :
+      '<div class="hist callist">' + list.map(function (k) {
+        return '<div><span class="hw num">' + esc(dayShort(k.at) + " " + hhmm(k.at)) + '</span><span class="hb"><b class="' + (k.status === "missed" ? "bad" : "") + '">' + esc(callWhat(k)) + "</b>" +
+          (k.handled_name ? " · " + esc(k.handled_name) : "") + (callMarked(k) ? '<span class="hv">' + esc(callMarked(k)) + "</span>" : "") + "</span></div>";
+      }).join("") + "</div>");
+  }
+  // ── Menu → Calls: today's calls, missed first ──
+  async function loadCalls() {
+    var since = new Date(Date.now() - 24 * 3600000).toISOString();
+    var q = await sb.from("customer_calls").select("*").gte("at", since).order("at", { ascending: false }).limit(300);
+    S.callsList = q.error ? false : q.data || [];
+    if (S.view === "calls") render();
+  }
+  function renderCalls() {
+    if (!callsAddon() || !can("called")) return '<div class="msg">Calls aren\'t switched on.</div>';
+    if (S.callsList === undefined || S.callsList === null) { S.callsList = 0; loadCalls(); }
+    var head = (isOps() ? '<div class="ops-head"><h1>Calls</h1></div>' : "<h2>Calls</h2>") + (callsOn() ? "" : '<p class="note">Calls are off. An owner switches them on in Settings → Calls.</p>');
+    if (!S.callsList) return head + '<p class="hint">' + (S.callsList === false ? "Couldn't load the calls." : "Loading…") + "</p>";
+    var f = S.callsFilter || "all", L0 = S.callsList, missed = L0.filter(function (k) { return k.status === "missed" && !k.handled_name; });
+    var list = f === "missed" ? missed : f === "unknown" ? L0.filter(function (k) { return !k.booking_id; }) : missed.concat(L0.filter(function (k) { return missed.indexOf(k) < 0; }));
+    var tab = function (k, t, n) { return '<button type="button" data-callsf="' + k + '" class="' + (f === k ? "on" : "") + '"' + ' aria-pressed="' + (f === k) + '">' + t + (n !== undefined ? " (" + n + ")" : "") + "</button>"; };
+    return head + '<div class="pseg" style="margin:10px 0">' + tab("all", "All", L0.length) + tab("missed", "To call back", missed.length) + tab("unknown", "Not on a booking", L0.filter(function (k) { return !k.booking_id; }).length) + "</div>" +
+      (!list.length ? '<p class="hint">No calls in the last 24 hours.</p>' : '<div class="box hist calls" style="max-height:none;overflow:visible">' + list.map(function (k) {
+        var bad = k.status === "missed" && !k.handled_name;
+        return '<div style="padding:8px 10px;border-bottom:1px solid rgba(0,0,0,.08)"><span class="hw num">' + esc(hhmm(k.at)) + '</span><span class="hb"><b class="' + (bad ? "bad" : "") + '">' + esc(callWhat(k)) + "</b> · " +
+          esc(phoneLabel(k.from_number) || "Number hidden") + " · " + (k.booking_id ? "<b>" + esc(k.reg || "NO REG") + "</b> " + esc(nice(k.name)) + " (" + (k.kind === "picks" ? "PICKS" : "DROPS") + ")" : "not on a booking") +
+          (callMarked(k) ? '<span class="hv">' + esc(callMarked(k)) + "</span>" : "") + (k.handled_name ? '<span class="hv">' + esc(k.handled_name) + (k.status === "missed" ? " called back" : " took it") + "</span>" : "") +
+          '<span class="row-actions" style="display:flex;gap:6px;margin-top:6px">' + (k.from_number ? '<a class="btn ghost small" href="tel:' + esc(dialable(k.from_number)) + '">Call</a>' : "") +
+          (bad ? '<button type="button" class="btn small" data-calltake="' + k.id + '">Called back</button>' : "") + "</span></span></div>";
+      }).join("") + "</div>");
+  }
+  // ── Settings → Calls (owners) ──
+  function callsHtml() {
+    if (!callsAddon() || !S.me || S.me.role !== "owner") return "";
+    var C = callsCfg(), ring = C.ring.concat(["", "", ""]).slice(0, 3);
+    function hrs(id, v) { var o = ""; for (var h = 0; h < 24; h++) for (var m = 0; m < 60; m += 30) { var t = pad(h) + ":" + pad(m); o += '<option value="' + t + '"' + (v === t ? " selected" : "") + ">" + t + "</option>"; } return '<select id="' + id + '">' + o + "</select>"; }
+    return setBox("calls", "Calls", C.on ? (C.auto === "on" ? "On · auto-answer" : C.auto === "times" ? "On · auto-answer " + C.from + "–" + C.to : "On") : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
+      '<label class="field">Calls in the app<select id="clOn"><option value="true"' + (C.on ? " selected" : "") + '>On</option><option value="false"' + (C.on ? "" : " selected") + ">Off</option></select></label>" +
+      '<label class="field">Twilio number (forward the office number to it)<input id="clNumber" type="tel" autocomplete="off" placeholder="e.g. 0161 850 0000" value="' + esc(C.number) + '"></label>' +
+      '<div class="section-label">Ring these phones</div>' + ring.map(function (n, i) { return '<label class="field">Phone ' + (i + 1) + '<input data-clring type="tel" autocomplete="off" placeholder="' + (i ? "optional" : "e.g. 07700 900123") + '" value="' + esc(n) + '"></label>'; }).join("") +
+      '<div class="section-label">Auto-answer</div><p class="note">Press 1 if you\'ve landed, 2 if you\'re on your way to drop off: the car is marked CALLED, then the call is put through.</p>' +
+      '<label class="field">Auto-answer<select id="clAuto"><option value="off"' + (C.auto === "off" ? " selected" : "") + '>Off</option><option value="times"' + (C.auto === "times" ? " selected" : "") + '>Between two times</option><option value="on"' + (C.auto === "on" ? " selected" : "") + ">Always</option></select></label>" +
+      '<div class="pair"><label class="field">From' + hrs("clFrom", C.from) + '</label><label class="field">Until' + hrs("clTo", C.to) + "</label></div>" +
+      '<label class="field">Words (empty: the standard ones)<textarea id="clWords" maxlength="400" rows="3" placeholder="Thank you for calling ' + esc(brandName()) + '. If you have landed, press 1. If you are on your way to drop off your car, press 2. To speak to someone, stay on the line.">' + esc(C.words) + "</textarea></label>" +
+      '<div class="row-actions"><button type="button" class="btn brand" data-savecalls>Save calls</button></div>');
+  }
+  async function saveCalls(btn) {
+    var p = { on: $("clOn").value === "true", number: $("clNumber").value.trim(), ring: Array.prototype.map.call(document.querySelectorAll("[data-clring]"), function (x) { return x.value.trim(); }).filter(Boolean),
+      auto: $("clAuto").value, from: $("clFrom").value, to: $("clTo").value, words: $("clWords").value.trim() };
+    if (p.on && (!p.number || !p.ring.length)) return toast("Add the Twilio number and a phone to ring.", true);
+    btn.disabled = true;
+    var r = await sb.rpc("set_calls", { p: p });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    savedSec(btn); S.company.calls = r.data;
+    toast(r.data.on ? "Saved: calls on" : "Calls off"); render();
   }
   // ── events ────────────────────────────────
   // A personal link opened while this page is already open only changes the hash.
@@ -6688,6 +6823,12 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
+    if (t.dataset.savecalls !== undefined) return saveCalls(t);
+    if (t.dataset.callclose) return callGone(+t.dataset.callclose);
+    if (t.dataset.callmark) return callMark(t.dataset.callmark);
+    if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
+    if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
+    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }), cr = ck && callRow(ck); if (cr) openPanel(cr); return; }
     if (t.dataset.txtest !== undefined) return testText(t);
     if (t.dataset.txpick) return pickText(t.dataset.txpick);
     if (t.dataset.txsend) return sendTextNow(t);
@@ -6965,7 +7106,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -6986,6 +7127,7 @@
   var MENU_ICON = {
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     flights: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
     summary: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
     archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
@@ -7010,7 +7152,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "flights", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

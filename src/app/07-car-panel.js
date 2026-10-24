@@ -187,7 +187,7 @@
       // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
       var side = "";
       if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
-      side += pay + early + (texts ? opsSec("Texts") + texts : "") + photos + rm;
+      side += pay + early + (texts ? opsSec(carCommsTitle()) + texts : "") + photos + rm;
       if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
       var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
       // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
@@ -202,6 +202,7 @@
     ptPhotosList(r);
     carHistory(r);
     carTexts(r);
+    carCalls(r);
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
@@ -232,7 +233,7 @@
     var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
     var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
       sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
-      sec("rf-texts", "Texts", P.texts) +
+      sec("rf-texts", carCommsTitle(), P.texts) +
       sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
       (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
     var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
