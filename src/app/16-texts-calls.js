@@ -14,7 +14,7 @@
       "Hi {name}, a reminder from {company}: we meet you at {meet} on {date} at {time}. Please call {office} 30 min before you arrive."]];
   var TEXT_LABEL = { landed: "Flight landed", sent: "Car on its way", reminder: "Reminder", manual: "Text" };
   function textsCfg() {
-    var t = (S.company && S.company.texts) || {}, out = { on: t.on === true, demo: t.on === true && t.demo === true, sender: t.sender || "", office: t.office || "", meet: t.meet || "", at: t.at || "18:00" };
+    var t = (S.company && S.company.texts) || {}, out = { on: t.on === true, demo: t.on === true && t.demo === true, via: t.via === "twilio" ? "twilio" : "phone", sender: t.sender || "", office: t.office || "", meet: t.meet || "", at: t.at || "18:00" };
     TEXT_RULES.forEach(function (x) { var r = t[x[0]] || {}; out[x[0]] = { on: r.on !== false, text: r.text || x[3] }; });
     return out;
   }
@@ -49,7 +49,8 @@
     return setBox("texts", "Customer texts", T.demo ? "Demo" : T.on ? TEXT_RULES.filter(function (x) { return T[x[0]].on; }).length + " of 3 on" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Texts to customers<select id="txOn"><option value="true"' + (T.on && !T.demo ? " selected" : "") + '>On</option><option value="demo"' + (T.demo ? " selected" : "") + ">Demo: write them on each car, don't send</option>" +
         '<option value="false"' + (T.on ? "" : " selected") + ">Off</option></select></label>" +
-      '<label class="field">Sent from (up to 11 letters)<input id="txSender" maxlength="11" autocomplete="off" autocapitalize="characters" placeholder="e.g. TAKEOFF" value="' + esc(T.sender) + '"></label>' +
+      '<label class="field">Send texts from<select id="txVia"><option value="phone"' + (T.via === "phone" ? " selected" : "") + '>The company mobile (free, Settings → Office phone)</option><option value="twilio"' + (T.via === "twilio" ? " selected" : "") + ">Twilio (about 4p a text)</option></select></label>" +
+      '<label class="field">Company name in texts (up to 11 letters)<input id="txSender" maxlength="11" autocomplete="off" autocapitalize="characters" placeholder="e.g. TAKEOFF" value="' + esc(T.sender) + '"></label>' +
       '<label class="field">Office number for customers to call<input id="txOffice" type="tel" autocomplete="off" placeholder="e.g. 0161 496 0000" value="' + esc(T.office) + '"></label>' +
       '<label class="field">Meeting point<input id="txMeet" autocomplete="off" maxlength="80" placeholder="e.g. Terminal 2 short stay, level 1" value="' + esc(T.meet) + '"></label>' +
       TEXT_RULES.map(function (x) {
@@ -60,18 +61,18 @@
           '<label class="field">Words<textarea data-txrule="' + x[0] + '" maxlength="459" rows="3">' + esc(R.text) + "</textarea></label>" +
           '<p class="note txprev" style="border-left:3px solid currentColor;padding-left:10px" data-txprev="' + x[0] + '">' + textPrev(R.text, sample) + "</p>";
       }).join("") +
-      '<p class="note">{name} the customer (Ms Khaira), {reg}, {office}, {meet}, {date} and {time} of the drop-off, {company}. Customers can\'t reply to these texts.</p>' +
+      '<p class="note">{name} the customer (Ms Khaira), {reg}, {office}, {meet}, {date} and {time} of the drop-off, {company}.' + (T.via === "twilio" ? " Customers can\'t reply to Twilio texts." : " Replies come to the company mobile.") + "</p>" +
       '<label class="field">Test to your mobile<input id="txTestTo" data-nodirty type="tel" autocomplete="off" placeholder="07…"></label>' +
       '<div class="row-actions"><button type="button" class="btn ghost small" data-txtest>Send me a test</button><button type="button" class="btn brand" data-savetexts>Save texts</button></div>');
   }
   function textsForm() {
-    var p = { on: $("txOn").value !== "false", demo: $("txOn").value === "demo", sender: $("txSender").value.trim(), office: $("txOffice").value.trim(), meet: $("txMeet").value.trim(), at: $("txAt").value };
+    var p = { on: $("txOn").value !== "false", demo: $("txOn").value === "demo", via: $("txVia").value, sender: $("txSender").value.trim(), office: $("txOffice").value.trim(), meet: $("txMeet").value.trim(), at: $("txAt").value };
     TEXT_RULES.forEach(function (x) { p[x[0]] = { on: document.querySelector('[data-txon="' + x[0] + '"]').checked, text: document.querySelector('[data-txrule="' + x[0] + '"]').value.trim() }; });
     return p;
   }
   async function saveTexts(btn) {
     var p = textsForm();
-    if (p.on && !/^[A-Za-z0-9 ]{1,11}$/.test(p.sender)) return toast("Sent from: up to 11 letters or numbers.", true);
+    if (p.sender ? !/^[A-Za-z0-9 ]{1,11}$/.test(p.sender) : p.on && p.via === "twilio") return toast("Company name: up to 11 letters or numbers.", true);
     if (p.on && !p.office) return toast("Add the office number customers call.", true);
     btn.disabled = true;
     var r = await sb.rpc("set_texts", { p: p });
@@ -137,7 +138,7 @@
   // (on the way to drop off) and marks the car itself. The car lists its calls;
   // Menu → Calls lists today's, missed first, to ring back.
   function callsAddon() { return !!(S.company && S.company.brand && S.company.brand.calls === true); }
-  function callsCfg() { var c = (S.company && S.company.calls) || {}; return { on: c.on === true, number: c.number || "", ring: c.ring || [], auto: c.auto || "off", from: c.from || "20:00", to: c.to || "02:00", words: c.words || "" }; }
+  function callsCfg() { var c = (S.company && S.company.calls) || {}; return { on: c.on === true, via: c.via === "twilio" ? "twilio" : "phone", number: c.number || "", ring: c.ring || [], auto: c.auto || "off", from: c.from || "20:00", to: c.to || "02:00", words: c.words || "" }; }
   function callsOn() { return callsAddon() && callsCfg().on; }
   var CALL_STATE = { ringing: "Ringing", answered: "Answered", missed: "Missed", auto: "Auto-answered" };
   function callSecs(s) { s = +s || 0; return s ? Math.floor(s / 60) + ":" + pad(s % 60) : ""; }
@@ -237,24 +238,73 @@
     if (!callsAddon() || !S.me || S.me.role !== "owner") return "";
     var C = callsCfg(), ring = C.ring.concat(["", "", ""]).slice(0, 3);
     function hrs(id, v) { var o = ""; for (var h = 0; h < 24; h++) for (var m = 0; m < 60; m += 30) { var t = pad(h) + ":" + pad(m); o += '<option value="' + t + '"' + (v === t ? " selected" : "") + ">" + t + "</option>"; } return '<select id="' + id + '">' + o + "</select>"; }
-    return setBox("calls", "Calls", C.on ? (C.auto === "on" ? "On · auto-answer" : C.auto === "times" ? "On · auto-answer " + C.from + "–" + C.to : "On") : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
+    return setBox("calls", "Calls", !C.on ? "Off" : C.via === "phone" ? "On · company mobile" : C.auto === "on" ? "On · auto-answer" : C.auto === "times" ? "On · auto-answer " + C.from + "–" + C.to : "On · Twilio", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       '<label class="field">Calls in the app<select id="clOn"><option value="true"' + (C.on ? " selected" : "") + '>On</option><option value="false"' + (C.on ? "" : " selected") + ">Off</option></select></label>" +
+      '<label class="field">Calls come in on<select id="clVia"><option value="phone"' + (C.via === "phone" ? " selected" : "") + '>The company mobile (free, Settings → Office phone)</option><option value="twilio"' + (C.via === "twilio" ? " selected" : "") + ">A Twilio number (about £1 a month, adds auto-answer)</option></select></label>" +
+      '<div id="clTwilio"' + (C.via === "twilio" ? "" : " hidden") + ">" +
       '<label class="field">Twilio number (forward the office number to it)<input id="clNumber" type="tel" autocomplete="off" placeholder="e.g. 0161 850 0000" value="' + esc(C.number) + '"></label>' +
       '<div class="section-label">Ring these phones</div>' + ring.map(function (n, i) { return '<label class="field">Phone ' + (i + 1) + '<input data-clring type="tel" autocomplete="off" placeholder="' + (i ? "optional" : "e.g. 07700 900123") + '" value="' + esc(n) + '"></label>'; }).join("") +
       '<div class="section-label">Auto-answer</div><p class="note">Press 1 if you\'ve landed, 2 if you\'re on your way to drop off: the car is marked CALLED, then the call is put through.</p>' +
       '<label class="field">Auto-answer<select id="clAuto"><option value="off"' + (C.auto === "off" ? " selected" : "") + '>Off</option><option value="times"' + (C.auto === "times" ? " selected" : "") + '>Between two times</option><option value="on"' + (C.auto === "on" ? " selected" : "") + ">Always</option></select></label>" +
       '<div class="pair"><label class="field">From' + hrs("clFrom", C.from) + '</label><label class="field">Until' + hrs("clTo", C.to) + "</label></div>" +
-      '<label class="field">Words (empty: the standard ones)<textarea id="clWords" maxlength="400" rows="3" placeholder="Thank you for calling ' + esc(brandName()) + '. If you have landed, press 1. If you are on your way to drop off your car, press 2. To speak to someone, stay on the line.">' + esc(C.words) + "</textarea></label>" +
+      '<label class="field">Words (empty: the standard ones)<textarea id="clWords" maxlength="400" rows="3" placeholder="Thank you for calling ' + esc(brandName()) + '. If you have landed, press 1. If you are on your way to drop off your car, press 2. To speak to someone, stay on the line.">' + esc(C.words) + "</textarea></label></div>" +
       '<div class="row-actions"><button type="button" class="btn brand" data-savecalls>Save calls</button></div>');
   }
   async function saveCalls(btn) {
-    var p = { on: $("clOn").value === "true", number: $("clNumber").value.trim(), ring: Array.prototype.map.call(document.querySelectorAll("[data-clring]"), function (x) { return x.value.trim(); }).filter(Boolean),
+    var p = { on: $("clOn").value === "true", via: $("clVia").value, number: $("clNumber").value.trim(), ring: Array.prototype.map.call(document.querySelectorAll("[data-clring]"), function (x) { return x.value.trim(); }).filter(Boolean),
       auto: $("clAuto").value, from: $("clFrom").value, to: $("clTo").value, words: $("clWords").value.trim() };
-    if (p.on && (!p.number || !p.ring.length)) return toast("Add the Twilio number and a phone to ring.", true);
+    if (p.on && p.via === "twilio" && (!p.number || !p.ring.length)) return toast("Add the Twilio number and a phone to ring.", true);
     btn.disabled = true;
     var r = await sb.rpc("set_calls", { p: p });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
     savedSec(btn); S.company.calls = r.data;
     toast(r.data.on ? "Saved: calls on" : "Calls off"); render();
+  }
+  // ── Settings → Office phone (owners): the Android phone with the company SIM ──
+  // MacroDroid on it tells the app about each call (its link holds a key, shown
+  // once); the SMS Gateway app on it sends the texts (its login, password in Vault).
+  document.addEventListener("change", function (e) { if (e.target.id === "clVia" && $("clTwilio")) $("clTwilio").hidden = e.target.value !== "twilio"; });
+  function phoneLink(k) { return CFG.url + "/functions/v1/calls?step=phone&key=" + k; }
+  function officePhoneHtml() {
+    if (!(textsAddon() || callsAddon()) || !S.me || S.me.role !== "owner") return "";
+    if (S.ophone === undefined) { S.ophone = null; sb.rpc("office_phone_status").then(function (r) { S.ophone = r.error ? false : r.data; if (S.view === "settings") render(); }); }
+    if (S.ophone === false) return "";
+    var O = S.ophone || {}, seen = O.last_seen ? dayShort(O.last_seen) + " " + hhmm(O.last_seen) : "";
+    var link = S.ophoneKey ? phoneLink(S.ophoneKey) : "";
+    var calls = callsAddon() ? '<div class="section-label">Calls: MacroDroid (free)</div>' +
+      '<p class="note">' + (O.linked ? "Linked" + (seen ? ". Last heard from the phone " + esc(seen) + "." : ", not heard from yet.") : "Not linked yet.") + "</p>" +
+      (link ? '<p class="note">The phone\'s link, shown once. Copy it into MacroDroid now:</p><p class="note" style="word-break:break-all;border-left:3px solid currentColor;padding-left:10px">' + esc(link) + "</p>" +
+        '<div class="row-actions"><button type="button" class="btn ghost small" data-copy="' + esc(link) + '">Copy link</button></div>' +
+        '<ol class="note" style="padding-left:20px">' +
+          "<li>On the office Android phone, install MacroDroid.</li>" +
+          "<li>Macro 1: trigger <b>Call Incoming</b>, action <b>HTTP Request</b> (POST) to the link with <b>&amp;event=ringing&amp;number=</b> and the caller's number (Magic text: Call number).</li>" +
+          "<li>Macro 2: trigger <b>Call Active</b> (incoming), the same with <b>event=answered</b>.</li>" +
+          "<li>Macro 3: trigger <b>Call Missed</b>, the same with <b>event=missed</b>.</li>" +
+          "<li>Test: send the link with <b>&amp;event=test</b>; this box then says when it last heard from the phone.</li></ol>" : "") +
+      '<div class="row-actions"><button type="button" class="btn ' + (O.linked ? "ghost small" : "brand") + '" data-ophonekey>' + (O.linked ? "New link (the old one stops)" : "Link the phone") + "</button>" +
+        (O.linked ? '<button type="button" class="btn ghost small" data-ophonecheck>Check again</button>' : "") + "</div>" : "";
+    var texts = textsAddon() ? '<div class="section-label">Texts: SMS Gateway for Android (free)</div>' +
+      '<p class="note">Install SMS Gateway on the same phone, switch on its Cloud server, and type the username and password it shows.</p>' +
+      '<label class="field">Username<input id="opLogin" autocomplete="off" autocapitalize="none" spellcheck="false" value="' + esc(O.gw_login || "") + '"></label>' +
+      '<label class="field">Password <span class="note">' + (S.ophone ? (O.has_pass ? "✓ saved" : "not set") : "…") + '</span><input id="opPass" type="password" autocomplete="new-password" placeholder="' + (O.has_pass ? "Type a new one to replace it" : "") + '"></label>' +
+      '<div class="row-actions"><button type="button" class="btn brand" data-ophonesave>Save texting login</button></div>' : "";
+    return setBox("ophone", "Office phone", !S.ophone ? "" : O.linked || O.has_pass ? "Set up" + (seen ? " · heard " + hhmm(O.last_seen) : "") : "Not set up", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
+      '<p class="note">An Android phone with the company SIM, kept on and charging in the office.</p>' + calls + texts);
+  }
+  async function officePhoneKey(btn) {
+    if (S.ophone && S.ophone.linked && !confirm("Make a new link? The phone's old link stops working until MacroDroid has the new one.")) return;
+    btn.disabled = true;
+    var r = await sb.rpc("office_phone_new_key");
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    S.ophoneKey = r.data; S.ophone = Object.assign({}, S.ophone, { linked: true, last_seen: null }); render();
+  }
+  async function officePhoneCheck() { var r = await sb.rpc("office_phone_status"); if (!r.error) { S.ophone = r.data; render(); } }
+  async function officePhoneSave(btn) {
+    btn.disabled = true;
+    var r = await sb.rpc("office_phone_gateway_set", { p_login: $("opLogin").value.trim(), p_password: $("opPass").value || null });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    savedSec(btn); S.ophone = r.data; toast(r.data.gw_login ? "Saved: texting login" : "Texting login removed"); render();
   }

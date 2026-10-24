@@ -85,11 +85,40 @@ for (const theme of ["stdplus", "ops", "ops-refined", "premium"]) await scenario
   await page.click('#menuBody [data-view="settings"]'); await sleep(500);
   if (await page.$('[data-setsec="calls"]')) { await page.click('[data-setsec="calls"]'); await sleep(200); }
   if (await page.$('[data-settab="calls"]')) { await page.click('[data-settab="calls"]'); await sleep(200); }
+  check("Settings → Calls (" + theme + "): the company mobile by default, Twilio boxes hidden", await page.inputValue("#clVia") === "phone" && !(await page.isVisible("#clNumber")));
+  await page.selectOption("#clVia", "twilio"); await sleep(100);
   await page.locator("[data-clring]").nth(1).fill("07700 900456");
   await page.selectOption("#clAuto", "on");
   await page.click("[data-savecalls]"); await sleep(400);
   const p = db.calls.filter((x) => x.fn === "set_calls").pop()?.args.p;
-  check("Settings → Calls (" + theme + "): saves the numbers and auto-answer", p && p.on === true && p.number === "0161 850 0000" && p.ring.join() === "07700 900123,07700 900456" && p.auto === "on", p);
+  check("Settings → Calls (" + theme + "): saves the numbers and auto-answer", p && p.on === true && p.via === "twilio" && p.number === "0161 850 0000" && p.ring.join() === "07700 900123,07700 900456" && p.auto === "on", p);
   check("Settings → Calls (" + theme + "): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "calls");
+
+// The company mobile (free): Settings → Office phone links the phone (its link shown once with the steps)
+// and saves the SMS Gateway login; Calls saved with via phone.
+for (const theme of ["stdplus", "ops", "premium"]) await scenario(async () => {
+  const db = callsDb(theme); db.company.brand.texts = true; db.company.texts = { on: true, office: "0161 496 0000", meet: "T2" }; db.company.calls.via = "phone";
+  const page = await phone(browser, db), asked = [];
+  page.removeAllListeners("dialog"); page.on("dialog", (d) => { asked.push(d.message()); d.accept(); });
+  await open(page);
+  await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(200);
+  await page.click('#menuBody [data-view="settings"]'); await sleep(600);
+  if (await page.$('[data-setsec="ophone"]')) { await page.click('[data-setsec="ophone"]'); await sleep(200); }
+  check("Office phone (" + theme + "): not linked to start", /Not linked yet/.test(await page.innerText('[data-sec="ophone"]')));
+  await page.click("[data-ophonekey]"); await sleep(400);
+  const t = await page.innerText('[data-sec="ophone"]');
+  check("Office phone (" + theme + "): the phone's link, once, with the MacroDroid steps", /functions\/v1\/calls\?step=phone&key=K3y_example-123/.test(t) && /Call Incoming/.test(t) && /event=missed/.test(t) && await page.isVisible('[data-copy*="step=phone"]'), t.slice(0, 300));
+  await page.click("[data-ophonekey]"); await sleep(300);
+  check("Office phone (" + theme + "): a new link asks first", asked.length === 1 && /old link stops/.test(asked[0]), asked);
+  await page.fill("#opLogin", "ABCDEF"); await page.fill("#opPass", "secret-pass"); await page.click("[data-ophonesave]"); await sleep(400);
+  const g = db.calls.filter((x) => x.fn === "office_phone_gateway_set").pop()?.args;
+  check("Office phone (" + theme + "): the SMS Gateway login is saved, the password only sent", g && g.p_login === "ABCDEF" && g.p_password === "secret-pass" && /✓ saved/.test(await page.innerText('[data-sec="ophone"]')) && await page.inputValue("#opPass") === "", g);
+  if (await page.$('[data-setsec="calls"]')) { await page.click('[data-setsec="calls"]'); await sleep(200); }
+  await page.click("[data-savecalls]"); await sleep(300);
+  const p = db.calls.filter((x) => x.fn === "set_calls").pop()?.args.p;
+  check("Office phone (" + theme + "): calls on the company mobile save without a Twilio number", p && p.on === true && p.via === "phone", p);
+  check("Office phone (" + theme + "): no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
 }, "calls");

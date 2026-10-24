@@ -9,7 +9,9 @@
 -- Owners set it in Settings → Customer texts (set_texts): on, demo or off (demo:
 -- every text is written on its car as it would go, none is sent or paid for), the sender
 -- name (up to 11 letters), the office number, the meeting point, and each
--- text's on/off and words. The send-texts function sends them through Twilio,
+-- text's on/off and words. The send-texts function sends them from the company
+-- mobile (an Android phone with the free SMS Gateway app, its login in Vault:
+-- office_phone_gateway_set) or through Twilio (texts.via 'phone' / 'twilio'),
 -- once per car and kind (alert_log 'text:<rule>:<booking>'), writes each one to
 -- customer_texts (the car's Texts list) and to the activity log (TEXT).
 -- Needs send-texts deployed and the TWILIO_* secrets first. Safe to run twice.
@@ -66,10 +68,12 @@ begin
   if coalesce(p->>'sender', '') !~ '^[A-Za-z0-9 ]{0,11}$' then raise exception 'Sent from: up to 11 letters or numbers.'; end if;
   if length(coalesce(p->>'office', '')) > 30 or length(coalesce(p->>'meet', '')) > 80 then raise exception 'The office number or meeting point is too long.'; end if;
   if coalesce(p->>'at', '18:00') !~ '^(0[89]|1[0-9]|2[01]):00$' then raise exception 'Send the reminder between 08:00 and 21:00.'; end if;
-  if (p->>'on')::boolean is true and (coalesce(trim(p->>'sender'), '') = '' or coalesce(trim(p->>'office'), '') = '') then
-    raise exception 'Add who it''s sent from and the office number first.';
+  if coalesce(p->>'via', 'phone') not in ('phone', 'twilio') then raise exception 'Texts go from the company mobile or Twilio.'; end if;
+  if (p->>'on')::boolean is true and coalesce(trim(p->>'office'), '') = '' then raise exception 'Add the office number first.'; end if;
+  if (p->>'on')::boolean is true and coalesce(p->>'via', 'phone') = 'twilio' and coalesce(trim(p->>'sender'), '') = '' then
+    raise exception 'Add who it''s sent from first.';
   end if;
-  out := jsonb_build_object('on', coalesce((p->>'on')::boolean, false),
+  out := jsonb_build_object('on', coalesce((p->>'on')::boolean, false), 'via', coalesce(p->>'via', 'phone'),
     'demo', coalesce((p->>'on')::boolean, false) and coalesce((p->>'demo')::boolean, false), 'sender', upper(trim(coalesce(p->>'sender', ''))),
     'office', trim(coalesce(p->>'office', '')), 'meet', trim(coalesce(p->>'meet', '')), 'at', coalesce(p->>'at', '18:00'));
   foreach k in array array['landed', 'sent', 'reminder'] loop
@@ -80,13 +84,80 @@ begin
   insert into activity(company_id, staff_id, staff_name, action, value)
   values (s.company_id, s.id, s.name, 'SETTINGS', case when (out->>'on')::boolean then 'Customer texts ' || case when (out->>'demo')::boolean then 'demo (not sent)' else 'on' end || ': ' ||
     concat_ws(', ', case when (out->'landed'->>'on')::boolean then 'flight landed' end, case when (out->'sent'->>'on')::boolean then 'car on its way' end,
-      case when (out->'reminder'->>'on')::boolean then 'reminder at ' || (out->>'at') end) || ', from ' || (out->>'sender')
+      case when (out->'reminder'->>'on')::boolean then 'reminder at ' || (out->>'at') end) || case when out->>'via' = 'twilio' then ', from ' || (out->>'sender') || ' (Twilio)' else ', from the company mobile' end
     else 'Customer texts off' end);
   return out;
 end;
 $$;
 revoke execute on function set_texts(jsonb) from public, anon;
 grant execute on function set_texts(jsonb) to authenticated;
+
+-- The office phone (an Android phone with the company's SIM): the SMS Gateway
+-- app's login for texts (password in Vault, never back to the app), and from part
+-- 115 the key its call app uses. One row per company.
+create table if not exists private.office_phone (
+  company_id uuid primary key references companies(id),
+  gw_login   text not null default '',
+  gw_secret  uuid,
+  has_pass   boolean not null default false,
+  key_hash   text,
+  key_at     timestamptz,
+  last_seen  timestamptz,
+  saved_by   text not null default '',
+  saved_at   timestamptz
+);
+revoke all on private.office_phone from public, anon, authenticated;
+
+create or replace function office_phone_status()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare s staff := me(); o private.office_phone;
+begin
+  if s.role <> 'owner' then raise exception 'Only an owner can see the office phone.'; end if;
+  select * into o from private.office_phone where company_id = s.company_id;
+  return jsonb_build_object('gw_login', coalesce(o.gw_login, ''), 'has_pass', coalesce(o.has_pass, false), 'linked', o.key_hash is not null,
+    'key_at', o.key_at, 'last_seen', o.last_seen, 'saved_by', coalesce(o.saved_by, ''), 'saved_at', o.saved_at);
+end;
+$$;
+revoke execute on function office_phone_status() from public, anon;
+grant execute on function office_phone_status() to authenticated;
+
+-- The SMS Gateway app's username and password (owners). A null password keeps the saved one.
+create or replace function office_phone_gateway_set(p_login text, p_password text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare s staff := me(); o private.office_phone; l text := btrim(coalesce(p_login, '')); sid uuid;
+begin
+  if s.role <> 'owner' then raise exception 'Only an owner can change the office phone.'; end if;
+  if length(l) > 200 or length(coalesce(p_password, '')) > 200 then raise exception 'The login is 200 characters at most.'; end if;
+  insert into private.office_phone(company_id) values (s.company_id) on conflict do nothing;
+  select * into o from private.office_phone where company_id = s.company_id for update;
+  if l <> '' and p_password is null and not o.has_pass then raise exception 'Enter the password.'; end if;
+  sid := o.gw_secret;
+  if p_password is not null or l = '' then
+    if sid is null then sid := vault.create_secret(coalesce(p_password, ''), 'office_phone_sms:' || s.company_id, 'SMS Gateway password');
+    else perform vault.update_secret(sid, case when l = '' then '' else coalesce(p_password, '') end); end if;
+  end if;
+  update private.office_phone set gw_login = l, gw_secret = sid,
+    has_pass = case when l = '' then false when p_password is null then has_pass else p_password <> '' end, saved_by = s.name, saved_at = now()
+  where company_id = s.company_id;
+  insert into activity(company_id, staff_id, staff_name, action, value)
+  values (s.company_id, s.id, s.name, 'SETTINGS', case when l = '' then 'Office phone texting login removed' else 'Office phone texting login saved' end);
+  return office_phone_status();
+end;
+$$;
+revoke execute on function office_phone_gateway_set(text, text) from public, anon;
+grant execute on function office_phone_gateway_set(text, text) to authenticated;
+
+-- For send-texts only.
+create or replace function office_phone_gateway(p_company uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('login', o.gw_login, 'password', coalesce(d.decrypted_secret, ''))
+  from private.office_phone o left join vault.decrypted_secrets d on d.id = o.gw_secret
+  where o.company_id = p_company and o.gw_login <> '' and o.has_pass;
+$$;
+revoke execute on function office_phone_gateway(uuid) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then grant execute on function office_phone_gateway(uuid) to service_role; end if;
+end $$;
 
 -- Where the database calls send-texts (the same project as send-alerts).
 create table if not exists private.text_config (one boolean primary key default true check (one), function_url text);

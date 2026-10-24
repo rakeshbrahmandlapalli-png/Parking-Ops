@@ -3,6 +3,9 @@
 -- back to part 114's; customer_calls and companies.calls are kept (the record).
 begin;
 drop function if exists call_in(text, text, text);
+drop function if exists call_phone(text, text, text, int);
+drop function if exists office_phone_new_key();
+drop function if exists private.call_start(uuid, text, text);
 drop function if exists call_digit(text, text);
 drop function if exists call_end(text, text, int);
 drop function if exists call_take(bigint);

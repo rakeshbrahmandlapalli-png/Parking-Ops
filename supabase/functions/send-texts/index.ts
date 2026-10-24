@@ -1,6 +1,8 @@
 // Supabase Edge Function: send-texts (database part 114)
 //
-// Texts to customers through Twilio, for clients with the Customer texts add-on
+// Texts to customers from the company mobile (texts.via 'phone': an Android phone
+// with the free SMS Gateway app, login from office_phone_gateway) or through
+// Twilio (texts.via 'twilio'), for clients with the Customer texts add-on
 // (companies.brand.texts) and texts switched on in Settings (companies.texts):
 //   landed    DROPS: the flight landed          } the database trigger bookings_text,
 //   sent      DROPS: a driver was SENT          } { type: "booking", id, rule }, x-timer header
@@ -26,6 +28,8 @@ const URL_ = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(URL_, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "", TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
 const SELF = URL_ + "/functions/v1/send-texts";
+// The SMS Gateway for Android cloud service (sms-gate.app); SMS_GATEWAY_URL for the app's own local server instead.
+const GATEWAY = (Deno.env.get("SMS_GATEWAY_URL") ?? "https://api.sms-gate.app").replace(/\/$/, "");
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -62,6 +66,23 @@ async function send(company: { id: string; name: string; texts: Cfg }, rule: Rul
     staff_id: who.id ?? null, staff_name: who.name ?? "", status: "queued", error: "" };
   if (!to) { row.status = "skipped"; row.error = "not a UK mobile"; }
   else if (company.texts.demo === true && rule !== "test") { row.status = "demo"; }
+  else if (company.texts.via !== "twilio") {
+    // The company mobile: the SMS Gateway app on the office phone sends it from the company's own number.
+    const { data: gw } = await db.rpc("office_phone_gateway", { p_company: company.id });
+    if (!gw?.login) { row.status = "failed"; row.error = "office phone not set up"; }
+    else {
+      const auth = "Basic " + btoa(gw.login + ":" + gw.password), url = GATEWAY + "/3rdparty/v1/message";
+      const post = (payload: unknown) => fetch(url, { method: "POST", body: JSON.stringify(payload), headers: { Authorization: auth, "Content-Type": "application/json" } });
+      try {
+        // Newer app versions take textMessage, older ones message.
+        let res = await post({ textMessage: { text: body }, phoneNumbers: [to] });
+        if (res.status === 400) res = await post({ message: body, phoneNumbers: [to] });
+        const out = await res.json().catch(() => ({}));
+        if (res.ok) { row.status = "sent"; (row as any).provider_id = out.id ? "gw-" + out.id : null; }
+        else { row.status = "failed"; row.error = String(out.message || "office phone error " + res.status).slice(0, 200); }
+      } catch (e) { row.status = "failed"; row.error = "couldn't reach the office phone"; }
+    }
+  }
   else if (!SID || !TOKEN) { row.status = "failed"; row.error = "texting not set up"; }
   else {
     const form = new URLSearchParams({ To: to, From: String(company.texts.sender || "").replace(/\s+/g, "").slice(0, 11) || "PARKING", Body: body, StatusCallback: SELF + "?status=1" });

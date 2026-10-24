@@ -3,8 +3,11 @@
 -- Customers ring the office when they land (DROPS) and when they're on their way
 -- to drop the car off (PICKS). The user chose "Both": a caller pop-up with a call
 -- log, and an auto-answer that can be switched on at busy times.
--- The office number is forwarded to the client's Twilio number; Twilio asks the
--- calls function, which asks this part:
+-- Calls come in on the company mobile (calls.via 'phone', free: an Android phone
+-- with the company SIM runs MacroDroid, which tells the calls function "ringing
+-- from 07…", then "answered" or "missed": call_phone, with the phone's key from
+-- Settings → Office phone) or on a Twilio number the office number is forwarded
+-- to (calls.via 'twilio'); Twilio asks the calls function, which asks this part:
 --   call_in      a call comes in: which client (by the number called), which car
 --                (the caller's number on tonight's DROPS or today's PICKS), what to do
 --   call_digit   auto-answer: 1 = landed (DROPS car CALLED), 2 = on the way to drop
@@ -70,6 +73,7 @@ declare
   s staff := me();
   ring text[] := coalesce((select array_agg(trim(v)) from jsonb_array_elements_text(coalesce(p->'ring', '[]')) v where trim(v) <> ''), '{}');
   mode text := coalesce(p->>'auto', 'off');
+  via text := coalesce(p->>'via', 'phone');
   out jsonb;
 begin
   if s.role <> 'owner' then raise exception 'Only an owner can change calls.'; end if;
@@ -77,20 +81,24 @@ begin
   if coalesce(p->>'number', '') <> '' and length(private.phone10(p->>'number')) <> 10 then raise exception 'Check the Twilio number.'; end if;
   if coalesce(array_length(ring, 1), 0) > 3 then raise exception 'Up to 3 numbers to ring.'; end if;
   if exists (select 1 from unnest(ring) r where length(private.phone10(r)) <> 10) then raise exception 'Check the numbers to ring.'; end if;
-  if (p->>'on')::boolean is true and (coalesce(p->>'number', '') = '' or coalesce(array_length(ring, 1), 0) = 0) then
+  if via not in ('phone', 'twilio') then raise exception 'Calls come in on the company mobile or a Twilio number.'; end if;
+  if (p->>'on')::boolean is true and via = 'twilio' and (coalesce(p->>'number', '') = '' or coalesce(array_length(ring, 1), 0) = 0) then
     raise exception 'Add the Twilio number and at least one number to ring first.';
   end if;
+  -- A mobile can't answer by itself: auto-answer is for a Twilio number only.
+  if via = 'phone' then mode := 'off'; end if;
   if mode not in ('off', 'on', 'times') then raise exception 'Auto-answer is Off, On or between two times.'; end if;
   if mode = 'times' and (coalesce(p->>'from', '') !~ '^([01]\d|2[0-3]):[0-5]\d$' or coalesce(p->>'to', '') !~ '^([01]\d|2[0-3]):[0-5]\d$') then
     raise exception 'Pick when auto-answer starts and stops.';
   end if;
   if length(coalesce(p->>'words', '')) > 400 then raise exception 'The auto-answer words are 400 letters at most.'; end if;
-  out := jsonb_build_object('on', coalesce((p->>'on')::boolean, false), 'number', trim(coalesce(p->>'number', '')), 'ring', to_jsonb(ring),
+  out := jsonb_build_object('on', coalesce((p->>'on')::boolean, false), 'via', via, 'number', trim(coalesce(p->>'number', '')), 'ring', to_jsonb(ring),
     'auto', mode, 'from', coalesce(p->>'from', '20:00'), 'to', coalesce(p->>'to', '02:00'), 'words', trim(coalesce(p->>'words', '')));
   update companies set calls = out where id = s.company_id;
   insert into activity(company_id, staff_id, staff_name, action, value)
-  values (s.company_id, s.id, s.name, 'SETTINGS', case when (out->>'on')::boolean then 'Calls on: ring ' || array_to_string(ring, ', ') ||
-    ', auto-answer ' || case mode when 'on' then 'on' when 'times' then (out->>'from') || '–' || (out->>'to') else 'off' end else 'Calls off' end);
+  values (s.company_id, s.id, s.name, 'SETTINGS', case when not (out->>'on')::boolean then 'Calls off' when via = 'phone' then 'Calls on: the company mobile'
+    else 'Calls on: Twilio, ring ' || array_to_string(ring, ', ') ||
+    ', auto-answer ' || case mode when 'on' then 'on' when 'times' then (out->>'from') || '–' || (out->>'to') else 'off' end end);
   return out;
 end;
 $$;
@@ -99,7 +107,8 @@ grant execute on function set_calls(jsonb) to authenticated;
 
 -- A call comes in (the calls function, service role). The car: the caller's number
 -- on tonight's DROPS (not cleared) first, then today's PICKS (not taken in).
-create or replace function call_in(p_to text, p_from text, p_sid text)
+-- A call starts, for a client: the caller's car and the pop-up's row.
+create or replace function private.call_start(p_company uuid, p_from text, p_sid text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   c companies;
@@ -109,8 +118,7 @@ declare
   auto boolean;
   v_call bigint;
 begin
-  select * into c from companies co where private.phone10(co.calls->>'number') = private.phone10(p_to) and private.calls_on(co.id) and (co.calls->>'on')::boolean limit 1;
-  if c.id is null then return jsonb_build_object('company', null); end if;
+  select * into c from companies where id = p_company;
   if length(f) = 10 then
     select bk.* into b from bookings bk join sheets sh on sh.id = bk.sheet_id
     where bk.company_id = c.id and bk.removed_at is null and regexp_replace(bk.phone, '\D', '', 'g') like '%' || f || '%'
@@ -128,6 +136,62 @@ begin
   on conflict (sid) do update set at = customer_calls.at returning customer_calls.id into v_call;
   return jsonb_build_object('company', c.id, 'name', coalesce(c.brand->>'short', c.name), 'call', v_call, 'auto', auto, 'words', c.calls->>'words', 'ring', c.calls->'ring',
     'booking', case when b.id is null then null else jsonb_build_object('id', b.id, 'kind', b.kind, 'reg', b.reg) end);
+end;
+$$;
+revoke all on function private.call_start(uuid, text, text) from public, anon, authenticated;
+
+-- Twilio: the client is found by the number called.
+create or replace function call_in(p_to text, p_from text, p_sid text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  select co.id into c from companies co where private.phone10(co.calls->>'number') = private.phone10(p_to) and coalesce(co.calls->>'via', 'phone') = 'twilio'
+    and private.calls_on(co.id) and (co.calls->>'on')::boolean limit 1;
+  if c is null then return jsonb_build_object('company', null); end if;
+  return private.call_start(c, p_from, p_sid);
+end;
+$$;
+
+-- The company mobile (an Android phone running MacroDroid): the client is found by
+-- the phone's key (Settings → Office phone, shown once). ringing starts a call;
+-- answered / missed / ended say how the latest call from that number went.
+create or replace function office_phone_new_key()
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare s staff := me(); k text := translate(encode(extensions.gen_random_bytes(24), 'base64'), '+/=', '-_');
+begin
+  if s.role <> 'owner' then raise exception 'Only an owner can link the office phone.'; end if;
+  insert into private.office_phone(company_id) values (s.company_id) on conflict do nothing;
+  update private.office_phone set key_hash = encode(extensions.digest(k, 'sha256'), 'hex'), key_at = now(), last_seen = null where company_id = s.company_id;
+  insert into activity(company_id, staff_id, staff_name, action, value) values (s.company_id, s.id, s.name, 'SETTINGS', 'Office phone linked (new link; the old one stops working)');
+  return k;
+end;
+$$;
+revoke execute on function office_phone_new_key() from public, anon;
+grant execute on function office_phone_new_key() to authenticated;
+
+create or replace function call_phone(p_key text, p_event text, p_from text, p_seconds int default null)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare o private.office_phone; k customer_calls;
+begin
+  select * into o from private.office_phone where key_hash = encode(extensions.digest(coalesce(p_key, ''), 'sha256'), 'hex');
+  if o.company_id is null then return jsonb_build_object('ok', false, 'error', 'unknown key'); end if;
+  update private.office_phone set last_seen = now() where company_id = o.company_id;
+  if not (private.calls_on(o.company_id) and coalesce((select (calls->>'on')::boolean and coalesce(calls->>'via', 'phone') = 'phone' from companies where id = o.company_id), false)) then
+    return jsonb_build_object('ok', true, 'skipped', 'calls off');
+  end if;
+  if p_event = 'test' then return jsonb_build_object('ok', true); end if;
+  if p_event = 'ringing' then
+    return jsonb_build_object('ok', true) || private.call_start(o.company_id, p_from, 'ph-' || gen_random_uuid());
+  end if;
+  if p_event not in ('answered', 'missed', 'ended') then return jsonb_build_object('ok', false, 'error', 'unknown event'); end if;
+  select * into k from customer_calls where company_id = o.company_id and private.phone10(from_number) = private.phone10(p_from)
+    and at > now() - interval '2 hours' order by at desc limit 1;
+  if k.id is null then return jsonb_build_object('ok', true, 'skipped', 'no call'); end if;
+  update customer_calls set
+    status = case when p_event = 'answered' then 'answered' when p_event = 'missed' and status = 'ringing' then 'missed' when p_event = 'ended' and status = 'ringing' then 'missed' else status end,
+    seconds = coalesce(p_seconds, seconds)
+  where id = k.id;
+  return jsonb_build_object('ok', true, 'call', k.id);
 end;
 $$;
 
@@ -197,12 +261,12 @@ begin
   return k;
 end;
 $$;
-revoke execute on function call_in(text, text, text), call_digit(text, text), call_end(text, text, int) from public, anon, authenticated;
+revoke execute on function call_in(text, text, text), call_digit(text, text), call_end(text, text, int), call_phone(text, text, text, int) from public, anon, authenticated;
 revoke execute on function call_take(bigint) from public, anon;
 grant execute on function call_take(bigint) to authenticated;
 do $$ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    grant execute on function call_in(text, text, text), call_digit(text, text), call_end(text, text, int) to service_role;
+    grant execute on function call_in(text, text, text), call_digit(text, text), call_end(text, text, int), call_phone(text, text, text, int) to service_role;
   end if;
 end $$;
 

@@ -8,6 +8,12 @@ const db = new PGlite();
 await db.exec(`
 create role anon; create role authenticated; create role service_role;
 create schema private; create schema net; create schema cron; create schema extensions;
+create schema vault; create table vault.secrets (id uuid primary key default gen_random_uuid(), secret text, name text, description text);
+create view vault.decrypted_secrets as select id, name, secret as decrypted_secret from vault.secrets;
+create function vault.create_secret(s text, n text, d text) returns uuid language sql as $$ insert into vault.secrets(secret, name, description) values (s, n, d) returning id $$;
+create function vault.update_secret(i uuid, s text) returns void language sql as $$ update vault.secrets set secret = s where id = i $$;
+create function extensions.gen_random_bytes(n int) returns bytea language sql as $$ select substring(sha256(random()::text::bytea) || sha256(random()::text::bytea) from 1 for n) $$;
+create function extensions.digest(t text, a text) returns bytea language sql as $$ select sha256(t::bytea) $$;
 create table private.settings (name text primary key, value text);
 create function net.http_post(url text, body jsonb, headers jsonb, timeout_milliseconds int) returns bigint language sql as $$ select 1::bigint $$;
 create table cron.job (jobname text);
@@ -38,7 +44,7 @@ const q = async (s, p) => (await db.query(s, p)).rows;
 const as = (name) => db.exec(`delete from cur; insert into cur select id from staff where name = '${name}'`);
 const err = async (s, p) => { try { await db.query(s, p); return ""; } catch (e) { return e.message; } };
 const co = (await q(`select id from companies where slug = 'takeoff'`))[0].id;
-const C = { on: true, number: "0161 850 0000", ring: ["07700 900123"], auto: "off", from: "20:00", to: "02:00", words: "" };
+const C = { on: true, via: "twilio", number: "0161 850 0000", ring: ["07700 900123"], auto: "off", from: "20:00", to: "02:00", words: "" };
 
 await as("RAKESH");
 ok("set_calls refused without the add-on", /aren't switched on/.test(await err(`select set_calls($1)`, [C])));
@@ -56,7 +62,7 @@ ok("set_calls: a bad number refused", /Check the numbers/.test(await err(`select
 ok("set_calls: auto between times needs times", /starts and stops/.test(await err(`select set_calls($1)`, [{ ...C, auto: "times", from: "8pm" }])));
 const saved = (await q(`select set_calls($1) c`, [C]))[0].c;
 ok("set_calls: saved", saved.on === true && saved.ring[0] === "07700 900123" && saved.auto === "off");
-ok("set_calls: activity line", /^Calls on: ring 07700 900123, auto-answer off$/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
+ok("set_calls: activity line", /^Calls on: Twilio, ring 07700 900123, auto-answer off$/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
 
 // Tonight's DROPS and today's PICKS, by London time.
 const today = (await q(`select (now() at time zone 'Europe/London')::date::text d`))[0].d;
@@ -112,6 +118,31 @@ await as("OFFICE");
 const t = (await q(`select (call_take($1)).handled_name n`, [r3.call]))[0].n;
 ok("call_take: the shared login's picked name", t === "KAMU");
 ok("call_take: activity Called back", /^Called back 07000000001$/.test((await q(`select value from activity where action = 'CALL' order by id desc limit 1`))[0].value));
+// The company mobile (free): its link (a key shown once), MacroDroid's ringing / answered / missed.
+await as("RAKESH");
+const ph = (await q(`select set_calls($1) c`, [{ ...C, via: "phone", ring: [], number: "", auto: "on" }]))[0].c;
+ok("set_calls: the company mobile needs no Twilio number and never auto-answers", ph.via === "phone" && ph.auto === "off");
+ok("set_calls: activity says the company mobile", /^Calls on: the company mobile/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
+ok("call_in: Twilio refused while calls are on the company mobile", (await q(`select call_in('01618500000', '07868615571', 'CA9') r`))[0].r.company === null);
+await as("OFFICE");
+ok("Phone link: office refused", /owner/i.test(await err(`select office_phone_new_key()`)));
+await as("RAKESH");
+const key = (await q(`select office_phone_new_key() k`))[0].k;
+ok("Phone link: a long key", /^[A-Za-z0-9_-]{30,}$/.test(key), key);
+ok("Phone link: only its hash kept", (await q(`select count(*)::int n from private.office_phone where key_hash is not null and key_hash <> $1`, [key]))[0].n === 1);
+ok("Phone link: a wrong key does nothing", (await q(`select call_phone('nope', 'ringing', '07868615571', null) r`))[0].r.ok === false);
+const rg = (await q(`select call_phone($1, 'ringing', '+44 7868 615571', null) r`, [key]))[0].r;
+const c1 = (await q(`select * from customer_calls where id = $1`, [rg.call]))[0];
+ok("Phone ringing: the call written with the caller's DROPS car", rg.ok === true && c1 && c1.booking_id === d1 && c1.status === "ringing", rg);
+await q(`select call_phone($1, 'answered', '07868615571', 40)`, [key]);
+ok("Phone answered: that call answered", (await q(`select status from customer_calls where id = $1`, [rg.call]))[0].status === "answered");
+const rg2 = (await q(`select call_phone($1, 'ringing', '07000000002', null) r`, [key]))[0].r;
+await q(`select call_phone($1, 'missed', '07000000002', null)`, [key]);
+ok("Phone missed: that call missed, no car", (await q(`select status, booking_id from customer_calls where id = $1`, [rg2.call]))[0].status === "missed");
+ok("Phone test: ok, and last seen set", (await q(`select call_phone($1, 'test', '', null) r`, [key]))[0].r.ok === true && (await q(`select office_phone_status() s`))[0].s.last_seen !== null);
+const key2 = (await q(`select office_phone_new_key() k`))[0].k;
+ok("Phone link: a new link stops the old one", (await q(`select call_phone($1, 'test', '', null) r`, [key]))[0].r.ok === false && (await q(`select call_phone($1, 'test', '', null) r`, [key2]))[0].r.ok === true);
+ok("Only the server can call call_phone", !(await q(`select has_function_privilege('authenticated', 'call_phone(text,text,text,integer)', 'execute') p`))[0].p);
 ok("Only the server can call call_in", !(await q(`select has_function_privilege('authenticated', 'call_in(text,text,text)', 'execute') p`))[0].p);
 
 console.log(fails ? fails + " failed" : "all passed");

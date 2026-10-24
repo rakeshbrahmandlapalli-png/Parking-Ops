@@ -92,6 +92,9 @@
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
     if (t.dataset.savecalls !== undefined) return saveCalls(t);
+    if (t.dataset.ophonekey !== undefined) return officePhoneKey(t);
+    if (t.dataset.ophonecheck !== undefined) return officePhoneCheck();
+    if (t.dataset.ophonesave !== undefined) return officePhoneSave(t);
     if (t.dataset.callclose) return callGone(+t.dataset.callclose);
     if (t.dataset.callmark) return callMark(t.dataset.callmark);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);

@@ -1,15 +1,17 @@
 // Supabase Edge Function: calls (database part 115)
 //
 // Customers ring the office when they land (DROPS) and when they're on their way
-// to drop the car off (PICKS). The office number is forwarded to the client's
-// Twilio number, whose "A call comes in" webhook is this function:
+// to drop the car off (PICKS). Either the company mobile tells this function
+// about each call (?step=phone, below), or the office number is forwarded to the
+// client's Twilio number, whose "A call comes in" webhook is this function:
 //   ?step=in      a call: call_in finds the client and the caller's car and writes
 //                 the call (every phone pops it up). Auto-answer on: "press 1 if
 //                 you've landed, 2 if you're on your way to drop off"; else straight
 //                 through to the numbers to ring (with the customer's number showing).
 //   ?step=digit   the key pressed: call_digit marks the car CALLED, then through.
 //   ?step=dial    how the ringing ended: call_end (answered, missed, auto).
-// Every request is checked against Twilio's signature (X-Twilio-Signature).
+// Every Twilio request is checked against Twilio's signature (X-Twilio-Signature).
+//   ?step=phone   the company mobile instead (free, no auto-answer): see onPhone.
 //
 // Secrets: TWILIO_AUTH_TOKEN (the same as send-texts). "Verify JWT" must be OFF.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -46,9 +48,25 @@ async function ringOf(sid: string) {
   return { ring: ((c?.calls?.ring ?? []) as string[]), from: k.from_number as string };
 }
 
+// The company mobile (calls.via 'phone'): MacroDroid on an Android phone with the
+// company SIM sends ?step=phone&key=<the phone's key>&event=ringing|answered|missed|ended
+// &number=<caller>[&seconds=N], as the address or as a form or JSON body. Free.
+async function onPhone(req: Request, u: URL) {
+  const raw = await req.text();
+  let body: Record<string, unknown> = {};
+  try { body = raw.trim().startsWith("{") ? JSON.parse(raw) : Object.fromEntries(new URLSearchParams(raw)); } catch { body = {}; }
+  const get = (k: string) => String(body[k] ?? u.searchParams.get(k) ?? "").trim();
+  const event = get("event").toLowerCase(), secs = parseInt(get("seconds"));
+  const { data, error } = await db.rpc("call_phone", { p_key: get("key"), p_event: event, p_from: get("number"), p_seconds: Number.isFinite(secs) ? secs : null });
+  if (error) throw error;
+  return new Response(JSON.stringify(data), { status: data?.ok === false ? 403 : 200, headers: { "Content-Type": "application/json" } });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
   try {
+    const u = new URL(req.url);
+    if (u.searchParams.get("step") === "phone") return await onPhone(req, u);
     const f = new URLSearchParams(await req.text());
     if (!(await signed(req, f))) return new Response("no", { status: 403 });
     const step = new URL(req.url).searchParams.get("step") ?? "in";

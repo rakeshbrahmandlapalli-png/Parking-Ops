@@ -7,6 +7,11 @@ drop trigger if exists bookings_text on bookings;
 drop function if exists bookings_text();
 select cron.unschedule('customer-text-reminders') where exists (select 1 from cron.job where jobname = 'customer-text-reminders');
 drop function if exists set_texts(jsonb);
+drop function if exists office_phone_gateway(uuid);
+drop function if exists office_phone_gateway_set(text, text);
+drop function if exists office_phone_status();
+drop table if exists private.office_phone;
+-- The SMS Gateway password: delete from vault.secrets where name like 'office_phone_sms:%';
 
 create or replace function admin_save_client(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$

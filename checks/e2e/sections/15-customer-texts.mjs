@@ -93,7 +93,7 @@ for (const theme of ["", "stdplus", "ops", "ops-refined", "premium"]) await scen
   await page.uncheck('[data-txon="sent"]'); await page.selectOption("#txAt", "19:00");
   await page.click("[data-savetexts]"); await sleep(400);
   const p = db.calls.filter((x) => x.fn === "set_texts").pop()?.args.p;
-  check("Customer texts (" + look + "): Save sends the settings", p && p.on === true && p.sender === "TAKEOFF" && p.at === "19:00" && p.sent.on === false && p.landed.on === true && p.landed.text === "Hi {name}, your car {reg}. Call {office}.", p);
+  check("Customer texts (" + look + "): Save sends the settings", p && p.on === true && p.via === "phone" && p.sender === "TAKEOFF" && p.at === "19:00" && p.sent.on === false && p.landed.on === true && p.landed.text === "Hi {name}, your car {reg}. Call {office}.", p);
   await page.selectOption("#txOn", "demo"); await page.click("[data-savetexts]"); await sleep(400);
   const pd = db.calls.filter((x) => x.fn === "set_texts").pop()?.args.p;
   check("Customer texts (" + look + "): Demo saves on and demo", pd && pd.on === true && pd.demo === true, pd);

@@ -318,6 +318,9 @@ function rpc(db, fn, a) {
     case "booking_site_set": { const clear = !a.p_url && !a.p_login && !a.p_password, prev = db.bsite || {};
       db.bsite = clear ? { url: "", login: "", has_pass: false, saved_by: "", saved_at: null } : { url: a.p_url, login: a.p_login, has_pass: a.p_password == null ? !!prev.has_pass : a.p_password !== "", saved_by: "RAKESH", saved_at: now() }; return db.bsite; }
     case "set_flight_settings": db.company.flight_settings = a.p; return a.p;
+    case "office_phone_status": return db.ophone || { gw_login: "", has_pass: false, linked: false, last_seen: null };
+    case "office_phone_new_key": db.ophone = { ...(db.ophone || {}), linked: true, last_seen: null }; return "K3y_example-123";
+    case "office_phone_gateway_set": db.ophone = { ...(db.ophone || {}), gw_login: a.p_login, has_pass: !!a.p_login && (a.p_password !== null || !!(db.ophone || {}).has_pass) }; return db.ophone;
     case "set_calls": { if (db.me.role !== "owner") throw new Error("Only an owner can change calls."); db.company.calls = a.p; return a.p; }
     case "call_take": { const k = (db.callsLog || []).find((x) => x.id === a.p_call); k.handled_by = db.me.id; k.handled_name = db.me.name || "RAKESH"; return k; }
     case "set_texts": { if (db.me.role !== "owner") throw new Error("Only an owner can change customer texts."); db.company.texts = a.p; return a.p; }

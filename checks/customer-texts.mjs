@@ -28,6 +28,12 @@ const db = new PGlite();
 await db.exec(`
 create role anon; create role authenticated;
 create schema private; create schema net; create schema cron; create schema extensions;
+create schema vault; create table vault.secrets (id uuid primary key default gen_random_uuid(), secret text, name text, description text);
+create view vault.decrypted_secrets as select id, name, secret as decrypted_secret from vault.secrets;
+create function vault.create_secret(s text, n text, d text) returns uuid language sql as $$ insert into vault.secrets(secret, name, description) values (s, n, d) returning id $$;
+create function vault.update_secret(i uuid, s text) returns void language sql as $$ update vault.secrets set secret = s where id = i $$;
+create function extensions.gen_random_bytes(n int) returns bytea language sql as $$ select substring(sha256(random()::text::bytea) || sha256(random()::text::bytea) from 1 for n) $$;
+create function extensions.digest(t text, a text) returns bytea language sql as $$ select sha256(t::bytea) $$;
 create table private.settings (name text primary key, value text); insert into private.settings values ('timer_secret', 'tick');
 create table net.calls (url text, body jsonb, headers jsonb);
 create function net.http_post(url text, body jsonb, headers jsonb, timeout_milliseconds int) returns bigint language sql as $$ insert into net.calls values (url, body, headers); select 1::bigint $$;
@@ -75,8 +81,24 @@ ok("set_texts: a reminder at 03:00 refused", /08:00 and 21:00/.test(await err(`s
 ok("set_texts: 460 letters refused", /459/.test(await err(`select set_texts($1)`, [{ ...P, landed: { on: true, text: "x".repeat(460) } }])));
 const saved = (await q(`select set_texts($1) t`, [{ ...P, sender: "takeoff" }]))[0].t;
 ok("set_texts: saved, sender in capitals", saved.on === true && saved.sender === "TAKEOFF" && saved.sent.on === false && saved.landed.text === "Landed {name}");
-ok("set_texts: activity line", /Customer texts on: flight landed, reminder at 18:00, from TAKEOFF/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
+ok("set_texts: activity line", /Customer texts on: flight landed, reminder at 18:00, from the company mobile$/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
 
+ok("set_texts: Twilio needs the company name", /sent from first/.test(await err(`select set_texts($1)`, [{ ...P, via: "twilio", sender: "" }])));
+ok("set_texts: the company mobile needs no company name", (await q(`select set_texts($1) t`, [{ ...P, sender: "" }]))[0].t.via === "phone");
+ok("set_texts: Twilio activity names the sender", (await q(`select set_texts($1) t`, [{ ...P, via: "twilio" }]))[0].t.via === "twilio" && /from TAKEOFF \(Twilio\)$/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
+// The company mobile's SMS Gateway login: the password goes to the vault, never back.
+await as("KAMU");
+ok("Gateway login: office refused", /owner/i.test(await err(`select office_phone_gateway_set('ABC', 'pw')`)));
+await as("RAKESH");
+const g1 = (await q(`select office_phone_gateway_set('ABCDEF', 'pw1') g`))[0].g;
+ok("Gateway login: saved, the password not returned", g1.gw_login === "ABCDEF" && g1.has_pass === true && !JSON.stringify(g1).includes("pw1"));
+ok("Gateway login: the password in the vault", (await q(`select count(*)::int n from vault.secrets where name = $1 and secret = 'pw1'`, ["office_phone_sms:" + co]))[0].n === 1);
+await q(`select office_phone_gateway_set('ABCDEF', null)`);
+ok("Gateway login: no password keeps it", (await q(`select secret from vault.secrets where name = $1`, ["office_phone_sms:" + co]))[0].secret === "pw1");
+ok("Gateway login: the app can't read it", !(await q(`select has_function_privilege('authenticated', 'office_phone_gateway(uuid)', 'execute') p`))[0].p);
+const gw = (await q(`select office_phone_gateway($1) g`, [co]))[0].g;
+ok("Gateway login: the server reads login and password", gw.login === "ABCDEF" && gw.password === "pw1", gw);
+await as("RAKESH");
 const demo = (await q(`select set_texts($1) t`, [{ ...P, demo: true }]))[0].t;
 ok("set_texts: demo saved, still on (texts written, not sent)", demo.on === true && demo.demo === true);
 ok("set_texts: demo activity line", /^Customer texts demo \(not sent\): flight landed/.test((await q(`select value from activity order by id desc limit 1`))[0].value));
