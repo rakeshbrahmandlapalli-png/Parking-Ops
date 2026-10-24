@@ -36,7 +36,8 @@ await scenario(async () => {
 await scenario(async () => {
   const db = makeDb();
   db.autoImport = { available: true, running: false, last_ok: null, last_error: null, open_reviews: 1 };
-  db.reviews = [{ id: 5, ref: "T2", kind: "cancelled", detail: { name: "B Two", reg: "CD34EFG", kind: "drops" } }];
+  db.reviews = [{ id: 5, ref: "T2", kind: "cancelled", detail: { name: "B Two", reg: "CD34EFG", kind: "drops" } },
+    { id: 6, ref: "T6", kind: "cancelled", detail: { name: "Temp Booking", reg: "FV61AOY", kind: "picks", on_sheet: "2026-10-24", missing: true } }];
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
@@ -45,6 +46,7 @@ await scenario(async () => {
   check("auto-import: no on/off switch (the schedule is off)", await page.locator("[data-autotoggle]").count() === 0);
   check("auto-import: Import waits for a check first", await page.locator("[data-autorun]").isDisabled());
   check("auto-import: cancellations wait for the office", (await page.locator("[data-autoreviews]").innerText()).includes("Cancelled · T2"));
+  check("auto-import: a car the site no longer lists waits for the office too", (await page.locator("[data-autoreviews]").innerText()).includes("Not on the site · T6"));
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: Check bookings asks for a preview only", (db.autoRuns || []).length === 1 && db.autoRuns[0].action === "preview" && !(db.autoRuns || []).some((x) => x.action === "apply"));
   check("auto-import: the preview shows New / Changed / Needs review / Unchanged", /2\s*New\s*1\s*Changed\s*1\s*Needs review\s*4\s*Unchanged/.test(await page.locator("[data-autopreviewsum]").innerText()), await page.locator("[data-autopreviewsum]").innerText());
@@ -54,8 +56,8 @@ await scenario(async () => {
   const ap = (db.autoRuns || []).find((x) => x.action === "apply");
   check("auto-import: Import imports the previewed plan (hash sent)", ap && ap.expect_hash === "h1", db.autoRuns);
   check("auto-import: the result is shown (added / updated)", /Bookings in: 5 added, 1 updated/.test(await toast(page)), await toast(page));
-  await page.click("[data-reviewdone]"); await sleep(500);
-  check("auto-import: marking a review done removes it", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 5) && await page.locator("[data-autoreviews]").count() === 0);
+  await page.click('[data-reviewdone="5"]'); await sleep(500);
+  check("auto-import: marking a review done removes it", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 5) && !(await page.locator("[data-autoreviews]").innerText()).includes("T2"));
   check("auto-import: no errors", page.__errors.length === 0, page.__errors);
 });
 
