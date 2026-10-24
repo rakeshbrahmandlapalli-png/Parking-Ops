@@ -90,6 +90,11 @@
     if (t.dataset.backup !== undefined) return downloadBackup(t);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
+    if (t.dataset.savetexts !== undefined) return saveTexts(t);
+    if (t.dataset.txtest !== undefined) return testText(t);
+    if (t.dataset.txpick) return pickText(t.dataset.txpick);
+    if (t.dataset.txsend) return sendTextNow(t);
+    if (t.dataset.txcancel !== undefined) { var txc = $("txConfirm"); if (txc) { txc.hidden = true; txc.innerHTML = ""; } document.querySelectorAll("[data-txpick]").forEach(function (b) { b.classList.remove("on"); }); return; }
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
     if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
     if (t.dataset.setsec) return toggleSec(t.dataset.setsec);

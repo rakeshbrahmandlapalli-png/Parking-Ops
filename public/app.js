@@ -3034,12 +3034,12 @@
     var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
     var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    var photos = '<div id="ptPhotos"></div>';
+    var photos = '<div id="ptPhotos"></div>', texts = carTextsHtml(r);
     var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
     var hist = can("log") ? '<div id="carHist"></div>' : "";
     if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
-      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
+      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, texts: texts, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
     else {
       h += tel + opsSec("Customer & vehicle") + detList(det);
       if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
@@ -3050,7 +3050,7 @@
       // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
       var side = "";
       if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
-      side += pay + early + photos + rm;
+      side += pay + early + (texts ? opsSec("Texts") + texts : "") + photos + rm;
       if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
       var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
       // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
@@ -3064,6 +3064,7 @@
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
     carHistory(r);
+    carTexts(r);
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
@@ -3094,6 +3095,7 @@
     var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
     var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
       sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
+      sec("rf-texts", "Texts", P.texts) +
       sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
       (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
     var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
@@ -5398,6 +5400,7 @@
       '<label class="check"><input type="checkbox" id="clPicksYard"' + (b.picks_yard ? " checked" : "") + "> Location on PICKS (instead of NO SHOW)</label>" +
       '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5413,7 +5416,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -5849,11 +5852,11 @@
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div>", "fchecks");
-    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
-    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), txt = textsHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + txt + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
     var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
-      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["texts", "Customer texts", txt, "Texts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
     // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
     // (the others stay on the page, hidden, so nothing typed is lost by switching).
     if (!opsDesk()) {
@@ -5868,6 +5871,7 @@
           var c = S.company || {}, what = {
             parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
             flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
+            texts: [textsOn() ? "On" : "Off"],
             charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
           }[g[0]] || [];
           return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
@@ -5893,7 +5897,7 @@
   }
   // Unsaved changes: the flight checks draft, or a field typed in and not saved.
   function flightsDirty() { var T = S.settingsDraft, base = timing(); return !!T && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); }); }
-  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]),textarea")); }
+  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]):not([data-nodirty]),textarea")); }
   function fieldEdited(el) {
     if (el.dataset.ycol !== undefined) return el.hasAttribute("data-off") !== el.hasAttribute("data-offdef") || (!el.hasAttribute("data-off") && el.value.toLowerCase() !== el.defaultValue.toLowerCase());
     return el.value !== el.defaultValue;
@@ -6461,6 +6465,136 @@
     var pos=e.target.selectionStart; LP.query=e.target.value; render(); var q=$('lpQuery'); q.focus(); try { q.setSelectionRange(pos,pos); } catch(e) {}
   });
   setInterval(function(){ if(S.me && S.view==='lanes' && document.visibilityState==='visible') laneChanged(); },15000);
+  // ── customer texts (database part 114) ──
+  // An add-on (Parking Ops → Clients → Edit, brand.texts): the app texts the
+  // customer by itself when their flight lands, when a driver is SENT, and the
+  // day before a PICKS drop-off. Owners set it in Settings → Customer texts;
+  // the send-texts function sends them (once each) and every text goes on the
+  // car's Texts list and the activity log. The office can send one by hand.
+  function textsAddon() { return !!(S.company && S.company.brand && S.company.brand.texts === true); }
+  var TEXT_RULES = [
+    ["landed", "Flight landed", "DROPS: when the flight lands",
+      "Welcome back {name}. Once you have your bags, call us on {office} and we'll bring your car {reg} to {meet}. {company}"],
+    ["sent", "Car on its way", "DROPS: when a driver is SENT",
+      "Hi {name}, your car {reg} is on its way to {meet}. Please wait there for our driver. {company}"],
+    ["reminder", "Reminder", "PICKS: the day before drop-off",
+      "Hi {name}, a reminder from {company}: we meet you at {meet} on {date} at {time}. Please call {office} 30 min before you arrive."]];
+  var TEXT_LABEL = { landed: "Flight landed", sent: "Car on its way", reminder: "Reminder", manual: "Text" };
+  function textsCfg() {
+    var t = (S.company && S.company.texts) || {}, out = { on: t.on === true, demo: t.on === true && t.demo === true, sender: t.sender || "", office: t.office || "", meet: t.meet || "", at: t.at || "18:00" };
+    TEXT_RULES.forEach(function (x) { var r = t[x[0]] || {}; out[x[0]] = { on: r.on !== false, text: r.text || x[3] }; });
+    return out;
+  }
+  function textsOn() { return textsAddon() && textsCfg().on; }
+  // The words a customer gets, filled in for this car (or a sample car in Settings).
+  function fillText(tpl, r, cfg) {
+    var when = r.drop_at ? new Date(r.drop_at) : null;
+    var v = { name: customerName(r.name), reg: r.reg || "", office: cfg.office, meet: cfg.meet,
+      company: cfg.sender || brandName(), time: when ? hhmm(r.drop_at) : "", date: when ? dayShort(r.drop_at) : "" };
+    return String(tpl || "").replace(/\{(\w+)\}/g, function (m, k) { return k in v ? v[k] : m; }).replace(/\s+/g, " ").trim();
+  }
+  // Bookings come as "KHAIRA MS" or "MR JOHN SMITH": a text says "Ms Khaira" or "Mr Smith", else the name as given.
+  var TITLES = /^(MR|MRS|MS|MISS|DR|MX)\.?$/i;
+  function customerName(n) {
+    var w = String(n || "").trim().split(/\s+/).filter(Boolean), cap = function (x) { return x.charAt(0).toUpperCase() + x.slice(1).toLowerCase(); };
+    if (!w.length) return "there";
+    if (w.length > 1 && TITLES.test(w[w.length - 1])) return cap(w[w.length - 1].replace(".", "")) + " " + cap(w[0]);
+    if (w.length > 1 && TITLES.test(w[0])) return cap(w[0].replace(".", "")) + " " + cap(w[w.length - 1]);
+    return w.map(cap).join(" ");
+  }
+  // A text of 160 letters goes as one; longer ones go in parts of 153 (each part costs one text).
+  function textParts(s) { var n = String(s).length; return n <= 160 ? 1 : Math.ceil(n / 153); }
+  var TEXT_SAMPLE = { name: "JONES MS", reg: "AB12CDE", drop_at: new Date(Date.now() + 86400000).toISOString().slice(0, 10) + "T04:30:00Z" };
+  function textPrev(tpl, cfg) {
+    var s = fillText(tpl, TEXT_SAMPLE, cfg), n = textParts(s);
+    return '<span class="txprev-t">' + esc(s) + '</span><small class="hint"> · ' + s.length + " characters, " + (n === 1 ? "1 text" : n + " texts each") + "</small>";
+  }
+  function textsHtml() {
+    if (!textsAddon() || !S.me || S.me.role !== "owner") return "";
+    var T = textsCfg(), sample = Object.assign({}, T, { sender: T.sender || brandName() });
+    function hours() { var o = ""; for (var h = 8; h <= 21; h++) { var v = pad(h) + ":00"; o += '<option value="' + v + '"' + (T.at === v ? " selected" : "") + ">" + v + "</option>"; } return o; }
+    return setBox("texts", "Customer texts", T.demo ? "Demo" : T.on ? TEXT_RULES.filter(function (x) { return T[x[0]].on; }).length + " of 3 on" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
+      '<label class="field">Texts to customers<select id="txOn"><option value="true"' + (T.on && !T.demo ? " selected" : "") + '>On</option><option value="demo"' + (T.demo ? " selected" : "") + ">Demo: write them on each car, don't send</option>" +
+        '<option value="false"' + (T.on ? "" : " selected") + ">Off</option></select></label>" +
+      '<label class="field">Sent from (up to 11 letters)<input id="txSender" maxlength="11" autocomplete="off" autocapitalize="characters" placeholder="e.g. TAKEOFF" value="' + esc(T.sender) + '"></label>' +
+      '<label class="field">Office number for customers to call<input id="txOffice" type="tel" autocomplete="off" placeholder="e.g. 0161 496 0000" value="' + esc(T.office) + '"></label>' +
+      '<label class="field">Meeting point<input id="txMeet" autocomplete="off" maxlength="80" placeholder="e.g. Terminal 2 short stay, level 1" value="' + esc(T.meet) + '"></label>' +
+      TEXT_RULES.map(function (x) {
+        var R = T[x[0]];
+        return '<div class="section-label">' + esc(x[1]) + '</div><p class="note">' + esc(x[2]) + "</p>" +
+          '<label class="check"><input type="checkbox" data-txon="' + x[0] + '"' + (R.on ? " checked" : "") + "> Send this text</label>" +
+          (x[0] === "reminder" ? '<label class="field">Send at<select id="txAt">' + hours() + "</select></label>" : "") +
+          '<label class="field">Words<textarea data-txrule="' + x[0] + '" maxlength="459" rows="3">' + esc(R.text) + "</textarea></label>" +
+          '<p class="note txprev" style="border-left:3px solid currentColor;padding-left:10px" data-txprev="' + x[0] + '">' + textPrev(R.text, sample) + "</p>";
+      }).join("") +
+      '<p class="note">{name} the customer (Ms Khaira), {reg}, {office}, {meet}, {date} and {time} of the drop-off, {company}. Customers can\'t reply to these texts.</p>' +
+      '<label class="field">Test to your mobile<input id="txTestTo" data-nodirty type="tel" autocomplete="off" placeholder="07…"></label>' +
+      '<div class="row-actions"><button type="button" class="btn ghost small" data-txtest>Send me a test</button><button type="button" class="btn brand" data-savetexts>Save texts</button></div>');
+  }
+  function textsForm() {
+    var p = { on: $("txOn").value !== "false", demo: $("txOn").value === "demo", sender: $("txSender").value.trim(), office: $("txOffice").value.trim(), meet: $("txMeet").value.trim(), at: $("txAt").value };
+    TEXT_RULES.forEach(function (x) { p[x[0]] = { on: document.querySelector('[data-txon="' + x[0] + '"]').checked, text: document.querySelector('[data-txrule="' + x[0] + '"]').value.trim() }; });
+    return p;
+  }
+  async function saveTexts(btn) {
+    var p = textsForm();
+    if (p.on && !/^[A-Za-z0-9 ]{1,11}$/.test(p.sender)) return toast("Sent from: up to 11 letters or numbers.", true);
+    if (p.on && !p.office) return toast("Add the office number customers call.", true);
+    btn.disabled = true;
+    var r = await sb.rpc("set_texts", { p: p });
+    btn.disabled = false;
+    if (r.error) return toast(r.error.message, true);
+    savedSec(btn); S.company.texts = r.data;
+    toast(r.data.demo ? "Saved: customer texts in demo, nothing is sent" : r.data.on ? "Saved: customer texts on" : "Customer texts off"); render();
+  }
+  async function testText(btn) {
+    var to = $("txTestTo").value.trim();
+    if (!to) return toast("Type your mobile number for the test.", true);
+    btn.disabled = true;
+    try { await callFunction("send-texts", { type: "test", to: to, text: fillText(textsForm().landed.text, TEXT_SAMPLE, textsForm()) }, true); toast("Test text sent"); }
+    catch (e) { toast(e.message, true); }
+    btn.disabled = false;
+  }
+  // The live preview under each text's words.
+  document.addEventListener("input", function (e) {
+    var k = e.target.dataset && e.target.dataset.txrule, p = k && document.querySelector('[data-txprev="' + k + '"]');
+    if (p) p.innerHTML = textPrev(e.target.value, Object.assign(textsForm(), { sender: $("txSender").value.trim() || brandName() }));
+  });
+  // ── the car's texts ──
+  // What was sent to this customer, when and how it went; the office sends one by hand.
+  function carTextsHtml(r) { return textsAddon() && (r.phone || textsOn()) ? '<div id="carTexts"></div>' : ""; }
+  var TEXT_STATE = { queued: "Sending", sent: "Sent", delivered: "Delivered", failed: "Not delivered", skipped: "Not sent", demo: "Demo, not sent" };
+  async function carTexts(r) {
+    var el = $("carTexts"); if (!el) return;
+    var q = await sb.from("customer_texts").select("at, rule, to_number, body, status, error, staff_name").eq("booking_id", r.id).order("at", { ascending: false }).limit(20);
+    el = $("carTexts"); if (!el || panelRow !== r) return;
+    var list = q.error ? null : q.data || [];
+    var rules = r.kind === "drops" ? ["landed", "sent"] : ["reminder"];
+    var send = can("called") && r.phone && textsOn() && !r.removed_at ? '<div class="pseg txsend">' + rules.map(function (k) { return '<button type="button" data-txpick="' + k + '">' + esc(TEXT_LABEL[k]) + "</button>"; }).join("") + "</div>" +
+      '<div id="txConfirm" hidden></div>' : "";
+    el.innerHTML = (isOps() ? "" : "<label>TEXTS</label>") + (list === null ? '<p class="hint">Couldn\'t load the texts.</p>' : !list.length ? '<p class="hint">' + (r.phone ? "No texts sent to this customer yet." : "No phone number on this booking.") + "</p>" :
+      '<div class="hist txlist">' + list.map(function (t) {
+        var bad = t.status === "failed" || t.status === "skipped";
+        return '<div><span class="hw num">' + esc(dayShort(t.at) + " " + hhmm(t.at)) + '</span><span class="hb"><b>' + esc(TEXT_LABEL[t.rule] || "Text") + "</b> · " +
+          '<span class="' + (bad ? "bad" : "") + '">' + esc(TEXT_STATE[t.status] || t.status) + (t.error ? ": " + esc(t.error) : "") + "</span>" + (t.staff_name ? " · " + esc(t.staff_name) : "") +
+          '<span class="hv">' + esc(t.body) + "</span></span></div>";
+      }).join("") + "</div>") + (send ? '<p class="hint">Send a text now:</p>' + send : "");
+  }
+  // A tap on a text shows its words first; Send now sends it.
+  function pickText(k) {
+    var r = panelRow, box = $("txConfirm"); if (!r || !box) return;
+    document.querySelectorAll("[data-txpick]").forEach(function (b) { b.classList.toggle("on", b.dataset.txpick === k); });
+    var words = fillText(textsCfg()[k].text, r, textsCfg());
+    box.hidden = false;
+    box.innerHTML = (textsCfg().demo ? '<p class="hint">Demo: it goes on the list, not to the customer.</p>' : "") + '<p class="note" style="border-left:3px solid currentColor;padding-left:10px">To ' + esc(phoneLabel(r.phone)) + ': “' + esc(words) + '”</p><div class="row-actions"><button type="button" class="btn ghost small" data-txcancel>Cancel</button><button type="button" class="btn brand small" data-txsend="' + k + '">Send now</button></div>';
+  }
+  async function sendTextNow(btn) {
+    var r = panelRow; if (!r) return;
+    btn.disabled = true;
+    try { await callFunction("send-texts", { type: "manual", booking: r.id, rule: btn.dataset.txsend }, true); toast(textsCfg().demo ? "Demo: written on the car, not sent" : "Text sent to " + phoneLabel(r.phone)); }
+    catch (e) { btn.disabled = false; return toast(e.message, true); }
+    carTexts(r);
+  }
   // ── events ────────────────────────────────
   // A personal link opened while this page is already open only changes the hash.
   window.addEventListener("hashchange", function () { if (/^#t=/.test(location.hash) || /^#setup/.test(location.hash)) location.reload(); });
@@ -6553,6 +6687,11 @@
     if (t.dataset.backup !== undefined) return downloadBackup(t);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
+    if (t.dataset.savetexts !== undefined) return saveTexts(t);
+    if (t.dataset.txtest !== undefined) return testText(t);
+    if (t.dataset.txpick) return pickText(t.dataset.txpick);
+    if (t.dataset.txsend) return sendTextNow(t);
+    if (t.dataset.txcancel !== undefined) { var txc = $("txConfirm"); if (txc) { txc.hidden = true; txc.innerHTML = ""; } document.querySelectorAll("[data-txpick]").forEach(function (b) { b.classList.remove("on"); }); return; }
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
     if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
     if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
