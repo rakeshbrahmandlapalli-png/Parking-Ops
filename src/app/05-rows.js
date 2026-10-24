@@ -334,7 +334,9 @@
       return;
     }
     var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
-    rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
+    // Collected counts the whole sheet (a paid car is usually done and off TO DO); Outstanding follows the cars shown.
+    S.rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.saving = total.saving || p.saving; });
+    rows.forEach(function (r) { total.due += paymentFacts(r).due; });
     var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
     var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
     el.classList.toggle("folded", folded);
