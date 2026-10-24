@@ -555,6 +555,9 @@ body:has(#bnav:not(.hidden)) .deskbtn{bottom:calc(76px + env(safe-area-inset-bot
 dialog[open] ~ * .deskbtn,body:has(dialog[open]) .deskbtn{display:none;}
 .docshot{display:flex;align-items:center;justify-content:center;gap:10px;margin:4px 0 6px;padding:18px 12px;border:2px dashed #c4c7cc;border-radius:12px;background:#f8f9fa;font-size:16px;font-weight:700;color:#3c4043;cursor:pointer;}
 .docshot .docshot-ico{font-size:24px;}
+.dkwarn{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:#FFF4E5;border:1px solid #F0B35B;color:#7A3E00;font-size:14px;line-height:1.4;}
+p.dropday{color:#B42318;font-weight:600;font-size:14px;line-height:1.4;margin:2px 0 8px;}
+.dkwarn button{margin:6px 0 0;display:block;}
 .docshot.done{border-style:solid;border-color:#8fbc7a;background:#eef7ea;color:#274e13;}
 .docbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
 .docbox .docimg img{display:block;max-width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line,#dadce0);}

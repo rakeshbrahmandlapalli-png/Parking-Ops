@@ -1112,14 +1112,29 @@
     if (!sh || sh.kind !== "picks" || sh.archived_at || S.platform || !can("intake")) return "";
     return '<button type="button" class="deskbtn" data-deskbook aria-label="New booking at the desk"><b aria-hidden="true">+</b><span>New booking</span></button>';
   }
-  var deskPhoto = null;
+  var deskPhoto = null, deskSheet = null;
+  // AF14BDU (24 Oct): added at 11:28 with the next day's PICKS board open, so it went on the wrong
+  // day's sheet. A sheet that isn't today's says so, and offers today's when it's in.
+  function deskWarn(sh, today) {
+    if (!sh.day || sh.day === today) return "";
+    var t = S.sheets.filter(function (x) { return x.kind === "picks" && x.day === today && !x.archived_at; })[0];
+    return '<p class="dkwarn" id="dkWarn">This is the PICKS sheet for <b>' + esc(dayShort(sh.day + "T12:00:00Z")) + "</b>, not today (" + esc(dayShort(today + "T12:00:00Z")) + ")." +
+      (t ? ' <button type="button" class="btn ghost small" data-dktoday="' + esc(t.id) + '">Add to today\'s sheet</button>' : "") + "</p>";
+  }
+  function deskToday(id) {
+    var t = S.sheets.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    deskSheet = t;
+    var w = $("dkWarn"); if (w) w.remove();
+    var sm = document.querySelector("#panelTitle small"); if (sm) sm.textContent = sheetLabel(t);
+  }
   function openDeskBooking() {
     var sh = sheet(); if (!sh) return;
     deskPhoto = null;
     var now = londonParts(new Date());
+    deskSheet = sh;
     function f(id, label, attrs) { return '<label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (attrs || "") + ">"; }
     $("panelBody").innerHTML = '<h2 id="panelTitle">New booking <small>' + esc(sheetLabel(sh)) + "</small></h2>" +
-      '<form id="deskForm" novalidate>' +
+      '<form id="deskForm" novalidate>' + deskWarn(sh, now.key) +
       '<label class="docshot" id="dkShot"><input type="file" accept="image/*" capture="environment" data-deskfile hidden><span class="docshot-ico" aria-hidden="true">📷</span><span id="dkShotTxt">Take photo of docket</span></label>' +
       f("dkReg", "REG", 'autocomplete="off" autocapitalize="characters" maxlength="12" required') +
       f("dkName", "NAME", 'autocomplete="off" maxlength="80"') +
@@ -1136,8 +1151,9 @@
     setTimeout(function () { $("dkReg").focus(); }, 50);
   }
   async function saveDeskBooking() {
-    var sh = sheet(), reg = $("dkReg").value.trim();
+    var sh = deskSheet || sheet(), reg = $("dkReg").value.trim();
     if (!reg) return toast("Enter the registration.", true);
+    if (sh.day && sh.day !== londonParts(new Date()).key && $("dkIn").checked && !confirm("Add " + reg.toUpperCase() + " to PICKS " + dayShort(sh.day + "T12:00:00Z") + "? It was taken in today.")) return;
     var ret = localWhen("dkRet");
     if (ret === null) return toast("Type the time like 13:20 (or 1320).", true);
     var yb = document.querySelector("#dkYard button.on");
@@ -1149,7 +1165,7 @@
     var photo = deskPhoto; deskPhoto = null;
     $("panel").close();
     await loadRows();
-    toast(x.data.reg + " added" + (photo ? " · saving the docket photo…" : ""));
+    toast(x.data.reg + " added" + (sh !== sheet() ? " to " + sheetLabel(sh) : "") + (photo ? " · saving the docket photo…" : ""));
     if (photo) await uploadDoc(x.data, photo);
     if (can("import")) await askDrops([x.data.id]);
   }
@@ -2889,6 +2905,8 @@
   // Booked back on a later day but coming back early: the car moves onto the
   // DROPS sheet for the night picked (tonight unless changed; part 75), marked
   // EARLY. Undo puts it back.
+  // The day of the sheet the car is on ("" when that sheet isn't loaded).
+  function carSheetDay(r) { var s = S.sheets.concat(S.archiveSheet ? [S.archiveSheet] : []).filter(function (x) { return x.id === r.sheet_id; })[0]; return (s && s.day) || ""; }
   function canEarly(r) {
     if (r.kind !== "drops" || r.early || r.cleared_at || !can("called")) return false;
     var here = S.sheets.filter(function (x) { return x.id === r.sheet_id; })[0];
@@ -3000,7 +3018,12 @@
       return rf ? fld('<label for="' + d + '">' + word + ' date</label><input id="' + d + '" type="date" value="' + esc(p.key) + '">') + fld('<label for="' + t + '">' + word + " time</label>" + timeBox(t, p.time))
         : fld('<label for="' + d + '">' + L(word === "Drop-off" ? "DROP-OFF DATE AND TIME" : "BACK DATE AND TIME") + '</label><div class="when2"><input id="' + d + '" type="date" value="' + esc(p.key) + '">' + timeBox(t, p.time) + "</div>", true);
     }
-    if (!drops && can("import") && !r.removed_at) dropF = when("dropD", "dropT", "Drop-off", r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" });
+    if (!drops && can("import") && !r.removed_at) {
+      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" }, onDay = carSheetDay(r);
+      dropF = when("dropD", "dropT", "Drop-off", dp);
+      // Added to another day's sheet (a desk booking with tomorrow's board open): Save moves it (part 114).
+      if (dp.key && onDay && dp.key !== onDay) dropF += '<p class="dropday" id="dropDay">On the ' + esc(dayShort(onDay + "T12:00:00Z")) + " sheet. Save moves it to " + esc(dayShort(dp.key + "T12:00:00Z")) + ".</p>";
+    }
     if (canReturn(r)) retF = when("retD", "retT", "Return", r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" });
     if (drops ? can("yard") : picksYard() && can("intake")) {
       yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
@@ -3204,10 +3227,10 @@
       if ($("dropD")) {
         var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
         if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
-        if ($("dropD").value !== od.key || (dt || "") !== od.time) {
+        if ($("dropD").value !== od.key || (dt || "") !== od.time || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r))) {
           if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
           dl = $("dropD").value + " " + dt;
-          if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
+          if ((dl.slice(0, 10) !== od.key || dl.slice(0, 10) !== carSheetDay(r)) && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
         }
       }
       var f = null, ct, st;
@@ -6636,6 +6659,7 @@
     if (t.dataset.actf) { S.actFilter = t.dataset.actf; return render(); }
     if (t.dataset.cat) { S.catFilter = S.catFilter === t.dataset.cat ? "" : t.dataset.cat; render(); return; }
     if (t.dataset.deskbook !== undefined) return openDeskBooking();
+    if (t.dataset.dktoday !== undefined) return deskToday(t.dataset.dktoday);
     if (t.dataset.dkyard) { var on = t.classList.contains("on"); document.querySelectorAll("#dkYard button").forEach(function (b) { b.classList.remove("on"); }); if (!on) t.classList.add("on"); return; }
     if (t.dataset.tally !== undefined) { S.yardFilter = S.yardFilter === t.dataset.tally ? "" : t.dataset.tally; render(); return; }
     var r = rowOf(t);
