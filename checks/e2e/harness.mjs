@@ -296,7 +296,7 @@ function rpc(db, fn, a) {
     case "set_exit_paid": { const b = row(a.p_booking); Object.assign(b, { exit_method: a.p_method, exit_amount: a.p_method ? db.company.exit_fee : null, exit_at: a.p_method ? new Date().toISOString() : null, exit_by: a.p_method ? "s1" : null, exit_photo: a.p_photo || "" }); return b; }
     case "set_overstay_paid": { const b = row(a.p_booking); Object.assign(b, { charge_amount: a.p_amount, charge_method: a.p_method, charge_at: a.p_method ? new Date().toISOString() : null, charge_by: a.p_method ? "s1" : null }); return b; }
     case "set_overstay_agreed": { const b = row(a.p_booking); b.charge_agreed = a.p_amount; b.charge_reason = a.p_amount == null ? "" : (a.p_reason || ""); return b; }
-    case "remove_booking": { const b = row(a.p_booking); Object.assign(b, { removed_at: new Date().toISOString(), removed_reason: a.p_reason, removed_by: "s1" }); return b; }
+    case "remove_booking": { if (!["No show", "Cancelled", "Duplicate", "RTC", "Early return"].includes(a.p_reason)) throw new Error("Not a valid reason: " + a.p_reason); const b = row(a.p_booking); Object.assign(b, { removed_at: new Date().toISOString(), removed_reason: a.p_reason, removed_by: "s1" }); return b; }
     case "restore_booking": { const b = db.bookings.find((x) => x.id === a.p_booking); Object.assign(b, { removed_at: null, removed_reason: "" }); return b; }
     case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString();
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) b.sheet_id = to.id; return b; }
@@ -490,6 +490,7 @@ async function scenario(fn, tag) {
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;
+  if (process.env.REMOVE_ONLY && tag !== 'remove') return;
   if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
   if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   try { await fn(); } catch (e) {
