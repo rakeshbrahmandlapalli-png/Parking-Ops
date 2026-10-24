@@ -106,10 +106,10 @@
     if (headRow < 0) throw new Error("Couldn't find the column names (like Ref, Name, Vehicle, Return) in that Excel. Tell whoever looks after the app which columns it has.");
     var get = function (row, key) { return (cols[key] || []).map(function (c) { return String(row[c] || "").trim(); }).filter(Boolean).join(" "); };
     var out = [];
-    grid.slice(headRow + 1).forEach(function (row) {
+    grid.slice(headRow + 1).forEach(function (row, rowIndex) {
       var ref = get(row, "ref"), name = get(row, "name");
       if (!ref && !name) return;
-      if (/cancel/i.test(get(row, "status"))) return;
+
       var vehicle = get(row, "vehicle"), reg = get(row, "reg"), make = vehicle;
       if (!reg) { var m = vehicle.match(UKREG); if (m) { reg = m[1]; make = vehicle.slice(0, m.index).trim(); } }
       // The site's flight columns are sometimes filled with other values, so only
@@ -117,7 +117,7 @@
       var flight = function (key) { var m = get(row, key).toUpperCase().match(FLIGHT_RE); return m ? m[1] + m[2] : ""; };
       var note = get(row, "note").replace(/&pound;/g, "£");
       if (/^[\d.\s]*$/.test(note)) note = "";   // a stray number is not a note
-      out.push({ ref: ref, name: name, phone: get(row, "phone"), make: make || "", reg: reg.toUpperCase().replace(/\s+/g, " "),
+      out.push({ cancelled: /cancel/i.test(get(row, "status")), source_row: headRow + rowIndex + 2, ref: ref, name: name, phone: get(row, "phone"), make: make || "", reg: reg.toUpperCase().replace(/\s+/g, " "),
         flightIn: flight("flightIn") || flight("flight"), flightOut: flight("flightOut") || flight("flight"), note: note,
         meet: parseDateTime(get(row, "meet")), ret: parseDateTime(get(row, "ret")) });
     });
@@ -145,18 +145,18 @@
         var isHead = items.some(function (i) { return /^flight/i.test(i.s); }) && items.some(function (i) { return /^ref|car ?reg/i.test(i.s); });
         if (isHead) {
           heads = items.map(function (i) {
-            var key = /^flight/i.test(i.s) ? "flight" : /car ?reg|^reg/i.test(i.s) ? "reg" : /^ref/i.test(i.s) ? "ref" : "other";
+            var key = /^flight/i.test(i.s) ? "flight" : /car ?reg|^reg/i.test(i.s) ? "reg" : /^ref/i.test(i.s) ? "ref" : /^(day|date|return date)$/i.test(i.s) ? "day" : "other";
             return { key: key, c: i.c };
           });
           return;
         }
         if (!heads) return;
-        var row = { flight: "", reg: "", ref: "" };
+        var row = { flight: "", reg: "", ref: "", day: "" };
         items.forEach(function (i) {
           var best = heads.reduce(function (a, b) { return Math.abs(b.c - i.c) < Math.abs(a.c - i.c) ? b : a; });
           if (best.key !== "other") row[best.key] += i.s;
         });
-        if (row.reg || row.ref) out.push({ flight: row.flight.replace(/\s+/g, "").toUpperCase(), reg: row.reg, ref: row.ref });
+        if (row.reg || row.ref) out.push({ flight: row.flight.replace(/\s+/g, "").toUpperCase(), reg: row.reg, ref: row.ref, report_date: (parseDateTime(row.day) || {}).key || "" });
       });
     }
     if (!heads) throw new Error("Couldn't find the Flight No. column in that PDF. Is it the right report?");
@@ -294,6 +294,7 @@
         .map(function (y) { return { y: y, items: byY[y] }; });
       var got = parseJoblistLines(lines, kind);
       kind = got.kind || kind;
+      got.rows.forEach(function(r){r.source_page=p;});
       all = all.concat(got.rows);
     }
     return { rows: all, kind: kind };

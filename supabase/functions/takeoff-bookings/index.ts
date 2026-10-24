@@ -32,7 +32,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { matchFlights, addDaysKey } from "./reader.mjs";
-import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget, cleanTimes, dueSlot, scheduleDecision, flightFields } from "./swift.mjs";
+import { parseTsv, makeClient, readReport, parseHtmlTable, plan, planHash, previewView, reportStats, windowFor, siteDate, scriptOf, rangeFor, requestBudget, cleanTimes, dueSlot, scheduleDecision, flightFields, selectedBatches } from "./swift.mjs";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const admin = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -139,10 +139,10 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
   const cw = windowFor(Date.now(), Number(cfg.cancelled_days ?? 14));
   const cancelled = cancelledSearch ? readReport(gridFrom(await client.download(fill(cancelledSearch, cw), exportPath)), scope, { allowEmpty: true }) : { rows: [], excludedScope: 0 };
 
-  const refs = Array.from(new Set([...drops.rows, ...picks.rows].map((r: { ref: string }) => r.ref).filter(Boolean)));
+  const refs = Array.from(new Set([...drops.rows, ...picks.rows, ...cancelled.rows].map((r: { ref: string }) => r.ref).filter(Boolean)));
   const existing = new Map<string, unknown>();
   for (let i = 0; i < refs.length; i += 400) {
-    const { data, error } = await admin.rpc("swift_existing", { p_company: company.id, p_refs: refs.slice(i, i + 400) });
+    const { data, error } = await admin.rpc("import_review_existing", { p_company: company.id, p_refs: refs.slice(i, i + 400) });
     if (error) throw new Error("Couldn't read the current bookings: " + error.message);
     (data as { kind: string; ref: string }[]).forEach((e) => existing.set(e.kind + "|" + e.ref, e));
   }
@@ -171,7 +171,7 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
     ...cancelled.rows.flatMap((row: unknown) => [{ kind: "drops", row }, { kind: "picks", row }]),
   ];
   const p = plan({ drops: drops.rows, picks: picks.rows, existing: existing as never, window: win, cutoff, cancelledRows: cancelledRows as never, onSheets });
-  return { p, hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: { ...reportStats(picks.rows, "meet", picks.site), form: picks.form }, flights }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
+  return { p, refs, existing: [...existing.values()], hash: await planHash(p), report: { drops: reportStats(drops.rows, "ret", drops.site), picks: { ...reportStats(picks.rows, "meet", picks.site), form: picks.form }, flights }, excluded_scope: drops.excludedScope + picks.excludedScope + cancelled.excludedScope, requests: client.count };
 }
 
 async function record(companyId: string, ok: boolean, error: string, summary: unknown) {
@@ -217,11 +217,11 @@ async function scheduledFor(co: Co & { suspended_at?: string | null }) {
     if (c.p.reviews.length) await admin.rpc("swift_review_upsert", { p_company: co.id, p_items: c.p.reviews });
     let days: unknown[] = [];
     if (c.p.batches.length) {
-      const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, scheduled: true, provider: "swift" }, p_user: by });
+      const res = await admin.rpc("swift_apply_checked", { p_company: co.id, p_batches: c.p.batches, p_refs: c.refs, p_existing: c.existing, p_source: { auto: true, scheduled: true, provider: "swift", changes: c.p.items.filter(i => i.status === "new" || i.status === "changed") }, p_user: by });
       if (res.error) throw new Error("Nothing was imported (" + res.error.message + ").");
       days = res.data as unknown[];
     }
-    const summary = { at: new Date().toISOString(), days, counts: c.p.counts, reviews: c.p.reviews.length };
+    const summary = { at: new Date().toISOString(), days, selected: c.p.batches.reduce((n, b) => n + b.rows.length, 0), counts: c.p.counts, reviews: c.p.reviews.length };
     await admin.rpc("auto_import_record", { p_company: co.id, p_ok: true, p_error: "", p_summary: summary });
     await mark({ outcome: "imported", counts: c.p.counts });
     return { company: co.slug, slot, imported: c.p.counts };
@@ -290,12 +290,13 @@ async function handle(req: Request): Promise<Response> {
         if (r.error) throw new Error("Couldn't save the review list: " + r.error.message);
       }
       let days: unknown[] = [];
-      if (c.p.batches.length) {
-        const res = await admin.rpc("swift_apply", { p_company: co.id, p_batches: c.p.batches, p_source: { auto: true, manual: true, provider: "swift" }, p_user: me.user_id });
+      const batches = selectedBatches(c.p, body.selected);
+      if (batches.length) {
+        const res = await admin.rpc("swift_apply_checked", { p_company: co.id, p_batches: batches, p_refs: c.refs, p_existing: c.existing, p_source: { auto: true, manual: true, provider: "swift", changes: c.p.items.filter(i => (i.status === "new" || i.status === "changed") && (body.selected === undefined || (body.selected as string[]).includes(i.kind + "|" + i.ref))) }, p_user: me.user_id });
         if (res.error) throw new Error("Nothing was imported (" + res.error.message + ").");
         days = res.data as unknown[];
       }
-      const summary = { at: new Date().toISOString(), days, counts: c.p.counts, reviews: c.p.reviews.length };
+      const summary = { at: new Date().toISOString(), days, selected: batches.reduce((n, b) => n + b.rows.length, 0), counts: c.p.counts, reviews: c.p.reviews.length };
       await admin.rpc("auto_import_record", { p_company: co.id, p_ok: true, p_error: "", p_summary: summary });
       return reply(200, { ok: true, summary });
     } catch (e) {

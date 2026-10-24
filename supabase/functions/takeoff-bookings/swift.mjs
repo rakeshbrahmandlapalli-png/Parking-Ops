@@ -279,7 +279,7 @@ const same = (a, b) => String(a || "").trim() === String(b || "").trim();
 // onSheets: the cars the app holds on the sheets whose days were read in full ({ kind, day, ref, reg, name }),
 // so a booking the site no longer lists at all (24 Oct: a deleted temp booking) reaches the review list too.
 export function plan({ drops = [], picks = [], existing, window: win, cutoff = "06:00", cancelledRows = [], onSheets = [] }) {
-  const out = { window: win, counts: { new: 0, changed: 0, unchanged: 0, review: 0, invalid: 0, outside: 0 }, items: [], reviews: [], invalid: [], batches: [] };
+  const out = { window: win, counts: { new: 0, changed: 0, unchanged: 0, review: 0, invalid: 0, outside: 0 }, items: [], reviews: [], invalid: [], batches: [], existing: [...existing.values()].sort((a,b) => (a.kind + a.ref).localeCompare(b.kind + b.ref)) };
   const slack = { from: addDaysKey(win.from, -1), to: addDaysKey(win.to, 1) };
   const seen = new Map();
   const batchOf = new Map();
@@ -311,7 +311,8 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
       if (g.day < slack.from || g.day > slack.to) { out.counts.outside += g.rows.length; return; }
       g.rows.forEach((row) => {
         const ex = existing.get(kind + "|" + row.ref);
-        const item = { kind, day: g.day, ref: row.ref, reg: row.reg, name: row.name };
+        const item = { kind, day: g.day, ref: row.ref, reg: row.reg, name: row.name, booking_id: ex?.id, yard: ex?.yard, number: ex?.num, lane: ex?.lane, position: ex?.position };
+        if (ex) item.attention = row.return_local && ex.return_local && row.return_local < ex.return_local ? 'Earlier return — check yard access' : row.reg && squash(row.reg)!==squash(ex.reg) ? 'Registration changed — check key tag' : '';
         if (!ex) { out.counts.new++; out.items.push({ ...item, status: "new" }); push(kind, g.day, row); return; }
         const changes = [];
         const chk = (f, a, b) => { if (a) changes.push({ field: f, from: b || "", to: a }); };
@@ -324,13 +325,15 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
         const dayMoved = ex.sheet_day && ex.sheet_day !== g.day;
         const done = ex.cleared || ex.removed;
         const critical = changes.some((c) => ["reg", "drop", "return"].includes(c.field));
+        const typed = changes.some((c) => c.field === "reg" && ex.reg_typed || c.field === "return" && ex.return_typed || c.field === "drop" && ex.drop_typed);
+        if (typed || ex.sent && critical) { review("conflict", row.ref, { kind, why: typed ? "the office has edited these details; open the booking to confirm the change" : "car is with a driver; check before changing its details", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         if (done && (critical || dayMoved)) { review("conflict", row.ref, { kind, why: "already handed back or removed, but the booking site now shows different details", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         if (dayMoved) {
           const laterReturn = kind === "drops" && row.return_local && ex.return_local && row.return_local > ex.return_local && !ex.early;
           if (!laterReturn) { review("conflict", row.ref, { kind, why: "moved from sheet " + ex.sheet_day + " to " + g.day + "; the app can't move it safely", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         }
         if (!changes.length && !dayMoved) { out.counts.unchanged++; out.items.push({ ...item, status: "unchanged" }); return; }
-        out.counts.changed++; out.items.push({ ...item, status: "changed", changes: dayMoved ? changes.concat([{ field: "day", from: ex.sheet_day, to: g.day }]) : changes });
+        out.counts.changed++; out.items.push({ ...item, status: "changed", attention: changes.some(c => c.field === "return" && c.to < c.from) ? "Earlier return — check yard access" : changes.some(c => c.field === "reg") ? "Registration changed — check key tag" : "", changes: dayMoved ? changes.concat([{ field: "day", from: ex.sheet_day, to: g.day }]) : changes });
         // A typed flight wins: never send ours for that car.
         push(kind, g.day, ex.flight_typed ? { ...row, flight: "" } : row);
       });
@@ -366,7 +369,11 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
 }
 
 export async function planHash(p) {
-  const s = JSON.stringify({ b: p.batches, r: p.reviews.map((x) => [x.kind, x.ref]), w: p.window });
+  // What an import writes or holds back, and the current state of the cars it writes. Yards, numbers and lanes are
+  // shown but never written by an import, so moving a car while someone reviews doesn't make the preview stale.
+  const writing = new Set(p.batches.flatMap((b) => b.rows.map((r) => b.kind + "|" + r.ref)));
+  const strip = (o) => { const { yard, number, num, lane, position, ...rest } = o || {}; return rest; };
+  const s = JSON.stringify({ b: p.batches, r: p.reviews, i: p.items.filter((i) => i.status !== "unchanged").map(strip), e: (p.existing || []).filter((e) => writing.has(e.kind + "|" + e.ref)).map(strip), w: p.window });
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 24);
 }
@@ -394,13 +401,21 @@ export function reportStats(rows, field, site) {
 }
 
 export function previewView(p, hash) {
-  const lim = (a) => a.slice(0, 200);
   return {
-    hash, window: p.window, counts: p.counts, can_apply: p.counts.invalid === 0 && (p.batches.length > 0 || p.reviews.length > 0),
-    items: lim(p.items.filter((i) => i.status !== "unchanged")), reviews: lim(p.reviews), invalid: lim(p.invalid),
+    hash, selection_supported: true, window: p.window, counts: p.counts, can_apply: p.counts.invalid === 0 && (p.batches.length > 0 || p.reviews.length > 0),
+    items: p.items.filter((i) => i.status !== "unchanged"), reviews: p.reviews, invalid: p.invalid,
     // The unchanged ones, for the optional "Unchanged" view: just which booking, nothing else.
     unchanged: p.items.filter((i) => i.status === "unchanged").slice(0, 600).map((i) => ({ kind: i.kind, day: i.day, ref: i.ref, reg: i.reg })),
   };
+}
+
+// Selection is checked against the freshly collected full plan, never a client supplied row.
+export function selectedBatches(p, keys) {
+  if (keys === undefined) return p.batches; // scheduled and older clients keep their existing behaviour
+  if (!Array.isArray(keys) || keys.length > 10000 || keys.some(k => typeof k !== "string")) throw new Error("Invalid booking selection.");
+  const wanted = new Set(keys), allowed = new Set(p.items.filter(i => i.status === "new" || i.status === "changed").map(i => i.kind + "|" + i.ref));
+  if (wanted.size !== keys.length || [...wanted].some(k => !allowed.has(k))) throw new Error("A selected booking needs review or is no longer available. Check again.");
+  return p.batches.map(b => ({ ...b, rows: b.rows.filter(r => wanted.has(b.kind + "|" + r.ref)) })).filter(b => b.rows.length);
 }
 
 // ── scheduled runs ──────────────────────────────────────────────────────────

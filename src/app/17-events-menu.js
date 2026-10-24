@@ -186,6 +186,15 @@
       return ptStart(r);
     }
     if (t.dataset.archretry !== undefined) { S.arch.days = null; render(); return; }
+    if (t.dataset.bipreset) { var a1=S.autoImport; if(a1 && !a1.running && !a1.checking){a1.custom=Number(t.dataset.bipreset)!==3;a1.from=biToday();a1.to=addDaysKey(biToday(),Number(t.dataset.bipreset)-1);a1.preview=null;a1.error='';render();}return; }
+    if (t.dataset.manualcheck !== undefined) { if(S.imp) S.imp.pending=null; return checkManualImport(); }
+    if (t.dataset.manualfilter) { S.imp.filter=t.dataset.manualfilter;render();return; }
+    if (t.dataset.manualincoming) return manualIncoming(t.dataset.manualincoming);
+    if (t.dataset.manualopen) return manualOpen(t.dataset.manualopen);
+    if (t.dataset.manualkeep) { delete S.imp.selected[t.dataset.manualkeep];S.imp.plan.items.forEach(function(i){if(i.key===t.dataset.manualkeep){i.reason='Current details kept for this import. No change will be applied.';}});render();return; }
+    if (t.dataset.importreview !== undefined) {S.imp.stage='preview';return checkManualImport();}
+    if (t.dataset.importboard) {await switchSheet(t.dataset.importboard,{});S.view='board';render();return;}
+    if (t.dataset.importlog !== undefined) {S.view='summary';S.actFilter='IMPORT';render();return;}
     if (t.dataset.impkind) { S.imp = newImport(t.dataset.impkind); render(); return; }
     if (t.dataset.undoimport && !t.closest("#panel")) return undoImport(t.dataset.undoimport, t);
     if (t.dataset.bitab) { S.bi.tab = t.dataset.bitab; render(); return; }
@@ -285,6 +294,7 @@
     }
     if (S.view === "settings" && e.target.closest("[data-sec]")) showUnsaved();
   });
+  document.addEventListener('input',function(e){var t=e.target;if(t.id==='miQ'){S.imp.q=t.value;document.querySelectorAll('[data-miq]').forEach(function(r){r.hidden=t.value&&r.dataset.miq.indexOf(t.value.toLowerCase().replace(/\s+/g,''))<0;});}if(t.id==='biHistoryQ'){S.bi.historyQ=t.value;clearTimeout(S.bi.historyTimer);S.bi.historyTimer=setTimeout(function(){render();var el=$('biHistoryQ');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},250);}});
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
@@ -316,7 +326,13 @@
     if (t.dataset.exitfile !== undefined) { var fx = t.files && t.files[0]; if (fx && panelRow && t.dataset.m) markExit(panelRow, t.dataset.m, fx); return; }
     if (t.dataset.docfile !== undefined) { var f0 = t.files && t.files[0]; if (f0 && panelRow) { toast("Saving the docket photo…"); uploadDoc(panelRow, f0); } return; }
     if (t.dataset.ptmethod !== undefined) return savePtMethod(t);
-    if (t.dataset.file) { var f = t.files && t.files[0]; if (!f) return; S.imp[t.dataset.file + "File"] = f; S.imp.error = ""; render(); return; }
+    if (t.dataset.historymethod !== undefined) {S.bi.historyMethod=t.value;render();return;}
+    if (t.dataset.historyday !== undefined) {S.bi.historyDay=t.value;render();return;}
+    if (t.dataset.biselect !== undefined) {if(S.autoImport.running||S.autoImport.checking)return;S.bi.selected=S.bi.selected||{};S.bi.selected[t.dataset.biselect]=t.checked;render();return;}
+    if (t.dataset.biselectall !== undefined) {if(S.autoImport.running||S.autoImport.checking)return;var checked=t.checked;S.bi.selected={};(S.autoImport.preview.items||[]).forEach(function(i){if(i.status==='new'||i.status==='changed')S.bi.selected[i.kind+'|'+i.ref]=checked;});render();return;}
+    if (t.dataset.manualselect !== undefined) {if(S.imp.saving)return;S.imp.selected[t.dataset.manualselect]=t.checked;S.imp.pending=null;render();return;}
+    if (t.dataset.manualall !== undefined) {if(S.imp.saving)return;var ck=t.checked;S.imp.plan.items.forEach(function(i){if(manualReady(i))S.imp.selected[i.key]=ck;});S.imp.pending=null;render();return;}
+    if (t.dataset.file) { if(S.imp.saving||S.imp.checking||S.imp.stage==="reading")return; var f = t.files && t.files[0]; if (!f) return; S.imp[t.dataset.file + "File"] = f; if(t.dataset.file==="excel"){var fs1=Array.from(t.files);if(S.imp.stage==="pick"&&S.imp.bookingFiles)fs1=S.imp.bookingFiles.concat(fs1).filter(function(x,i,a){return a.findIndex(function(y){return y.name===x.name&&y.size===x.size&&y.lastModified===x.lastModified;})===i;});else S.imp.pdfFile=null;S.imp.bookingFiles=fs1;}S.imp.error="";S.imp.stage="pick";S.imp.plan=null;S.imp.fileInfo=null;S.imp.pending=null;render();return; }
     if (t.dataset.alertpref !== undefined) {
       var P = Object.assign({ drops: true, picks: true, flights: true }, S.notify.prefs); P[t.dataset.alertpref] = t.checked;
       var pr = await sb.rpc("set_alert_prefs", { p_drops: P.drops !== false, p_picks: P.picks !== false, p_flights: P.flights !== false });
@@ -332,10 +348,10 @@
       render(); return;
     }
     if (t.dataset.impdate !== undefined) return buildPreview(t.value);
-    if (t.dataset.impcut !== undefined) { S.imp.cutoff = t.value; var keep = S.imp.preview.dateKey; groupImport(); buildPreview(S.imp.real.dates.indexOf(keep) !== -1 ? keep : S.imp.real.dates[0]); return; }
+    if (t.dataset.impcut !== undefined) { S.imp.cutoff = t.value; var keep = S.imp.preview.dateKey; groupImport(); buildPreview(keep === "all" || S.imp.real.dates.indexOf(keep) !== -1 ? keep : "all"); return checkManualImport(); }
     if (t.dataset.fix !== undefined) {
       var v = normFlight(t.value);
-      if (v) { S.imp.preview.rows[+t.dataset.fix].flight = v; render(); }
+      S.imp.preview.rows[+t.dataset.fix].flight = v; return checkManualImport();
     }
   });
 
