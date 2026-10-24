@@ -12,7 +12,7 @@ The web app's Customer texts settings show the paired phone's last check-in, bat
 
 ## Accurate outcomes and duplicate protection
 
-- Only one handset and staff session are paired to send for a company. An owner must explicitly replace it. A previous handset cannot claim new messages after replacement; an already claimed message can still complete.
+- Only one handset and staff session are paired to send for a company. An owner signed in on the handset pairs it at once (or replaces the old one deliberately). Any other login, normally the office login, only asks: the owner approves or refuses it in Settings → Customer texts → Company phone, which names the login and warns if the phone is on an owner login. Unpair stops it claiming texts. A switched-off staff login can't be approved, and its session no longer claims. A previous handset cannot claim new messages after replacement; an already claimed message can still complete.
 - Each claim has its own token. The handset saves its send journal before calling the modem.
 - **Sending** waits for Android's sent callback for every SMS part. Returning from `SmsManager.sendTextMessage` does not mean success.
 - **Sent** means Android confirmed every part was sent. **Delivered** requires carrier delivery reports for every part and does not mean read. Some networks do not provide delivery reports.
@@ -45,7 +45,14 @@ Requirements: JDK 17, Android SDK 35, Build Tools 35.0.0. Use the Gradle wrapper
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-The app opens `https://takeoff-ops.vercel.app`; the public Supabase anon key and URL are in the app module configuration. No service-role or voice-provider secret is packaged. Debug signing is for development only; arrange a durable release signing key before distribution.
+The app opens `https://takeoff-ops.vercel.app`; the public Supabase anon key and URL are in the app module configuration. No service-role or voice-provider secret is packaged. Release builds are signed from environment variables, never from files in the repo:
+
+```sh
+TAKEOFF_KEYSTORE=/path/to/takeoff-phone-release.p12 TAKEOFF_KEYSTORE_PASSWORD=… TAKEOFF_KEY_PASSWORD=… \
+  ./gradlew :app:assembleRelease
+```
+
+The alias defaults to `takeoff-phone`. Every update must be signed with the same key, or Android refuses to install it over the old app. Release certificate SHA-256: `29:9B:09:EB:0B:9C:54:34:F0:28:28:95:E1:B4:DF:2A:79:47:26:32:B5:84:58:05:F9:33:29:F7:82:DD:36:55`. Keep the keystore and its password in the owner's password manager or another durable secret store, never in the repo or chat. The built APK is published at `https://takeoff-ops.vercel.app/phone/takeoff-phone.apk` (served as an attachment, not cached by the web app's offline cache) with its SHA-256 beside it in `takeoff-phone.apk.sha256`.
 
 Database behavior tests use throwaway PGlite, with no live customer calls or SMS:
 
@@ -56,18 +63,18 @@ node checks/customer-texts.mjs
 
 These commands run from the repository root after installing `@electric-sql/pglite` in the Node module search path. `PGLITE_MODULE` can point to an external PGlite module for isolated tooling.
 
-## Deployment order and acceptance
+## Deployment state (24 October 2026)
 
-The prepared schema order is setup 116, 116b, 117, then 118. Deploy the matching `send-texts` function and web bundle before a handset pilot. None of those database or deployment actions have been performed in this branch.
+Live on the Ops database: setup 116, 116b, 117, 118 and 118b, applied in that order by Claude at the owner's request; `send-texts` v1 deployed with verify_jwt off (each route checks the timer secret or the caller's sign-in). The Twilio `calls` function is not deployed. Pilot: only TakeOff has the Customer texts and Calls add-ons. Automatic texts stay off until the handset tests below pass; an owner's Settings test text can be queued while they are off.
 
-Before a live release, validate on the actual company phone and SIM: locked screen, battery restrictions, airplane-mode recovery, reboot, multi-part SMS success/failure, carrier delivery reports, offline replies, zero-duration answered/missed/rejected calls, app sign-out, phone replacement and company isolation. Measure actual queue-to-send time. Source checks and a debug APK build do not establish carrier/device reliability.
+Automatic DROPS events (flight landed, SENT) are written to `private.text_outbox` in the same transaction as the booking change. The trigger nudges `send-texts` at once and the `customer-text-outbox` timer retries every minute (up to 10 tries or one hour). Each booking and rule is queued once, so a retry never makes a second text.
+
+## Handset acceptance (still to do)
+
+Validate on the actual company phone and SIM: locked screen, battery restrictions, airplane-mode recovery, reboot, multi-part SMS success/failure, carrier delivery reports, offline replies, zero-duration answered/missed/rejected calls, app sign-out, phone replacement and company isolation. Measure queue-to-send time. Source checks and an APK build do not establish carrier/device reliability, and none of these have been done yet.
 
 ## Local verification — 24 October 2026
 
-The debug APK assembled successfully with the checked-in Gradle wrapper configuration, JDK 17 and SDK 35. All 24 SIM-bridge database checks, 39 customer-text checks and eight native SMS-result unit tests passed. The generated web bundle matched its sources; web/Edge Function syntax checks passed.
+Release and debug APKs assembled with the Gradle 8.9 wrapper, JDK 21 and SDK 35; the release APK verifies with the v2 signature scheme. 38 SIM-bridge database checks (pairing request/approve/refuse/unpair, switched-off login, ambiguous reply and call, outbox), the customer-text and incoming-call schema checks, and eight native SMS-result unit tests passed. Browser suites: TEXTS_ONLY 106 passed, CALLS_ONLY 78 passed. Android lint: 0 errors; warnings are synchronous durable preference writes, dependency versions, the launcher artwork and JavaScript required by the trusted web app.
 
-Android lint completed with zero errors and 21 warnings: deliberately synchronous durable preference writes, English UI strings, JavaScript required by the trusted web app and the existing square launcher artwork. These were not hidden with a lint baseline. Real handset/carrier testing and an end-to-end pilot remain outstanding; no production schema or deployment was changed.
-
-The phone parts were renumbered on 24 October to avoid the already merged/applied `114-move-pick-same-time.sql` desk-booking fix on main `f6633eb`. Parts 116/116b/117/118 are the prepared phone feature; do not reapply the old part numbers from Claude’s abandoned feature branch.
-
-Handoff verification after combining the newer main desk-booking fix: the focused real-web-app browser suites passed 99 text checks and 77 call checks with a mocked backend. Preview screenshots use fabricated booking data; the separate native wrapper picture is a labelled layout mockup. The deployed handset/carrier flow remains untested.
+The phone parts were renumbered twice on 24 October: main had already used 114 (move pick same time) and 115 (AT DESK access). The parts are 116/116b (texts), 117 (calls schema), 118/118b (SIM bridge, pairing, outbox). Do not apply older numbers from abandoned branches.

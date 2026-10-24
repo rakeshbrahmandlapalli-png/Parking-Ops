@@ -416,4 +416,7 @@ select cron.schedule('customer-text-outbox', '* * * * *', $job$
     timeout_milliseconds := 30000)
   where exists (select 1 from private.text_outbox where done_at is null)
 $job$);
+-- Advisor tidy (applied with this part): the trigger function is not an RPC, and phone10 gets a fixed search path.
+revoke all on function public.bookings_text() from public, anon, authenticated;
+alter function private.phone10(text) set search_path = public;
 commit;
