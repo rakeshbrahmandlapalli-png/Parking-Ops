@@ -35,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var trustedPage=false
     private val executor=Executors.newSingleThreadExecutor()
     private val handler=Handler(Looper.getMainLooper())
+    // A message about the last tap stays for 20 s; the 2 s status refresh used to wipe it at once.
+    private var notice: String?=null
+    private var noticeUntil=0L
+    private fun say(msg: String) { notice=msg; noticeUntil=System.currentTimeMillis()+20000; status.text=msg }
     private val statusTick=object: Runnable { override fun run() { updateStatus(); handler.postDelayed(this,2000) } }
     private val permissions=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { updateStatus() }
     private val role=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { requestRuntimePermissions(); updateStatus() }
@@ -99,21 +103,21 @@ class MainActivity : AppCompatActivity() {
         if(missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
     }
     private fun connectPhone(replace: Boolean,quiet: Boolean=false) {
-        if(PhoneSession.access(this).isNullOrBlank()) { status.text="Sign in to TakeOff below first."; return }
+        if(PhoneSession.access(this).isNullOrBlank()) { say("Sign in to TakeOff below first."); return }
         if(quiet && !online.isEnabled) return
         if(ContextCompat.checkSelfPermission(this,Manifest.permission.SEND_SMS)!=PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this,Manifest.permission.RECEIVE_SMS)!=PackageManager.PERMISSION_GRANTED) { requestAccess(); return }
-        if(android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()<0) { status.text="Choose the company SIM as Android's default SMS SIM first."; return }
+        if(android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId()<0) { say("Choose the company SIM as Android's default SMS SIM first: Settings → Connections → SIM manager → Text messages."); return }
         online.isEnabled=false
         executor.execute {
             try {
                 if(SupabasePhoneApi.connect(this,replace)=="pending") { runOnUiThread { online.isEnabled=true; updateStatus() }; return@execute }
                 runOnUiThread {
-                    PhoneSession.setOnline(this,true)
+                    notice=null; PhoneSession.setOnline(this,true)
                     ContextCompat.startForegroundService(this,Intent(this,PhoneBridgeService::class.java)); online.isEnabled=true; updateStatus()
                 }
             } catch(e: Exception) { runOnUiThread {
                 online.isEnabled=true; if(quiet) return@runOnUiThread
-                status.text=e.message ?: "Could not connect. Check internet and sign in again."
+                say(e.message ?: "Could not connect. Check internet and sign in again.")
                 if(!replace && e.message?.contains("Another company phone")==true) AlertDialog.Builder(this)
                     .setTitle("Replace the paired company phone?").setMessage("Only this handset will send new customer texts. The previous handset will stop claiming them. Any uncertain sends still need review.")
                     .setNegativeButton("Cancel",null).setPositiveButton("Replace phone") { _,_ -> connectPhone(true) }.show()
@@ -122,6 +126,7 @@ class MainActivity : AppCompatActivity() {
     }
     private fun updateStatus() {
         if(!::status.isInitialized) return
+        if(notice!=null && System.currentTimeMillis()<noticeUntil) { status.text=notice; return }
         val latest=PhoneSession.access(this)
         if(::web.isInitialized && latest!=lastWebToken) {
             lastWebToken=latest
