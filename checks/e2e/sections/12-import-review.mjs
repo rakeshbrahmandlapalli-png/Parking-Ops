@@ -56,3 +56,16 @@ for(const theme of ['','stdplus','ops','ops-refined','premium','board','cards','
   await page.close();
  }
 });
+// 24 Oct: the site dropped the connection during Import. The page said "Check failed" over a check that had worked.
+await scenario(async()=>{
+ const db=biDb('ops');db.preview.selection_supported=true;const page=await phone(browser,db,{width:390});await visit(page);
+ await page.click('[data-autopreview]');await page.waitForSelector('[data-biselect]');
+ db.applyError='The booking site dropped the connection (arrival_report_parkandride.php). Nothing was imported. Try again in a minute.';
+ await page.click('[data-autorun]');await page.waitForSelector('[data-autokept]');
+ check('failed import is called an import failure, not a check failure',/Import failed/.test(await page.locator('.bi-conn').innerText()));
+ check('failed import says nothing was imported and keeps the check',/Nothing was imported/.test(await page.locator('[data-autokept]').innerText())&&await page.locator('[data-biselect]').count()>0);
+ check('failed import can be tried again',await page.locator('[data-autorun]').isEnabled());
+ db.applyError=null;db.previewError='The booking site didn\'t answer.';await page.click('[data-autopreview]');await page.waitForSelector('.bi-conn.bad');
+ check('failed check is still a check failure and shows no old check',/Check failed/.test(await page.locator('.bi-conn').innerText())&&await page.locator('[data-biselect]').count()===0&&await page.locator('[data-autorun]').isDisabled());
+ await page.close();
+});

@@ -93,7 +93,17 @@ export function makeClient(cfg, io) {
       if (count > 1) await sleep(400);
       const headers = { cookie: cookieHeader(), accept: "*/*" };
       if (m === "POST") headers["content-type"] = "application/x-www-form-urlencoded";
-      const res = await io.fetch(u.toString(), { method: m, headers, body: m === "POST" ? b : undefined, redirect: "manual" });
+      const req = { method: m, headers, body: m === "POST" ? b : undefined, redirect: "manual" };
+      let res;
+      try { res = await io.fetch(u.toString(), req); }
+      catch (err) {
+        // The site sometimes drops a connection. Every page here only reads, so one more try is safe;
+        // the sign-in is never sent twice.
+        if (m === "POST" && scriptOf(u) === loginScript) throw err;
+        await sleep(1500);
+        try { res = await io.fetch(u.toString(), req); }
+        catch (err2) { throw new Error("The booking site dropped the connection (" + scriptOf(u) + "). Nothing was imported. Try again in a minute."); }
+      }
       store(res);
       if (res.status >= 300 && res.status < 400) {
         if (!follow) return { res, url: u, redirect: res.headers.get("location") || "" };

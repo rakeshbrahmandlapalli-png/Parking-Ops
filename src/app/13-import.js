@@ -71,7 +71,7 @@
     if (a.running) return { cls: "busy", text: "Importing…" };
     if (a.checking) return { cls: "busy", text: "Checking…" };
     if (a.blocked_until) return { cls: "bad", text: "Paused", note: "Sign-in failed. Paused until " + hhmm(a.blocked_until) + ". Check the saved login." };
-    if (a.error && !a.stale) return { cls: "bad", text: "Check failed" };
+    if (a.error && !a.stale) return { cls: "bad", text: a.failed === "import" ? "Import failed" : "Check failed" };
     if (a.last_error && !a.checked_at) return { cls: "bad", text: "Last try failed", note: String(a.last_error).slice(0, 160) };
     if (a.checked_at || a.last_ok) return { cls: "ok", text: "Connected" };
     return { cls: "idle", text: "Not checked yet" };
@@ -146,6 +146,8 @@
       biRangeHtml(a, busy) + biSchedHtml(a) + '<div class="bi-body">' + (P ? biSteps(1).replace(/Files/g,"Check") + biProtected() : "");
     if (a.result) h += autoResultHtml(a.result);
     if (a.error) h += '<div class="alert" role="alert">' + esc(a.error) + "</div>";
+    // A failed import keeps the check so it can be tried again: the import reads the site afresh and stops if anything changed.
+    if (a.error && P && a.failed === "import" && !a.stale) h += '<p class="bi-hint" data-autokept>Nothing was imported. The check below is from ' + esc(a.checked_at ? biStamp(a.checked_at) : "earlier") + '. Import reads the booking site again first and stops if anything changed.</p>';
     if (!P) {
       if (!a.error && !busy && !a.result) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
     } else {
@@ -201,7 +203,7 @@
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft, result: keep.result, running: !!d.running || !!keep.running, checking: keep.checking };
+    S.autoImport = { available: !!d.available, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, failed: keep.failed, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft, result: keep.result, running: !!d.running || !!keep.running, checking: keep.checking };
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -210,21 +212,22 @@
   }
   async function previewAutoImport() {
     var a = S.autoImport; if (!a || a.checking || a.running) return;
-    a.checking = true; a.error = ""; a.preview = null; a.result = null; render();
+    a.checking = true; a.error = ""; a.failed = ""; a.preview = null; a.result = null; render();
     var r;
     r = await callBookings(Object.assign({ action: "preview" }, a.custom ? biRange(a) : {}));
     a.checking = false;
     var out = r && r.data;
+    a.failed = "check";
     if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
     else if (out.ok === false) a.error = out.error || "The booking site didn't answer.";
     else if (out.error) a.error = out.error;
-    else { a.preview = out.preview; a.checked_at = Date.now(); a.stale = false; S.bi.open = {}; S.bi.selected = {}; (out.preview.items || []).forEach(function(i){if(i.status === "new" || i.status === "changed") S.bi.selected[i.kind + "|" + i.ref] = true;}); }
+    else { a.failed = ""; a.preview = out.preview; a.checked_at = Date.now(); a.stale = false; S.bi.open = {}; S.bi.selected = {}; (out.preview.items || []).forEach(function(i){if(i.status === "new" || i.status === "changed") S.bi.selected[i.kind + "|" + i.ref] = true;}); }
     render(); loadAutoImport();
   }
   async function runAutoImport(btn) {
     var a = S.autoImport; if (!a || !a.preview || !a.preview.can_apply) return;
     if (a.preview.selection_supported && !autoSelected(a.preview).length && !a.preview.counts.review) return;
-    a.running = true; a.error = ""; render();
+    a.running = true; a.error = ""; a.failed = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
     r = await callBookings(Object.assign(Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.preview.selection_supported ? { selected: autoSelected(a.preview) } : {}), a.custom ? biRange(a) : {}));
@@ -232,7 +235,7 @@
     var out = r && r.data;
     if ((r && r.error) || !out || out.ok === false) {
       a.error = (out && out.error) || "The import response was lost. Check bookings again to confirm the result before retrying.";
-      a.stale = out && /changed since the preview/.test(a.error);
+      a.stale = out && /changed since the preview/.test(a.error); a.failed = "import";
       toast(a.error, true); render(); return loadAutoImport();
     }
     var days = (out.summary && out.summary.days) || [];
