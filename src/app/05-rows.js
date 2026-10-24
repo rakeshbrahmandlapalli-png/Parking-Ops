@@ -283,7 +283,16 @@
     a.href = u.data.signedUrl; a.innerHTML = '<img alt="Photo of the payment" src="' + esc(u.data.signedUrl) + '">';
   }
   // Collections on the board, shared by every look and gated by saved access.
-  // Defaults and per-person grants/removals are resolved by my_permissions.
+  // An add-on per client (Parking Ops → Clients → Edit, brand.collections, part 109);
+  // inside it, defaults and per-person grants/removals are resolved by my_permissions.
+  function collectionsOn() { return !!(can("collections") && S.company && S.company.brand && S.company.brand.collections === true); }
+  // Folded to its header line, remembered on this phone.
+  var PAY_FOLD_KEY = "takeoff_collections_folded";
+  function payFolded() { try { return localStorage.getItem(PAY_FOLD_KEY) === "1"; } catch (e) { return false; } }
+  function togglePayFold() {
+    try { if (payFolded()) localStorage.removeItem(PAY_FOLD_KEY); else localStorage.setItem(PAY_FOLD_KEY, "1"); } catch (e) {}
+    renderBoardPayments();
+  }
   // These are the existing
   // payment records: a recorded charge settles it (a smaller payment can be
   // the agreed discount), and a waiver is never counted as cash received.
@@ -301,7 +310,7 @@
   }
   function boardPaymentsAvailable() {
     var sh = sheet();
-    return !!(can("collections") && sh && sh.kind === "drops" && !S.platform && !keyOn() && (exitFee() > 0 || S.rows.some(function (r) { return r.exit_method || r.charge_method || paymentPence((chargeDue(r) || {}).amount) > 0; })));
+    return !!(collectionsOn() && sh && sh.kind === "drops" && !S.platform && !keyOn() && (exitFee() > 0 || S.rows.some(function (r) { return r.exit_method || r.charge_method || paymentPence((chargeDue(r) || {}).amount) > 0; })));
   }
   function paymentMatches(r, filter) {
     var p = paymentFacts(r);
@@ -324,16 +333,20 @@
     }
     var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
     rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
-    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]];
-    el.innerHTML = '<div class="bpay-caption"><strong>Collections</strong><span>' + rows.length + ' bookings shown' + (total.saving ? " · Saving changes…" : "") + '</span></div><div class="bpay-totals">' +
+    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
+    var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
+    el.classList.toggle("folded", folded);
+    el.innerHTML = '<button type="button" class="bpay-caption" data-payfold aria-expanded="' + !folded + '"><strong>Collections</strong><span>' +
+      (folded ? money(total.due / 100) + " outstanding" + (shown ? " · " + shown[1] + " shown" : "") : rows.length + " bookings shown") + (total.saving ? " · Saving changes…" : "") +
+      '<i class="bpay-chev" aria-hidden="true"></i></span></button>' + (folded ? "" : '<div class="bpay-totals">' +
       [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v, i) { return '<div><span>' + (i === 1 && isRefined() ? "Overstays" : v[0]) + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
       '</div><div class="bpay-filters" role="group" aria-label="Filter collections">' + filters.map(function (f) {
         var count = f[0] ? base.filter(function (r) { return paymentMatches(r, f[0]); }).length : base.length;
         return '<button type="button" data-payfilter="' + f[0] + '" aria-pressed="' + ((S.paymentFilter || "") === f[0]) + '">' + f[1] + ' <b class="num">' + count + "</b></button>";
-      }).join("") + "</div>";
+      }).join("") + "</div>");
   }
   function withBoardPayments(r, html) {
-    if (!can("collections")) return html;
+    if (!collectionsOn()) return html;
     var p = paymentFacts(r);
     function label(title, x) { return '<span class="bpay-status ' + x.state + '">' + title + (x.amount ? ' <b class="num">' + money(x.amount / 100) + "</b>" : "") + " · " + x.word + "</span>"; }
     var line = '<button type="button" class="bpay-row" data-paydetails="' + esc(r.id) + '" aria-label="Collection details for ' + esc(r.reg) + '">' + label("Exit", p.exit) + label("Overstay / charge", p.charge) +
@@ -366,14 +379,14 @@
   }
   async function fillBoardPaymentProof(r) {
     var company = S.company && S.company.id, path = r.exit_photo, el = $("boardPayProof");
-    if (!can("collections") || S.switching || !el || boardPaymentId !== r.id) return;
+    if (!collectionsOn() || S.switching || !el || boardPaymentId !== r.id) return;
     if (!path || path.indexOf(company + "/") !== 0) { el.textContent = "Payment proof unavailable."; return; }
     el.textContent = "Loading payment proof…";
     var result;
     try { result = await sb.storage.from("pt-photos").createSignedUrl(path, 3600); } catch (err) { result = { error: err }; }
     el = $("boardPayProof");
     var current = S.rows.find(function (x) { return x.id === r.id; });
-    if (!can("collections") || S.switching || !el || !$("panel").open || boardPaymentId !== r.id || !S.company || S.company.id !== company || !current || current.exit_photo !== path) return;
+    if (!collectionsOn() || S.switching || !el || !$("panel").open || boardPaymentId !== r.id || !S.company || S.company.id !== company || !current || current.exit_photo !== path) return;
     if (result.error || !result.data || !result.data.signedUrl) { el.innerHTML = 'Payment proof unavailable. <button type="button" data-payproof="' + esc(r.id) + '">Try again</button>'; return; }
     el.innerHTML = '<a href="' + esc(result.data.signedUrl) + '" target="_blank" rel="noopener">View payment proof ›</a>';
   }

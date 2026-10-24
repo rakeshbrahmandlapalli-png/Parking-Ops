@@ -75,7 +75,8 @@
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
-    if ((t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if ((t.dataset.payfold !== undefined || t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if (t.dataset.payfold !== undefined) return togglePayFold();
     if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
     if (t.dataset.paydetails) { var pr = S.rows.find(function (x) { return x.id === t.dataset.paydetails; }); if (pr) openBoardPayment(pr); return; }
     if (t.dataset.paybooking) { var pb = S.rows.find(function (x) { return x.id === t.dataset.paybooking; }); if (pb) { boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); openPanel(pb); } return; }

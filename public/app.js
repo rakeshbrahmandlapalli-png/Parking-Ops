@@ -1628,7 +1628,16 @@
     a.href = u.data.signedUrl; a.innerHTML = '<img alt="Photo of the payment" src="' + esc(u.data.signedUrl) + '">';
   }
   // Collections on the board, shared by every look and gated by saved access.
-  // Defaults and per-person grants/removals are resolved by my_permissions.
+  // An add-on per client (Parking Ops → Clients → Edit, brand.collections, part 109);
+  // inside it, defaults and per-person grants/removals are resolved by my_permissions.
+  function collectionsOn() { return !!(can("collections") && S.company && S.company.brand && S.company.brand.collections === true); }
+  // Folded to its header line, remembered on this phone.
+  var PAY_FOLD_KEY = "takeoff_collections_folded";
+  function payFolded() { try { return localStorage.getItem(PAY_FOLD_KEY) === "1"; } catch (e) { return false; } }
+  function togglePayFold() {
+    try { if (payFolded()) localStorage.removeItem(PAY_FOLD_KEY); else localStorage.setItem(PAY_FOLD_KEY, "1"); } catch (e) {}
+    renderBoardPayments();
+  }
   // These are the existing
   // payment records: a recorded charge settles it (a smaller payment can be
   // the agreed discount), and a waiver is never counted as cash received.
@@ -1646,7 +1655,7 @@
   }
   function boardPaymentsAvailable() {
     var sh = sheet();
-    return !!(can("collections") && sh && sh.kind === "drops" && !S.platform && !keyOn() && (exitFee() > 0 || S.rows.some(function (r) { return r.exit_method || r.charge_method || paymentPence((chargeDue(r) || {}).amount) > 0; })));
+    return !!(collectionsOn() && sh && sh.kind === "drops" && !S.platform && !keyOn() && (exitFee() > 0 || S.rows.some(function (r) { return r.exit_method || r.charge_method || paymentPence((chargeDue(r) || {}).amount) > 0; })));
   }
   function paymentMatches(r, filter) {
     var p = paymentFacts(r);
@@ -1669,16 +1678,20 @@
     }
     var base = visibleRows(true), rows = visibleRows(), total = { exit: 0, charge: 0, due: 0, saving: false };
     rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.due += p.due; total.saving = total.saving || p.saving; });
-    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]];
-    el.innerHTML = '<div class="bpay-caption"><strong>Collections</strong><span>' + rows.length + ' bookings shown' + (total.saving ? " · Saving changes…" : "") + '</span></div><div class="bpay-totals">' +
+    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
+    var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
+    el.classList.toggle("folded", folded);
+    el.innerHTML = '<button type="button" class="bpay-caption" data-payfold aria-expanded="' + !folded + '"><strong>Collections</strong><span>' +
+      (folded ? money(total.due / 100) + " outstanding" + (shown ? " · " + shown[1] + " shown" : "") : rows.length + " bookings shown") + (total.saving ? " · Saving changes…" : "") +
+      '<i class="bpay-chev" aria-hidden="true"></i></span></button>' + (folded ? "" : '<div class="bpay-totals">' +
       [["Exit fees collected", total.exit], ["Overstays & charges collected", total.charge], ["Outstanding", total.due]].map(function (v, i) { return '<div><span>' + (i === 1 && isRefined() ? "Overstays" : v[0]) + '</span><b class="num">' + money(v[1] / 100) + "</b></div>"; }).join("") +
       '</div><div class="bpay-filters" role="group" aria-label="Filter collections">' + filters.map(function (f) {
         var count = f[0] ? base.filter(function (r) { return paymentMatches(r, f[0]); }).length : base.length;
         return '<button type="button" data-payfilter="' + f[0] + '" aria-pressed="' + ((S.paymentFilter || "") === f[0]) + '">' + f[1] + ' <b class="num">' + count + "</b></button>";
-      }).join("") + "</div>";
+      }).join("") + "</div>");
   }
   function withBoardPayments(r, html) {
-    if (!can("collections")) return html;
+    if (!collectionsOn()) return html;
     var p = paymentFacts(r);
     function label(title, x) { return '<span class="bpay-status ' + x.state + '">' + title + (x.amount ? ' <b class="num">' + money(x.amount / 100) + "</b>" : "") + " · " + x.word + "</span>"; }
     var line = '<button type="button" class="bpay-row" data-paydetails="' + esc(r.id) + '" aria-label="Collection details for ' + esc(r.reg) + '">' + label("Exit", p.exit) + label("Overstay / charge", p.charge) +
@@ -1711,14 +1724,14 @@
   }
   async function fillBoardPaymentProof(r) {
     var company = S.company && S.company.id, path = r.exit_photo, el = $("boardPayProof");
-    if (!can("collections") || S.switching || !el || boardPaymentId !== r.id) return;
+    if (!collectionsOn() || S.switching || !el || boardPaymentId !== r.id) return;
     if (!path || path.indexOf(company + "/") !== 0) { el.textContent = "Payment proof unavailable."; return; }
     el.textContent = "Loading payment proof…";
     var result;
     try { result = await sb.storage.from("pt-photos").createSignedUrl(path, 3600); } catch (err) { result = { error: err }; }
     el = $("boardPayProof");
     var current = S.rows.find(function (x) { return x.id === r.id; });
-    if (!can("collections") || S.switching || !el || !$("panel").open || boardPaymentId !== r.id || !S.company || S.company.id !== company || !current || current.exit_photo !== path) return;
+    if (!collectionsOn() || S.switching || !el || !$("panel").open || boardPaymentId !== r.id || !S.company || S.company.id !== company || !current || current.exit_photo !== path) return;
     if (result.error || !result.data || !result.data.signedUrl) { el.innerHTML = 'Payment proof unavailable. <button type="button" data-payproof="' + esc(r.id) + '">Try again</button>'; return; }
     el.innerHTML = '<a href="' + esc(result.data.signedUrl) + '" target="_blank" rel="noopener">View payment proof ›</a>';
   }
@@ -5279,6 +5292,7 @@
       '<p class="hint">How their app looks to their team. Their phones change the next time the app refreshes.</p>' +
       '<label class="check"><input type="checkbox" id="clPicksYard"' + (b.picks_yard ? " checked" : "") + "> Location on PICKS (instead of NO SHOW)</label>" +
       '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5294,7 +5308,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -5452,6 +5466,8 @@
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
     ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+  // "View board collections" only where the client has the Collections add-on.
+  function permShown(x) { return x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
@@ -5466,7 +5482,7 @@
     var p = S.staff[id]; if (!p) return;
     staffEdit = id;
     $("panelBody").innerHTML = '<h2 id="panelTitle">' + esc(p.name) + " <small>" + esc(ROLE_LABEL[p.role] || p.role) + "</small></h2>" +
-      '<label>WHAT ' + esc(p.name.toUpperCase()) + ' CAN DO</label><div class="acc">' + PERMS.map(function (x) {
+      '<label>WHAT ' + esc(p.name.toUpperCase()) + ' CAN DO</label><div class="acc">' + PERMS.filter(permShown).map(function (x) {
         var d = roleCan(p.role, x[0]);
         return '<label class="chk"><input type="checkbox" data-perm="' + x[0] + '"' + (personCan(p, x[0]) ? " checked" : "") + "><span>" + esc(x[1]) +
           "<small>" + esc(ROLE_LABEL[p.role] || p.role) + " default: " + (d ? "yes" : "no") + "</small></span></label>";
@@ -5494,6 +5510,8 @@
         var a = c.dataset.perm, d = roleCan(p.role, a);
         if (c.checked && !d) extra.push(a); else if (!c.checked && d) extra.push("-" + a);
       });
+      // A hidden switch keeps what was saved for it, ready for when the add-on comes back.
+      (p.extra || []).forEach(function (x) { if (!permShown([x.replace(/^-/, "")])) extra.push(x); });
       r = await sb.rpc("set_staff_access", { p_staff: p.id, p_extra: extra });
       if (!r.error) toast("Access saved for " + p.name + ". It applies next time they open the app.");
     } else if (t.dataset.savepin !== undefined) {
@@ -6415,7 +6433,8 @@
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
-    if ((t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if ((t.dataset.payfold !== undefined || t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
+    if (t.dataset.payfold !== undefined) return togglePayFold();
     if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
     if (t.dataset.paydetails) { var pr = S.rows.find(function (x) { return x.id === t.dataset.paydetails; }); if (pr) openBoardPayment(pr); return; }
     if (t.dataset.paybooking) { var pb = S.rows.find(function (x) { return x.id === t.dataset.paybooking; }); if (pb) { boardPaymentId = ""; $("panel").classList.remove("payment-sheet"); openPanel(pb); } return; }

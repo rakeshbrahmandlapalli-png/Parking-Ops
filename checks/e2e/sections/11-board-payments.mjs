@@ -166,6 +166,43 @@ await scenario(async () => {
   check("Collections: key check keeps its own board and hides payment filters", !await page.locator("#boardPayments").isVisible() && !await page.locator("#main .bpay-row").count());
 }, "payments");
 
+// The add-on (part 109): a client without it sees no Collections, whatever the person's access.
+for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premium", "board"]) await scenario(async () => {
+  const db = collectionsDb(theme), look = theme || "standard"; db.company.brand.collections = false;
+  const page = await phone(browser, db); await open(page); await page.waitForSelector("#main .row");
+  check("Collections add-on off (" + look + "): no strip, totals or filters", !await page.locator("#boardPayments").isVisible() && await page.locator(".bpay-totals,.bpay-filters,[data-payfilter]").count() === 0);
+  check("Collections add-on off (" + look + "): no collection line under the cars", await page.locator("#main .bpay-row").count() === 0);
+  check("Collections add-on off (" + look + "): the exit fee still shows on the row as before", /EXIT £10 CARD/.test(await page.locator('.row[data-id="b1"]').innerText()));
+}, "payments");
+
+await scenario(async () => {
+  const db = collectionsDb("ops"); db.company.brand.collections = false;
+  const target = db.staff.find((p) => p.id === "s2"); target.role = "terminal"; target.extra = ["collections", "flights"];
+  const page = await phone(browser, db); await open(page);
+  await page.click('#bnav [data-bn="menuBtn"]'); await page.click('#menuBody [data-view="staff"]');
+  await page.click("#main .ops-dd summary"); await page.click('[data-manage="s2"]');
+  check("Collections add-on off: Staff access has no View board collections switch", await page.locator('[data-perm="collections"]').count() === 0 && await page.locator('[data-perm="flights"]').count() === 1);
+  await page.click("[data-saveaccess]"); await page.waitForFunction(() => !!document.querySelector('[data-saveaccess]:not([disabled])'));
+  check("Collections add-on off: saving access keeps the person's saved collections choice", target.extra.includes("collections"), target.extra);
+}, "payments");
+
+// Fold: the header opens and closes the strip in every look, remembered on the phone.
+for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premium", "board"]) await scenario(async () => {
+  const db = collectionsDb(theme), look = theme || "standard", page = await phone(browser, db);
+  await open(page); await page.waitForSelector("#boardPayments:not(.hidden)");
+  check("Collections fold (" + look + "): open by default", await page.getAttribute("[data-payfold]", "aria-expanded") === "true" && await page.locator(".bpay-totals").count() === 1);
+  const before = await page.locator("#main .row").first().boundingBox();
+  await page.click('[data-payfilter="due"]'); await page.click("[data-payfold]");
+  check("Collections fold (" + look + "): tapping the header folds totals and filters away", await page.getAttribute("[data-payfold]", "aria-expanded") === "false" && await page.locator(".bpay-totals,.bpay-filters").count() === 0);
+  check("Collections fold (" + look + "): folded header says what is outstanding and the filter still on", /£40 outstanding · Outstanding shown/.test(await page.locator("[data-payfold]").innerText()), await page.locator("[data-payfold]").innerText());
+  check("Collections fold (" + look + "): the list starts higher when folded", (await page.locator("#main .row").first().boundingBox()).y < before.y);
+  check("Collections fold (" + look + "): folded has no sideways scroll", await noSideScroll(page));
+  await page.reload(); await page.waitForSelector("#boardPayments:not(.hidden)");
+  check("Collections fold (" + look + "): stays folded after the app opens again", await page.getAttribute("[data-payfold]", "aria-expanded") === "false");
+  await page.click("[data-payfold]");
+  check("Collections fold (" + look + "): tapping again unfolds", await page.getAttribute("[data-payfold]", "aria-expanded") === "true" && await page.locator(".bpay-filters").count() === 1 && await page.evaluate(() => localStorage.getItem("takeoff_collections_folded")) === null);
+}, "payments");
+
 if (process.env.PAYMENT_SHOTS) await scenario(async () => {
   const out = process.env.PAYMENT_SHOTS; fs.mkdirSync(out, { recursive: true });
   const db = collectionsDb("ops"), page = await phone(browser, db);
@@ -175,4 +212,16 @@ if (process.env.PAYMENT_SHOTS) await scenario(async () => {
   await page.screenshot({ path: path.join(out, "Operations-payment-details.png"), fullPage: false });
   await page.click(".bpay-footer [data-close]"); await page.setViewportSize({ width: 1440, height: 960 }); await sleep(180);
   await page.screenshot({ path: path.join(out, "Operations-desktop-payments.png"), fullPage: false });
+}, "payments");
+
+// Phone previews: open, folded and add-on off in every look.
+if (process.env.PAYMENT_SHOTS) for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premium", "board"]) await scenario(async () => {
+  const out = process.env.PAYMENT_SHOTS, look = theme || "standard";
+  for (const step of ["1-open", "2-folded", "3-addon-off"]) {
+    const db = collectionsDb(theme); if (step === "3-addon-off") db.company.brand.collections = false;
+    const page = await phone(browser, db); await open(page); await page.waitForSelector("#main .row");
+    if (step === "2-folded") await page.click("[data-payfold]");
+    await sleep(250); await page.screenshot({ path: path.join(out, look + "-" + step + ".png"), fullPage: false });
+    await page.context().close();
+  }
 }, "payments");

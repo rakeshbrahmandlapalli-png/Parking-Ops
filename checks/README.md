@@ -12,6 +12,7 @@ Run these before merging a change. Every line must say ok / PASS.
 
 Board collections access (part 105): `npm install @electric-sql/pglite@0.5.11`
 then `node checks/board-collections-access.mjs` (throwaway Postgres only).
+The Collections add-on (part 109): `node checks/collections-addon.mjs`, same way.
 Browser coverage is in `checks/e2e/sections/11-board-payments.mjs`: role defaults,
 saved grants/removals, Staff & access, and hidden collection controls.
 

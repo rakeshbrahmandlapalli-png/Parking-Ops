@@ -237,7 +237,7 @@ function rpc(db, fn, a) {
     case "owner_dashboard": (db.dashCalls = db.dashCalls || []).push(a.p_since); return db.dash || { added: [], paid: [], owed: [], removed: [], complaints: [], early: 0, changed: 0 };
     case "my_permissions": {
       const extra = db.me.extra || [];
-      const collections = !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
+      const collections = db.company.slug !== "platform" && db.company.brand?.collections !== false && !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
       return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
     }
     case "set_staff_access": {
@@ -379,7 +379,8 @@ async function backend(ctx, db) {
       return l ? reply(200, { reg: "DY16MYO", company: "TAKEOFF", by: "RAKESH", created_at: l.at, photos: l.paths.map((x, i) => ({ url: BASE + "/icons/icon-192.png", download: BASE + "/icons/icon-192.png", name: "DY16MYO-0" + (i + 1) + ".jpg" })) }) : reply(404, { error: "These photos have expired or the link isn't right." });
     }
     const q = Object.fromEntries(u.searchParams);
-    if (p === "/rest/v1/companies") return reply(200, db.company);
+    // Like live after part 109, a client is given Collections unless the test switches it off (brand.collections = false).
+    if (p === "/rest/v1/companies") return reply(200, db.company.slug === "platform" || !db.company.brand || "collections" in db.company.brand ? db.company : { ...db.company, brand: { ...db.company.brand, collections: true } });
     // The owner's last "download company data" (backup reminder): today, unless a test says otherwise.
     if (p === "/rest/v1/activity" && q.action === "eq.SETTINGS") return reply(200, db.lastDownload === null ? [] : [{ at: db.lastDownload || new Date().toISOString() }]);
     if (p === "/rest/v1/activity" && (q.booking_id || "").startsWith("in.(")) {
@@ -490,6 +491,7 @@ async function scenario(fn, tag) {
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;
   if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
+  if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
