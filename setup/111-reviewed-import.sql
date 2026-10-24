@@ -1,7 +1,7 @@
 -- 111: reviewed booking imports (auto import selection, manual import preview/apply, history, undo preview).
 -- Prerequisites: setup parts through 110 (lanes from 104). Additive: no schedule is enabled and no existing
 -- booking or config is changed by installing it. The 90-day trim of private.import_review_runs is in
--- 111b-reviewed-import-trim.sql (kept apart: the Supabase MCP refuses SQL that holds a DELETE).
+-- 111b-reviewed-import-trim.sql (kept apart: the Supabase MCP refuses SQL that removes rows).
 -- Snapshots compare only what an import reads or protects (supplier fields, sheet, SENT/CLEAR/removed/early/
 -- overstay and typed-by-office marks), so flight checks, yards, lanes and other staff work during a review
 -- don't make every import "changed since the preview".
