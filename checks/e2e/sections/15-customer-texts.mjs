@@ -155,3 +155,19 @@ await scenario(async () => {
   check("SIM bridge: office gets no pairing buttons", !(await page.$("[data-phonepair]")));
   await page.context().close();
 }, "texts");
+
+// The phone app (TakeOffPhone bridge) starts with no sign-in, but the page already has one:
+// the page hands it over on start instead of waiting for a fresh sign-in event.
+await scenario(async () => {
+  const db = textsDb("ops");
+  const page = await phone(browser, db);
+  await page.context().addInitScript(() => {
+    window.__phoneSet = null;
+    window.TakeOffPhone = { latestSession: () => "{}", setSession: (a, r) => { window.__phoneSet = [a, r]; }, clearSession: () => {} };
+  });
+  await open(page); await sleep(800);
+  const set = await page.evaluate(() => window.__phoneSet);
+  check("Phone app: a page that is already signed in gives the app its session", Array.isArray(set) && !!set[0] && !!set[1], set);
+  check("Phone app: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "texts");
