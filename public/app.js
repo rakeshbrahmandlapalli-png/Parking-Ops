@@ -1497,8 +1497,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
-        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, canCalledTap(r), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, canCalledTap(r), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -1806,9 +1806,13 @@
   function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
   // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
   // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  // The row's CALLED button: whoever can press CALLED, or (AT DESK permission, part 115)
+  // on any car that is not OVERSTAY: the tap is AT DESK, which calls a car not called yet.
+  function canCalledTap(r) { return can("called") || (can("desk") && r.called_word !== "Overstay"); }
   function tapCalled(r) {
     if (atDesk(r)) return tapDrop(r, "desk");
     if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    if (!can("called")) return tapDrop(r, "desk");   // AT DESK only (part 115): straight to the desk, which calls it too
     return tapDrop(r, "called");
   }
   function tapDrop(r, action, word) {
@@ -3046,8 +3050,10 @@
     var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
       // CALLED and AT DESK here too: the row's button goes CALLED ↔ AT DESK, so CALLED comes off here (part 112).
-      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>" +
-        (r.called_word === "Overstay" ? "" : '<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
+      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>";
+      // AT DESK needs its own permission only (part 115).
+      if (can("desk") && r.called_word !== "Overstay") extra +=
+        ('<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
       if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
       if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
@@ -5589,17 +5595,17 @@
   }
 
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
-  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
+  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
     import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
-  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
+  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
     ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
   function permShown(x) { return x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
-  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
+  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
   function canChange(p) { return p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner") && (p.role !== "manager" || S.me.role === "owner" || S.me.role === "manager"); }
   function canManage(p) { return (S.me.role === "manager" || S.me.role === "owner") && p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner"); }
