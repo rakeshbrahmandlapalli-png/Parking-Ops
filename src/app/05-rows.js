@@ -443,11 +443,12 @@
   // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
   // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
   // The row's CALLED button: whoever can press CALLED, or (AT DESK permission, part 115)
-  // on a car already CALLED, whose next tap is the AT DESK switch.
-  function canCalledTap(r) { return can("called") || (can("desk") && !!r.called_at && r.called_word !== "Overstay"); }
+  // on any car that is not OVERSTAY: the tap is AT DESK, which calls a car not called yet.
+  function canCalledTap(r) { return can("called") || (can("desk") && r.called_word !== "Overstay"); }
   function tapCalled(r) {
     if (atDesk(r)) return tapDrop(r, "desk");
     if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    if (!can("called")) return tapDrop(r, "desk");   // AT DESK only (part 115): straight to the desk, which calls it too
     return tapDrop(r, "called");
   }
   function tapDrop(r, action, word) {

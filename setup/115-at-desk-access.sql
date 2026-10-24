@@ -6,9 +6,9 @@
 --     press CALLED can too (unless "-desk" removes it); a person can be given or
 --     refused it in Staff → PIN and access ("DROPS: press AT DESK"). View-only: no.
 --   • tap_drop(.., 'desk', ..) checks can('desk'). AT DESK on a car that has not
---     been called yet still calls it, but only for someone who can press CALLED;
---     Terminal gets "Not called yet" (office calls it first). Taking AT DESK off
---     (back to CALLED) is allowed to anyone with AT DESK.
+--     been called yet (a customer who comes straight to the desk) calls it too,
+--     for anyone with AT DESK. Taking AT DESK off (back to CALLED) is allowed to
+--     anyone with AT DESK. CALLED and OVERSTAY themselves stay with CALLED.
 --   • my_permissions returns 'desk'; set_staff_access accepts it.
 -- can() is part 109's, tap_drop part 112's, my_permissions part 105's,
 -- set_staff_access part 108's (all checked against the live definitions on
@@ -90,11 +90,10 @@ begin
     end if;
   elsif p_action = 'desk' then
     -- AT DESK (part 112): the customer is at the desk. Never on OVERSTAY. A car
-    -- not called yet is called now too, but only by someone who can press CALLED
-    -- (part 115: AT DESK alone is enough for the rest).
+    -- not called yet is called now too (a customer who comes straight to the desk),
+    -- by anyone with AT DESK (part 115), CALLED permission or not.
     if p_on then
       if b.called_word = 'Overstay' then raise exception 'Take OVERSTAY off first.'; end if;
-      if b.called_at is null and not can('called') then raise exception 'Not called yet: CALLED comes first.'; end if;
       if b.called_at is null then b.called_word := 'Called'; b.called_at := now(); b.called_by := s.id; end if;
       if b.desk_at is null then b.desk_at := now(); b.desk_by := s.id; end if;
     else

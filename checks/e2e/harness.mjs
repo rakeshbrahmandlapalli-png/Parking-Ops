@@ -253,10 +253,9 @@ function rpc(db, fn, a) {
       const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared", desk: "desk" }[a.p_action];
       // part 112: AT DESK, only on a CALLED car (calls it if not), never OVERSTAY; CALLED off or OVERSTAY takes it off.
       if (a.p_action === "desk") {
-        // part 115: AT DESK is its own permission; calling an uncalled car needs CALLED.
+        // part 115: AT DESK is its own permission; a car not called yet is called too.
         const pm = db.perms || {};
         if (pm.desk === false) throw new Error("Not allowed for your role (terminal): desk");
-        if (a.p_on && !b.called_at && pm.called === false) throw new Error("Not called yet: CALLED comes first.");
         if (a.p_on && b.called_word === "Overstay") throw new Error("Take OVERSTAY off first.");
         if (a.p_on && !b.called_at) { b.called_at = now(); b.called_by = "s1"; b.called_word = "Called"; byName(b, "called_by"); }
         if (!a.p_on || !b.desk_at) { b.desk_at = a.p_on ? now() : null; b.desk_by = a.p_on ? "s1" : null; byName(b, "desk_by"); }

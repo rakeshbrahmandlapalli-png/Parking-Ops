@@ -70,8 +70,8 @@ ok("without CALLED, AT DESK still works on a car that is already called", r.desk
 await tap(a, "desk", false); r = await get(a);
 ok("without CALLED, AT DESK comes off again (back to CALLED)", !r.desk && r.called, r);
 const d = await car("D1");
-err = ""; try { await tap(d, "desk", true); } catch (e) { err = e.message; }
-ok("without CALLED, AT DESK on a car not called yet is refused", /Not called yet/.test(err) && !(await get(d)).called, err);
+await tap(d, "desk", true); r = await get(d);
+ok("without CALLED, AT DESK on a car not called yet calls it too (customer straight to the desk)", r.called && r.desk && r.called_word === "Called", r);
 err = ""; try { await tap(d, "called", true); } catch (e) { err = e.message; }
 ok("without CALLED, CALLED is still refused", /Not allowed/.test(err), err);
 await db.exec(`insert into perms values ('no-desk')`);
