@@ -5,12 +5,13 @@
   // platform. The schedule is off.
   var BI_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var BI_FIELD = { reg: "Registration", name: "Name", phone: "Phone", make: "Vehicle", drop: "Drop-off", "return": "Return", flight: "Flight", note: "Note", day: "Sheet day" };
-  var BI_STATUS = { "new": "New", changed: "Changed", review: "Review", unchanged: "Unchanged", invalid: "Can't read" };
+  var BI_STATUS = { "new": "New", changed: "Updated", review: "Review", unchanged: "Unchanged", invalid: "Can't read" };
   function biDay(k) { var m = String(k || "").match(/^(\d{4})-(\d\d)-(\d\d)/); return m ? (+m[3]) + " " + BI_MON[+m[2] - 1] : String(k || ""); }
   function biWhen(v) { var m = String(v || "").match(/^(\d{4}-\d\d-\d\d)(?: (\d\d:\d\d))?/); return m ? biDay(m[1]) + (m[2] ? " " + m[2] : "") : String(v || ""); }
   function biStamp(ts) { return ts ? (dayShort(ts) === dayShort(Date.now()) ? hhmm(ts) : dayShort(ts) + " " + hhmm(ts)) : ""; }
   function biChange(c) {
     var f = c.field, a = c.from, b = c.to;
+    if (f === 'drop_at' || f === 'return_at') { return (f === 'drop_at' ? 'Drop-off' : 'Return') + ': ' + (a ? dayShort(a) + ' ' + hhmm(a) : '–') + ' → ' + (b ? dayShort(b) + ' ' + hhmm(b) : '–'); }
     if (f === "phone") return "Phone number updated";
     if (f === "drop" || f === "return") {
       var pa = String(a || "").match(/^(\S+) (\d\d:\d\d)$/), pb = String(b || "").match(/^(\S+) (\d\d:\d\d)$/);
@@ -36,6 +37,9 @@
         r.explain = "Held back. This booking stays out of the import until the office decides.";
         r.acts = revActs(i.kind, i.ref, rv && rv.detail && rv.detail.why, i.changes, revId(i.kind, i.ref));
       }
+      r.selectable = !!P.selection_supported && (r.status === "new" || r.status === "changed");
+      r.attention = i.attention || ""; r.location = [i.lane ? "Lane " + i.lane + (i.position ? " · Position " + i.position : "") : i.yard ? "Yard " + i.yard : "", i.number ? "Key/board number " + i.number : ""].filter(Boolean).join(" · ");
+      if (i.booking_id && !r.acts) r.acts = revActs(i.kind, i.ref, "", i.changes, "");
       rows.push(r);
     });
     (P.reviews || []).forEach(function (r) {
@@ -54,11 +58,13 @@
   }
   function biRowHtml(r, open, hide) {
     var more = r.lines.slice(1).concat(r.sub || []);
-    return '<div class="bi-row s-' + r.status + (open ? " open" : "") + '" data-biq="' + esc(biQ(r.ref, r.reg)) + '"' + (hide ? " hidden" : "") + ">" +
+    return '<div class="bi-row s-' + r.status + (r.selectable ? ' bi-selectable' : '') + (open ? " open" : "") + '" data-biq="' + esc(biQ(r.ref, r.reg)) + '"' + (hide ? " hidden" : "") + ">" +
+      (r.selectable ? '<label class="bi-select"><input type="checkbox" data-biselect="' + esc(r.key) + '" aria-label="Select ' + esc(r.ref) + '"' + (S.bi.selected && S.bi.selected[r.key] ? ' checked' : '') + (S.autoImport.running || S.autoImport.checking ? ' disabled' : '') + '></label>' : '') +
       '<button type="button" class="bi-hd" data-birow="' + esc(r.key) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
       '<span class="bi-board">' + esc(r.board) + '</span><span class="bi-date">' + esc(r.date) + '</span><span class="bi-ref">' + esc(r.ref) + '</span><span class="bi-reg">' + esc(r.reg) + "</span>" +
       '<span class="bi-chg"><span class="bi-main">' + esc(r.lines[0] || "") + "</span>" + (more.length ? '<span class="bi-more">' + more.map(function (x) { return "<small>" + esc(x) + "</small>"; }).join("") + "</span>" : "") + "</span>" +
       '<span class="bi-st"><em class="bi-pill s-' + r.status + '">' + esc(BI_STATUS[r.status] || r.status) + '</em></span><span class="bi-chev" aria-hidden="true"></span></button>' +
+      (r.attention ? '<p class="bi-attention">' + esc(r.attention) + '</p>' : "") + (r.location ? '<p class="bi-ex">' + esc(r.location) + '</p>' : "") +
       (r.explain ? '<p class="bi-ex bi-more">' + esc(r.explain) + "</p>" : "") + (r.acts ? '<div class="bi-ex bi-more bi-racts">' + r.acts + "</div>" : "") + "</div>";
   }
   function biConn(a) {
@@ -94,6 +100,7 @@
     var r = biRange(a), t = biToday(), dis = busy ? " disabled" : "";
     return '<div class="bi-range" data-birange><label>From <input type="date" id="biFrom" value="' + esc(r.from) + '" min="' + addDaysKey(t, -30) + '" max="' + addDaysKey(t, 60) + '"' + dis + "></label>" +
       '<label>To <input type="date" id="biTo" value="' + esc(r.to) + '" min="' + addDaysKey(t, -30) + '" max="' + addDaysKey(t, 60) + '"' + dis + "></label>" +
+      '<span class="bi-presets">' + [[1,"Today"],[3,"Next 3 days"],[7,"Next 7 days"]].map(function(x){return '<button type="button" class="btn ghost small" data-bipreset="'+x[0]+'" aria-pressed="'+(r.from===t && r.to===addDaysKey(t,x[0]-1))+'"'+dis+'>'+x[1]+'</button>';}).join("") + '</span>' +
       (a.custom ? '<button type="button" class="link" data-birangereset' + dis + ">Today and next 2 days</button>" : '<span class="bi-hint">Today and the next 2 days. Up to 14 days at a time.</span>') + "</div>";
   }
   // Scheduled import: everyone who can import sees whether it is on and how the last run went; owners and managers set it.
@@ -102,6 +109,8 @@
     var lastTxt = !last ? "" : last.outcome === "imported" ? "Last run " + last.slot.slice(11) + ": imported."
       : last.outcome === "held" ? "Last run " + last.slot.slice(11) + ": not imported, " + last.why + "."
       : "Last run " + last.slot.slice(11) + ": didn't run, " + last.why;
+    var clock = new Intl.DateTimeFormat('en-GB',{timeZone:TZ,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()), sortedTimes=times.slice().sort(), nextTime=sortedTimes.filter(function(t){return t>clock;})[0];
+    if(on && sortedTimes.length) lastTxt = 'Next scheduled: ' + (nextTime?'today '+nextTime:'tomorrow '+sortedTimes[0]) + ' (London).' + (lastTxt?' '+lastTxt:'');
     var h = '<details class="bi-sched" data-bisched' + (D ? " open" : "") + '><summary><span>Scheduled import</span><span class="bi-chk' + (on ? "" : " off") + '">' + (on ? "On · " + esc(times.join(", ")) : "Off") + "</span></summary>";
     h += '<div class="bi-schedbody"><p class="bi-hint">At the saved times it checks the bookings and imports them only if nothing needs a decision.' + (sc.by && on ? " Imports are recorded as " + esc(sc.by) + "." : "") + "</p>";
     if (lastTxt) h += '<p class="bi-hint" data-bischedlast>' + esc(lastTxt) + "</p>";
@@ -125,41 +134,44 @@
   }
   function autoPanel(a) {
     var P = a.preview, busy = a.running || a.checking, c = (P && P.counts) || {}, B = S.bi;
-    var conn = biConn(a), nImp = (c["new"] || 0) + (c.changed || 0);
-    var canGo = !busy && P && P.can_apply && !a.stale;
-    var go = a.running ? "Importing…" : !P ? "Import bookings" : nImp ? "Import " + nImp + (nImp === 1 ? " booking" : " bookings") : c.review ? "Save review list" : "Nothing to import";
+    var conn = biConn(a), nImp = P && P.selection_supported ? autoSelected(P).length : (c["new"] || 0) + (c.changed || 0);
+    var canGo = !busy && P && P.can_apply && !a.stale && (nImp > 0 || c.review > 0);
+    var go = a.running ? "Importing…" : !P ? "Import bookings" : nImp ? "Import " + nImp + (nImp === 1 ? (P.selection_supported ? " selected" : " booking") : (P.selection_supported ? " selected" : " bookings")) : c.review ? "Save review list" : "Nothing to import";
     var h = '<div class="bi-panel" data-autobox>' +
       '<div class="bi-status"><span class="bi-conn ' + conn.cls + '"><i class="bi-dot"></i>' + esc(conn.text) + "</span>" +
       "<span>Last checked " + (a.checked_at ? esc(biStamp(a.checked_at)) : "–") + "</span><span>Last imported " + (a.last_ok ? esc(biStamp(a.last_ok)) : "–") + "</span>" +
       (conn.note ? '<span class="bi-note">' + esc(conn.note) + "</span>" : "") + "</div>" +
       '<div class="bi-act"><button type="button" class="btn ghost" data-autopreview' + (busy ? " disabled" : "") + ">" + (a.checking ? "Checking…" : "Check bookings") + "</button>" +
       '<button type="button" class="btn brand" data-autorun' + (canGo ? "" : " disabled") + ">" + esc(go) + "</button></div>" +
-      biRangeHtml(a, busy) + biSchedHtml(a) + '<div class="bi-body">';
+      biRangeHtml(a, busy) + biSchedHtml(a) + '<div class="bi-body">' + (P ? biSteps(1).replace(/Files/g,"Check") + biProtected() : "");
+    if (a.result) h += autoResultHtml(a.result);
     if (a.error) h += '<div class="alert" role="alert">' + esc(a.error) + "</div>";
     if (!P) {
-      if (!a.error && !busy) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
+      if (!a.error && !busy && !a.result) h += '<p class="bi-hint">Check bookings to see what would change. Nothing is saved until you import.</p>';
     } else {
       var rows = biRows(P), un = biUnchangedRows(P), f = B.f || "all";
       var list = f === "unchanged" ? un : f === "all" ? rows : rows.filter(function (r) { return r.status === f; });
       var q = String(B.q || "").toLowerCase().replace(/\s+/g, "");
+      h += biCoverage(P);
       h += '<div class="bi-counts" data-autopreviewsum role="group" aria-label="Check result">' +
-        [["new", "New"], ["changed", "Changed"], ["review", "Needs review"], ["unchanged", "Unchanged"]].map(function (x) { return '<div class="' + (x[0] === "review" && c.review ? "warn" : "") + '"><b class="num">' + (c[x[0]] || 0) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
+        [["new", "New"], ["changed", "Updated"], ["review", "Needs review"], ["unchanged", "Unchanged"]].map(function (x) { return '<div class="' + (x[0] === "review" && c.review ? "warn" : "") + '"><b class="num">' + (c[x[0]] || 0) + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>";
       if (c.invalid) h += '<div class="alert" role="alert">' + c.invalid + (c.invalid === 1 ? " record can't" : " records can't") + " be read. Fix " + (c.invalid === 1 ? "it" : "them") + " on the booking site before importing.</div>";
       if (c.review) h += '<div class="bi-warn" role="status">' + c.review + (c.review === 1 ? " booking needs" : " bookings need") + " an office decision. These will stay out of this import.</div>";
-      var tabs = [["all", "All changes", rows.length], ["new", "New", c["new"] || 0], ["changed", "Changed", c.changed || 0], ["review", "Needs review", c.review || 0]];
+      var tabs = [["all", "All changes", rows.length], ["new", "New", c["new"] || 0], ["changed", "Updated", c.changed || 0], ["review", "Needs review", c.review || 0]];
       if (c.unchanged) tabs.push(["unchanged", "Unchanged", c.unchanged]);
       h += '<div class="bi-filters" role="group" aria-label="Filter the check result">' + tabs.map(function (x) {
         return '<button type="button" class="bi-chip" data-bifilter="' + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + ' <span class="num">' + x[2] + "</span></button>";
       }).join("") + '<input type="search" id="biQ" class="bi-search" placeholder="Reference or reg" aria-label="Search by reference or registration" autocomplete="off" value="' + esc(B.q || "") + '"></div>';
+      if (P.selection_supported) h += '<label class="mi-selectall"><input type="checkbox" data-biselectall' + (autoSelected(P).length === (c.new || 0) + (c.changed || 0) && nImp ? " checked" : "") + (busy ? " disabled" : "") + '> Select all ready changes</label><p class="bi-hint">' + nImp + " selected · " + (c.review || 0) + " held for review</p>";
       if (!list.length) {
         h += '<p class="bi-hint" data-autoitems>' + (f === "unchanged" ? (c.unchanged ? "This check didn't list the " + c.unchanged + " unchanged bookings. They already match the app." : "No unchanged bookings.")
           : f === "all" && !rows.length ? "No booking changes. Everything on the booking site already matches the app." : "Nothing in this view.") + "</p>";
       } else {
         h += '<div class="bi-tbl" data-autoitems><div class="bi-th" aria-hidden="true"><span>Board</span><span>Date</span><span>Reference</span><span>Registration</span><span>Change</span><span>Status</span><span></span></div>' +
           list.map(function (r) { return biRowHtml(r, !!B.open[r.key], q && biQ(r.ref, r.reg).indexOf(q) < 0); }).join("") + "</div>";
-        h += '<p class="bi-hint" id="biShown">' + (P.items && P.items.length >= 200 ? "Showing the first 200 changes. " : "") + "</p>";
+        h += '<p class="bi-hint" id="biShown">' + ("") + "</p>";
       }
-      h += '<details class="bi-diag"><summary><span>Diagnostics</span>' + (biChecked(P) ? '<span class="bi-chk">Report checks passed</span>' : '<span class="bi-chk off">Report counts not verified</span>') + '</summary><div class="bi-diagbody" data-autoreport>' + biReport(P) + "</div></details>";
+      h += '<details class="bi-diag"><summary><span>Import details & checks</span>' + (biChecked(P) ? '<span class="bi-chk">Report checks passed</span>' : '<span class="bi-chk off">Report counts not verified</span>') + '</summary><div class="bi-diagbody" data-autoreport>' + biReport(P) + "</div></details>";
     }
     if (a.reviews && a.reviews.length) {
       h += '<div class="bi-held"><h3>Held for the office</h3><div data-autoreviews>' + a.reviews.map(function (r) {
@@ -176,16 +188,9 @@
   // The recent imports of the last 24 hours, newest first, for both tabs. Undo only where the backend says it can still be undone.
   function recentImportsHtml() {
     if (!S.recentImports) loadRecentImports();
-    var L = S.recentImports || [];
-    var h = '<section class="bi-recent" aria-labelledby="biRecent"><div class="bi-rh"><h3 id="biRecent">Recent imports</h3><button type="button" class="link" data-view="summary">View history</button></div>';
-    if (!L.length) return h + '<p class="bi-hint">No imports in the last 24 hours.</p></section>';
-    return h + '<div class="bi-rlist">' + L.map(function (x) {
-      var src = x.source === "auto" ? "Auto import" : x.source === "manual" ? "Manual import" : "Import";
-      var res = x.undone ? "Undone" : (x.added || x.changed) ? x.added + " added · " + x.changed + " updated" : "No booking changes";
-      var undo = x.latest && !x.undone && (x.added || x.changed);
-      return '<div class="bi-rr"><span class="bi-t num">' + esc(biStamp(x.at)) + '</span><span class="bi-by">' + esc(x.by || "") + '</span><span class="bi-src">' + esc(src) + '</span><span class="bi-bd">' + esc(String(x.kind || "").toUpperCase() + " " + biDay(x.day).toUpperCase()) +
-        '</span><span class="bi-res">' + esc(res) + "</span>" + (undo ? '<button type="button" class="link bi-undo" data-undoimport="' + esc(x.id) + '">Undo</button>' : '<span class="bi-undo">–</span>') + "</div>";
-    }).join("") + "</div></section>";
+    var groups = importGroups(S.recentImports || []);
+    return '<section class="bi-recent" aria-labelledby="biRecent"><div class="bi-rh"><h3 id="biRecent">Recent imports</h3><button type="button" class="link" data-bitab="history">View history</button></div>' +
+      (groups.length ? groups.slice(0,3).map(importGroupHtml).join('') : '<p class="bi-hint">No imports in the last 24 hours.</p>') + '</section>';
   }
   function autoInfo() {
     if (S.autoImport === undefined) { S.autoImport = null; loadAutoImport(); }
@@ -196,7 +201,7 @@
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, running: !!d.running, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft };
+    S.autoImport = { available: !!d.available, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft, result: keep.result, running: !!d.running || !!keep.running, checking: keep.checking };
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -205,7 +210,7 @@
   }
   async function previewAutoImport() {
     var a = S.autoImport; if (!a || a.checking || a.running) return;
-    a.checking = true; a.error = ""; a.preview = null; render();
+    a.checking = true; a.error = ""; a.preview = null; a.result = null; render();
     var r;
     r = await callBookings(Object.assign({ action: "preview" }, a.custom ? biRange(a) : {}));
     a.checking = false;
@@ -213,26 +218,27 @@
     if ((r && r.error) || !out) a.error = "Couldn't reach the booking import. Try again in a minute.";
     else if (out.ok === false) a.error = out.error || "The booking site didn't answer.";
     else if (out.error) a.error = out.error;
-    else { a.preview = out.preview; a.checked_at = Date.now(); a.stale = false; S.bi.open = {}; }
+    else { a.preview = out.preview; a.checked_at = Date.now(); a.stale = false; S.bi.open = {}; S.bi.selected = {}; (out.preview.items || []).forEach(function(i){if(i.status === "new" || i.status === "changed") S.bi.selected[i.kind + "|" + i.ref] = true;}); }
     render(); loadAutoImport();
   }
   async function runAutoImport(btn) {
     var a = S.autoImport; if (!a || !a.preview || !a.preview.can_apply) return;
+    if (a.preview.selection_supported && !autoSelected(a.preview).length && !a.preview.counts.review) return;
     a.running = true; a.error = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
-    r = await callBookings(Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.custom ? biRange(a) : {}));
+    r = await callBookings(Object.assign(Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.preview.selection_supported ? { selected: autoSelected(a.preview) } : {}), a.custom ? biRange(a) : {}));
     a.running = false;
     var out = r && r.data;
     if ((r && r.error) || !out || out.ok === false) {
-      a.error = (out && out.error) || "Couldn't get the bookings. Nothing was imported. Try again in a minute.";
+      a.error = (out && out.error) || "The import response was lost. Check bookings again to confirm the result before retrying.";
       a.stale = out && /changed since the preview/.test(a.error);
       toast(a.error, true); render(); return loadAutoImport();
     }
     var days = (out.summary && out.summary.days) || [];
     var added = days.reduce(function (n, d) { return n + (d.added || 0); }, 0);
     var updated = days.reduce(function (n, d) { return n + (d.updated || 0); }, 0);
-    a.preview = null; a.stale = false;
+    a.result = out.summary; a.preview = null; a.stale = false;
     await loadSheets(); await loadRows();
     toast("✓ Bookings in: " + added + " added, " + updated + " updated across " + days.length + " sheet(s).");
     S.recentImports = null; loadAutoImport();
@@ -316,103 +322,16 @@
   }
   function renderImport() {
     var I = S.imp || (S.imp = newImport("drops")), B = S.bi || (S.bi = { tab: "", f: "all", q: "", open: {} });
-    var auto = autoInfo(), tab = auto ? (B.tab || "auto") : "manual";
+    var auto = autoInfo(), tab = B.tab === 'history' ? 'history' : auto ? (B.tab || 'auto') : 'manual';
     var h = '<div class="bi">';
-    if (auto) h += '<div class="bi-tabs" role="tablist" aria-label="Booking source"><button type="button" role="tab" data-bitab="auto" aria-selected="' + (tab === "auto") + '">Auto import</button><button type="button" role="tab" data-bitab="manual" aria-selected="' + (tab === "manual") + '">Manual import</button></div>';
+    h += '<div class="bi-tabs" role="tablist" aria-label="Booking source">' +
+      (auto ? '<button type="button" role="tab" data-bitab="auto" aria-selected="' + (tab === 'auto') + '">Auto import</button>' : '') +
+      '<button type="button" role="tab" data-bitab="manual" aria-selected="' + (tab === 'manual') + '">Manual import</button><button type="button" role="tab" data-bitab="history" aria-selected="' + (tab === 'history') + '">History</button></div>';
+    if (tab === "history") return h + importHistoryHtml() + "</div>";
     if (tab === "auto") return h + autoPanel(auto) + recentImportsHtml() + "</div>";
-    if (I.stage !== "preview") {
-      h += '<div class="toolbar"><div class="seg" role="group" aria-label="Sheet type"><button type="button" data-impkind="drops" aria-pressed="' + (I.kind === "drops") + '">Drops</button><button type="button" data-impkind="picks" aria-pressed="' + (I.kind === "picks") + '">Picks</button></div></div>';
-      var joblist = I.excelFile && /\.pdf$/i.test(I.excelFile.name || "");
-      h += '<div class="steps">' + dropZone("excel", "1. Bookings", I.kind === "drops" ? "The booking list covering two days, e.g. 17th to 18th, exactly as downloaded. Excel or a Joblist PDF." : "The booking list for the day, exactly as downloaded. Excel or a Joblist PDF.", I.excelFile) +
-        (I.kind === "drops" && !joblist ? dropZone("pdf", "2. Flight numbers (PDF)", "Return Report PDF for the same days. Not needed with a Joblist PDF, which already carries the flights.", I.pdfFile) : "") + "</div>" +
-        (I.error ? '<div class="alert" role="alert">' + esc(I.error) + "</div>" : "") +
-        '<div class="row-actions"><button type="button" class="btn brand" data-read' + (I.excelFile && I.stage !== "reading" ? "" : " disabled") + ">" + (I.stage === "reading" ? "Reading…" : "Read files") + "</button></div>";
-      return h + recentImportsHtml() + "</div>";
-    }
-    var P = I.preview, miss = P.rows.filter(function (r) { return I.kind === "drops" && !r.flight; }).length;
-    var existing = S.sheets.filter(function (s) { return s.kind === I.kind && s.day === P.dateKey; })[0];
-    h += '<div class="result"><div><strong class="num">' + P.rows.length + "</strong><span>bookings</span></div>" +
-      (I.kind === "drops" ? '<div><strong class="num">' + (P.rows.length - miss) + '</strong><span>flights from the PDF</span></div><div class="' + (miss ? "bad" : "") + '"><strong class="num">' + miss + "</strong><span>need a flight number</span></div>"
-        : '<div><strong class="num">' + I.real.dates.length + "</strong><span>day(s) in file</span></div><div></div>") + "</div>" +
-      '<div class="inline-selects"><label class="note" for="impDate">' + (I.kind === "drops" ? "Sheet" : "Day") + '</label><select id="impDate" data-impdate>' +
-      I.real.dates.map(function (k) { return '<option value="' + k + '"' + (k === P.dateKey ? " selected" : "") + ">" + esc(R.boardName(k, I.kind)) + " · " + I.real.counts[k] + "</option>"; }).join("") + "</select>" +
-      (I.kind === "drops" ? '<label class="note" for="impCut">Day ends at</label><select id="impCut" data-impcut>' + ["04:00", "05:00", "06:00", "07:00"].map(function (t) { return "<option" + (t === I.cutoff ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select>" : "") + "</div>" +
-      (existing ? '<div class="alert" style="border-color:var(--brand);background:var(--brand-soft);color:var(--brand-text)">This sheet already exists. Importing again adds new bookings and refreshes details; everything the team has done stays.</div>' : "") +
-      '<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Reg</th><th>Customer</th><th>Car</th>' + (I.kind === "drops" ? "<th>Back</th><th>Flight</th>" : "<th>Drop-off</th>") + "</tr></thead><tbody>" +
-      P.rows.map(function (r, i) {
-        return '<tr class="' + (I.kind === "drops" && !r.flight ? "miss" : "") + '"><td>' + esc(r.ref) + "</td><td>" + esc(r.reg) + "</td><td>" + esc(r.name) + "</td><td>" + esc(r.make) + "</td>" +
-          (I.kind === "drops" ? '<td class="num">' + esc(r.ret ? r.ret.time : "") + "</td><td>" + (r.flight ? esc(r.flight) : '<input data-fix="' + i + '" placeholder="U22305" aria-label="Flight for ' + esc(r.reg) + '">') + "</td>" : '<td class="num">' + esc(r.meet ? r.meet.time : "") + "</td>") + "</tr>";
-      }).join("") + "</tbody></table></div>" +
-      '<div class="row-actions"><button type="button" class="btn ghost" data-restart>Start again</button><button type="button" class="btn brand" data-create' + (I.saving ? " disabled" : "") + ">" + (I.saving ? "Saving…" : "Create " + esc(R.boardName(P.dateKey, I.kind))) + "</button></div>";
-    return h + "</div>";
+    return h + manualPanel(I) + "</div>";
   }
-  function dropZone(key, title, text, file) {
-    return '<div class="drop' + (file ? " filled" : "") + '"><strong>' + esc(title) + '</strong><p class="note">' + (file ? "✓ " + esc(file.name) : esc(text)) + "</p>" +
-      "<label>" + (file ? "Choose another" : "Choose file") + '<input type="file" data-file="' + key + '" accept="' + (key === "pdf" ? ".pdf" : ".xls,.xlsx,.csv,.txt,.pdf") + '"></label></div>';
-  }
-  async function readImport() {
-    var I = S.imp; I.stage = "reading"; I.error = ""; render();
-    try {
-      // Two booking systems, two shapes of download. One exports a spreadsheet
-      // with a separate flights PDF; the other only exports a PDF, and that PDF
-      // is the booking list. Told apart by the file, not by a setting, so the
-      // office never has to know which is which.
-      var isJoblist = /\.pdf$/i.test(I.excelFile.name || "");
-      var xl = isJoblist ? await R.readJoblistPdf(I.excelFile) : await R.readExcel(I.excelFile);
-      if (isJoblist && xl.kind && xl.kind !== I.kind) {
-        throw new Error("That is a " + xl.kind.toUpperCase() + " sheet, but " + I.kind.toUpperCase() +
-          " is selected above. Switch it, or choose the other file.");
-      }
-      if (!isJoblist && I.kind === "drops" && I.pdfFile) R.matchFlights(xl.rows, await R.readPdf(I.pdfFile), "flightIn");
-      I.real = { all: xl.rows };
-      // Every car at the same time means the file's times weren't read (26 Sept: all 01:00).
-      var field = I.kind === "drops" ? "ret" : "meet", times = {};
-      xl.rows.forEach(function (r) { if (r[field]) times[r[field].time || "none"] = 1; });
-      if (xl.rows.length >= 5 && Object.keys(times).length === 1)
-        throw new Error("Every car in this file has the same " + (I.kind === "drops" ? "return" : "drop-off") + " time (" + (Object.keys(times)[0] === "none" ? "no time" : Object.keys(times)[0]) +
-          "), so the times weren't read. Nothing was imported. Close the app completely, open it again and retry; if it still happens, send the file to whoever looks after the app.");
-      groupImport();
-      if (!I.real.dates.length) throw new Error("Found " + xl.rows.length + " bookings but no dates in them.");
-      var inner = I.real.dates.length >= 3 ? I.real.dates.slice(1, -1) : I.real.dates;
-      buildPreview(inner.reduce(function (a, b) { return I.real.counts[b] > I.real.counts[a] ? b : a; }));
-    } catch (err) { I.stage = "pick"; I.error = err.message || String(err); render(); }
-  }
-  function groupImport() {
-    var I = S.imp, field = I.kind === "drops" ? "ret" : "meet", counts = {};
-    I.real.all.forEach(function (r) { var k = shiftKey(r[field], I.cutoff); if (k) counts[k] = (counts[k] || 0) + 1; });
-    I.real.counts = counts; I.real.dates = Object.keys(counts).sort();
-  }
-  function buildPreview(dateKey) {
-    var I = S.imp, field = I.kind === "drops" ? "ret" : "meet";
-    var rows = I.real.all.filter(function (r) { return r[field] && shiftKey(r[field], I.cutoff) === dateKey; })
-      .sort(function (a, b) { return a[field].date - b[field].date; })
-      .map(function (r) { return Object.assign({}, r, { flight: I.kind === "drops" ? (r.flightIn || "") : "" }); });
-    I.preview = { dateKey: dateKey, rows: rows }; I.stage = "preview"; render();
-  }
-  function local(dt) { return dt ? dt.key + " " + (dt.time || "00:00") : ""; }
-  async function createSheet() {
-    var I = S.imp, P = I.preview;
-    I.saving = true; render();
-    var rows = P.rows.map(function (r) { return { ref: r.ref, reg: r.reg, name: r.name, phone: r.phone, make: r.make, drop_local: local(r.meet), return_local: local(r.ret), flight: r.flight || "", note: r.note || "" }; });
-    var r = await sb.rpc("import_sheet", { p_kind: I.kind, p_day: P.dateKey, p_rows: rows,
-      p_source: { excel: I.excelFile && I.excelFile.name, pdf: I.pdfFile && I.pdfFile.name, bookings: rows.length, flights: rows.filter(function (x) { return x.flight; }).length } });
-    I.saving = false;
-    if (r.error) { toast(r.error.message, true); render(); return; }
-    await loadSheets();
-    S.sheetId = r.data.sheet_id; S.view = "board"; S.filter = "all"; S.imp = newImport(I.kind);
-    await loadRows(); render();
-    toast("✓ " + r.data.added + " added" + (r.data.new_marked ? " (" + r.data.new_marked + " marked NEW BOOKING)" : "") + ", " + r.data.updated + " updated" + (r.data.moved ? ", " + r.data.moved + " moved here from an earlier day (return changed)" : "") + ". On every phone now.");
-    // A re-import adds and updates but never takes a car away. Cars the booking
-    // site no longer lists (usually cancelled) are shown for someone to confirm.
-    var inFile = {}; rows.forEach(function (x) { if (x.ref) inFile[x.ref] = 1; });
-    // Overstays were carried in from older days and early returns from later
-    // ones, so they're never in today's file.
-    var gone = S.rows.filter(function (x) { return x.ref && !inFile[x.ref] && !x.overstay && !x.early; });
-    // New cars in a re-imported PICKS file: any back on a day whose DROPS is already in?
-    if (I.kind === "picks" && r.data.new_marked) await askDrops(r.data.added_ids);
-    if (gone.length) openGone(gone, r.data.undo_id);
-    S.recentImports = null;
-  }
+
   function openGone(gone, undoId) {
     panelRow = null;
     var top = '<div class="pbtns top"><button type="button" data-close>Keep them all</button>' + (undoId ? '<button type="button" class="undo" data-undoimport="' + esc(undoId) + '">Undo this import</button>' : "") + "</div>";
@@ -430,8 +349,11 @@
   // Undo an import (database part 44): cars it added go, what it changed comes back.
   async function undoImport(id, btn) {
     var it = (S.recentImports || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    var preview = await sb.rpc("reviewed_import_undo_preview", {p_id:+id});
+    if (preview.error) return toast(preview.error.message,true);
+    var detail = preview.data || {}, details = (detail.changed || []).map(function(x){return (x.ref || x.reg) + ': ' + (x.changes || []).map(biChange).join('; ');}).concat((detail.added || []).map(function(x){return 'Added booking: ' + (x.ref || '') + ' ' + (x.reg || '');}));
     if (!confirm("Undo this import?" + (it ? "\n\n" + it.kind.toUpperCase() + " " + it.day + ", imported " + hhmm(it.at) + " by " + it.by + ": " + it.added + " cars added, " + it.changed + " changed." : "") +
-      "\n\nThe cars it added are taken off, and what it changed goes back to how it was. Taps made since are kept.")) return;
+      "\n\n" + details.slice(0,20).join("\n") + (details.length>20?"\n… and more":"") + "\n\nThe cars it added are taken off, and what it changed goes back to how it was. Taps made since are kept.")) return;
     btn.disabled = true;
     var r = await sb.rpc("undo_import", { p_id: +id });
     btn.disabled = false;

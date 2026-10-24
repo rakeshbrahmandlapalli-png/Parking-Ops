@@ -5,7 +5,7 @@ client companies, each with its own brand and look. Owner: Rakesh (signs in as
 owner; also the platform admin, "Parking Ops").
 
 ## Where things are
-- `src/app/NN-*.js` — **edit the app here**, not in `public/app.js`: 20 parts cut by
+- `src/app/NN-*.js` — **edit the app here**, not in `public/app.js`: 21 parts cut by
   area (00-start opens the one IIFE, 18-swipe-update closes it). After editing run
   `node src/build.mjs` to write `public/app.js` (the parts joined, committed so
   Vercel needs no build); `node src/build.mjs --check` and the first e2e test fail
@@ -151,3 +151,13 @@ export/API.
   "Verify location". Area edit/remove is not built yet.
 - Tests: `node checks/lane-planner.mjs` (PGlite), `LANES_ONLY=1 node run.mjs`, and
   `checks/lane-live.sql` (live, rolls itself back).
+
+
+## Prepared import review upgrade (24 Oct — NOT applied or deployed)
+
+`codex/import-review-upgrade` adds `src/app/13-manual-review.js` and the additive
+`supabase/migrations/20261024013128_reviewed_booking_import.sql`. See
+`docs/import-review-upgrade.md` for behaviour, local tests, release order and
+baseline test failures. The owner explicitly requires a stop for review before
+any database change, push live, merge or deployment. Do not apply the new SQL or
+deploy it as part of reviewing this branch. Supplier integration remains read only.

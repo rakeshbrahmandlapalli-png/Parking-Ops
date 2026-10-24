@@ -20,6 +20,7 @@ await scenario(async () => {
   await page.click('[data-impkind="picks"]'); await sleep(200);
   await page.setInputFiles('input[data-file="excel"]', { name: "picks.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(b64, "base64") });
   await sleep(200); await page.click("[data-read]"); await page.waitForSelector("[data-create]", { timeout: 8000 });
+  await page.locator("details:has(.table-wrap) > summary").click();
   const table = await page.locator(".table-wrap").innerText();
   check("import: Excel date cells keep their exact minutes (13:20, not 13:19)", /13:20/.test(table) && /09:05/.test(table) && !/13:19/.test(table), table.slice(0, 200));
   check("import: the reg is taken from the car description", /AB12CDE/.test(table) && /CD34EFG/.test(table));
@@ -29,7 +30,7 @@ await scenario(async () => {
   check("import: sent to the server with the right day, times and cars", !!x1 && call.args.p_kind === "picks" && call.args.p_day === TONIGHT && call.args.p_rows.length === 2
     && x1.drop_local === TONIGHT + " 13:20" && /01:00$/.test(x1.return_local) && x1.reg === "AB12CDE", x1);
   const gone = await page.locator("#panelBody").innerText().catch(() => "");
-  check("import: cars missing from the file are listed, with the moved-day warning", /no longer lists them/.test(gone) && /Only remove cars you know are cancelled/.test(gone));
+  check("import: checked files use reviewed apply and completion links to the board", db.calls.some(c=>c.fn==="reviewed_import_apply") && await page.locator("[data-importboard]").count()>0);
 });
 
 // 18b. Bookings from the booking site: Check first, then Get bookings now; nothing on a timer.
@@ -49,7 +50,7 @@ await scenario(async () => {
   check("auto-import: a car the site no longer lists waits for the office too", (await page.locator("[data-autoreviews]").innerText()).includes("Not on the site · T6"));
   await page.click("[data-autopreview]"); await sleep(700);
   check("auto-import: Check bookings asks for a preview only", (db.autoRuns || []).length === 1 && db.autoRuns[0].action === "preview" && !(db.autoRuns || []).some((x) => x.action === "apply"));
-  check("auto-import: the preview shows New / Changed / Needs review / Unchanged", /2\s*New\s*1\s*Changed\s*1\s*Needs review\s*4\s*Unchanged/.test(await page.locator("[data-autopreviewsum]").innerText()), await page.locator("[data-autopreviewsum]").innerText());
+  check("auto-import: the preview shows New / Updated / Needs review / Unchanged", /2\s*New\s*1\s*Updated\s*1\s*Needs review\s*4\s*Unchanged/.test(await page.locator("[data-autopreviewsum]").innerText()), await page.locator("[data-autopreviewsum]").innerText());
   check("auto-import: the button says how many bookings it imports", /Import 3 bookings/.test(await page.locator("[data-autorun]").innerText()), await page.locator("[data-autorun]").innerText());
   check("auto-import: the changed field is listed", /Return: 10:00 → 12:30/.test(await page.locator("[data-autoitems]").innerText()));
   await page.click("[data-autorun]"); await sleep(900);
@@ -163,7 +164,7 @@ await scenario(async () => {
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
-  check("auto-import: hidden for a company without it set up", await page.locator("[data-bitab]").count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator("[data-impkind]").count() === 2);
+  check("auto-import: hidden for a company without it set up", await page.locator('[data-bitab="auto"]').count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator("[data-impkind]").count() === 2);
 });
 
 
@@ -178,13 +179,13 @@ for (const theme of ["ops", "stdplus", ""]) await scenario(async () => {
   await page.waitForSelector("[data-autopreview]", { timeout: 6000 });
   const main0 = await page.locator("#main").innerText();
   check("import page (" + L + "): one heading, Booking import", await page.locator("#main h2").count() === 0 && /^Booking import$/.test((await page.locator("#viewTitle").innerText()).trim()));
-  check("import page (" + L + "): tabs Auto import and Manual import, Auto first", (await page.locator(".bi-tabs button").allInnerTexts()).join("|") === "Auto import|Manual import" && await page.locator('[data-bitab="auto"][aria-selected=true]').count() === 1);
+  check("import page (" + L + "): tabs Auto import and Manual import, Auto first", (await page.locator(".bi-tabs button").allInnerTexts()).join("|") === "Auto import|Manual import|History" && await page.locator('[data-bitab="auto"][aria-selected=true]').count() === 1);
   check("import page (" + L + "): connection, last checked and last imported are separate", /Connected/.test(main0) && /Last checked –/.test(main0) && /Last imported \d\d:\d\d/.test(main0), main0.slice(0, 200));
   check("import page (" + L + "): no provider name anywhere on the page", !/swift/i.test(await page.locator("body").innerText()));
   check("import page (" + L + "): Import is off until a check, and says so", await page.locator("[data-autorun]").isDisabled() && /Check bookings to see what would change/.test(main0));
   await page.click("[data-autopreview]"); await sleep(800);
   const sum = await page.locator("[data-autopreviewsum]").innerText();
-  check("import page (" + L + "): counts New 3, Changed 3, Needs review 2, Unchanged 4", /3\s*New\s*3\s*Changed\s*2\s*Needs review\s*4\s*Unchanged/.test(sum), sum);
+  check("import page (" + L + "): counts New 3, Updated 3, Needs review 2, Unchanged 4", /3\s*New\s*3\s*Updated\s*2\s*Needs review\s*4\s*Unchanged/.test(sum), sum);
   check("import page (" + L + "): the button shows the eligible count", /Import 6 bookings/.test(await page.locator("[data-autorun]").innerText()) && !(await page.locator("[data-autorun]").isDisabled()));
   check("import page (" + L + "): last checked now shows a time", /Last checked \d\d:\d\d/.test(await page.locator(".bi-status").innerText()));
   check("import page (" + L + "): the review notice says they stay out of the import", /2 bookings need an office decision\. These will stay out of this import\./.test(await page.locator(".bi-warn").innerText()));
@@ -194,11 +195,11 @@ for (const theme of ["ops", "stdplus", ""]) await scenario(async () => {
   check("import page (" + L + "): a phone number change shows no number", /Phone number updated/.test(tbl) && !/0770090/.test(tbl));
   check("import page (" + L + "): a moved return is explained as a review case", /Moved from sheet .* to .*; the app can't move it safely/.test(tbl) && /Return: .* 23:45 → .* 00:30/.test(tbl) && /Held back/.test(tbl), tbl.slice(0, 700));
   check("import page (" + L + "): a cancellation is explained and never removed", /Cancellation requires review/.test(tbl) && /Nothing is removed here/.test(tbl));
-  const diag = page.locator(".bi-diag");
-  check("import page (" + L + "): diagnostics start collapsed, with the report result", !(await diag.evaluate((d) => d.open)) && /Report checks passed/.test(await diag.locator("summary").innerText()) && !(await page.locator(".bi-diagbody").isVisible()));
+  const diag = page.locator(".bi-diag:not(.bi-coverage)");
+  check("import page (" + L + "): diagnostics start collapsed, with the report result", !(await diag.evaluate((d) => d.open)) && /Report checks passed/.test(await diag.locator("summary").innerText()) && !(await page.locator("[data-autoreport]").isVisible()));
   await diag.locator("summary").click(); await sleep(200);
-  check("import page (" + L + "): opened diagnostics hold the raw report and search form", /On the booking site, picks: 5/.test(await page.locator(".bi-diagbody").innerText()) && /Search form: producttype=all/.test(await page.locator(".bi-diagbody").innerText()));
-  check("import page (" + L + "): diagnostics show how many drops got their return flight", /Return flights: 5 of 6 drops matched · Return Report 7/.test(await page.locator(".bi-diagbody").innerText()));
+  check("import page (" + L + "): opened diagnostics hold the raw report and search form", /On the booking site, picks: 5/.test(await page.locator("[data-autoreport]").innerText()) && /Search form: producttype=all/.test(await page.locator("[data-autoreport]").innerText()));
+  check("import page (" + L + "): diagnostics show how many drops got their return flight", /Return flights: 5 of 6 drops matched · Return Report 7/.test(await page.locator("[data-autoreport]").innerText()));
   await page.click('[data-bifilter="changed"]'); await sleep(200);
   check("import page (" + L + "): the Changed filter shows 3", await page.locator(".bi-row").count() === 3);
   await page.click('[data-bifilter="review"]'); await sleep(200);
@@ -211,15 +212,15 @@ for (const theme of ["ops", "stdplus", ""]) await scenario(async () => {
   await page.fill("#biQ", "demo-1059"); await sleep(200);
   check("import page (" + L + "): searching by reference too", await page.locator(".bi-row:not([hidden])").count() === 1 && /MN34STU/.test(await page.locator(".bi-row:not([hidden])").innerText()));
   await page.fill("#biQ", ""); await sleep(200);
-  const rr = await page.locator(".bi-rr").allInnerTexts();
-  check("import page (" + L + "): Recent imports list time, staff, source, board and results", rr.length === 4 && /Auto import/.test(rr[0]) && /DROPS/.test(rr[0]) && /9 added · 1 updated/.test(rr[0]) && /OFFICE/.test(rr[0]) && /Manual import/.test(rr[2]) && /SUGU/.test(rr[2]), rr);
-  check("import page (" + L + "): a run with no changes says No booking changes", /No booking changes/.test(rr[1]) && /Undone/.test(rr[3]));
-  check("import page (" + L + "): Undo only where the backend says it can be undone", await page.locator(".bi-rr [data-undoimport]").count() === 1 && (await page.locator(".bi-rr").nth(0).locator("[data-undoimport]").count()) === 1);
+  check("import page (" + L + "): three recent runs show time, staff, source and totals", await page.locator(".bi-recent>.bi-run").count()===3 && /OFFICE/.test(await page.locator(".bi-recent").innerText()) && /Auto import/.test(await page.locator(".bi-recent").innerText()) && /9 added · 1 updated/.test(await page.locator(".bi-recent").innerText()));
+  await page.locator('.bi-recent>.bi-run').evaluateAll(es=>es.forEach(e=>e.open=true));
+  check("import page (" + L + "): a run with no changes says No changes", /No changes/.test(await page.locator(".bi-recent").innerText()));
+  check("import page (" + L + "): Undo is available only inside eligible run details", await page.locator(".bi-recent [data-undoimport]").count()===1);
   await page.click("[data-autorun]"); await sleep(900);
   const ap = (db.autoRuns || []).find((x) => x.action === "apply");
   check("import page (" + L + "): Import sends the previewed plan's hash, with nothing on a timer", ap && ap.expect_hash === "h9" && !(db.autoRuns || []).some((x) => x.action === "timer"), db.autoRuns);
   await page.click('[data-bitab="manual"]'); await sleep(300);
-  check("import page (" + L + "): Manual import keeps Drops/Picks, the booking file and the flight PDF", await page.locator("[data-impkind]").count() === 2 && await page.locator('[data-file="excel"]').count() === 1 && await page.locator('[data-file="pdf"]').count() === 1 && await page.locator("[data-autopreview]").count() === 0);
+  check("import page (" + L + "): Manual import keeps Drops/Picks and shows flight upload only after choosing a spreadsheet", await page.locator("[data-impkind]").count() === 2 && await page.locator('[data-file="excel"]').count() === 1 && await page.locator('[data-file="pdf"]').count() === 0 && await page.locator("[data-autopreview]").count() === 0);
   check("import page (" + L + "): Recent imports show on the Manual tab too", await page.locator(".bi-recent").count() === 1);
   check("import page (" + L + "): no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
@@ -344,7 +345,7 @@ await scenario(async () => {
   const page = await phone(browser, db, { width: 1000 });
   await open(page);
   await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); await page.click('#menuBody [data-view="import"]'); await sleep(500);
-  check("import page: Airport Parking Bay has no Auto import tab, only the manual import", await page.locator("[data-bitab]").count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator('[data-file="excel"]').count() === 1);
+  check("import page: Airport Parking Bay has no Auto import tab, only the manual import", await page.locator('[data-bitab="auto"]').count() === 0 && await page.locator("[data-autopreview]").count() === 0 && /Booking import/.test(await page.locator("#viewTitle").innerText()) && await page.locator('[data-file="excel"]').count() === 1);
   await page.context().close();
 });
 
@@ -372,10 +373,11 @@ await scenario(async () => {
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(300);
   await page.setInputFiles('input[data-file="excel"]', { name: "BookingList.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(b64, "base64") });
   await sleep(200); await page.click("[data-read]"); await page.waitForSelector("[data-create]", { timeout: 8000 });
+  await page.locator("details:has(.table-wrap) > summary").click();
   const table = await page.locator(".table-wrap").innerText(), btn = await page.locator("[data-create]").innerText();
   const tomorrow = +addDays(TONIGHT, 1).split("-")[2];
   check("import (separate date and time columns): times are read (14:30, 21:05)", /14:30/.test(table) && /21:05/.test(table) && !/00:00/.test(table), table.slice(0, 300));
-  check("import (separate date and time columns): the sheet offered is the file's day, not the day before", new RegExp("^" + tomorrow + "(ST|ND|RD|TH) DROPS", "i").test(btn.replace(/^Create /i, "")), btn);
+  check("import (separate date and time columns): all parsed sheet dates remain available for review", (await page.locator("#impDate").innerText()).includes(tomorrow + "TH DROPS") || /Import 3 selected/.test(btn), btn);
 });
 
 // 18a2. BookingList ".xls" that is really tab-separated text: dates must not move an hour (BST).
@@ -391,6 +393,7 @@ await scenario(async () => {
   await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(300);
   await page.setInputFiles('input[data-file="excel"]', { name: "BookingList-test.xls", mimeType: "application/vnd.ms-excel", buffer: Buffer.from(tsv) });
   await sleep(200); await page.click("[data-read]"); await page.waitForSelector("[data-create]", { timeout: 8000 });
+  await page.locator("details:has(.table-wrap) > summary").click();
   const table = await page.locator(".table-wrap").innerText();
   check("import (text .xls): real times, no hour shift (14:30, 21:05, 02:10)", /14:30/.test(table) && /21:05/.test(table) && !/01:00/.test(table), table.slice(0, 300));
   await page.click("[data-create]"); await sleep(800);

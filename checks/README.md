@@ -1,3 +1,13 @@
+Reviewed booking imports (prepared, NOT released):
+`node checks/reviewed-import.mjs` tests the new SQL on throwaway Postgres and
+`node --experimental-strip-types --no-warnings checks/import-edge.mjs` runs the
+actual interactive and scheduled edge orchestration against fake RPCs.
+`CHROMIUM=/path/to/chrome node checks/e2e/import-review-run.mjs` tests the actual
+browser flows with fake Supabase; `IMPORT_SHOTS=/absolute/path` saves synthetic
+internal QA captures. Requires PGlite 0.5.11 and Playwright. No hosted database
+or supplier is contacted. Release approval boundary and baseline failures:
+`docs/import-review-upgrade.md`.
+
 # Checks
 
 Lane planner (part 104): `node checks/lane-planner.mjs` tests PostgreSQL access,

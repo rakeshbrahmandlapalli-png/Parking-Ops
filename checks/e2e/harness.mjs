@@ -269,6 +269,24 @@ function rpc(db, fn, a) {
     }
     case "set_note": { const b = row(a.p_booking); b.note = a.p_note; return b; }
     case "download_my_company": return { format: "takeoff-ops-company-export", bookings: db.bookings };
+    case 'reviewed_import_preview': {
+      if(db.manualPreviewError)throw new Error(db.manualPreviewError);
+      const items=a.p_batches.flatMap(b=>b.rows.map((r,i)=>({key:b.kind+'|'+b.day+'|'+(i+1),kind:b.kind,day:b.day,ref:r.ref,reg:r.reg,name:r.name,status:'new',row:r,changes:[],source:r.source}))).map(i=>db.manualStatus?.[i.ref]?{...i,...db.manualStatus[i.ref]}:i);
+      const counts={};items.forEach(i=>counts[i.status]=(counts[i.status]||0)+1);
+      return {hash:'manual-hash',items,counts};
+    }
+    case 'reviewed_import_apply': {
+      if(db.manualApplyError)throw new Error(db.manualApplyError);
+      db.manualResults ||= {};
+      if(db.manualResults[a.p_request])return db.manualResults[a.p_request];
+      const plan=rpc(db,'reviewed_import_preview',{p_batches:a.p_batches});
+      const selected=plan.items.filter(i=>a.p_selected.includes(i.key));
+      const days=a.p_batches.map(b=>{const rows=selected.filter(i=>i.kind===b.kind&&i.day===b.day).map(i=>i.row);if(!rows.length)return null;const args={p_kind:b.kind,p_day:b.day,p_rows:rows,p_source:a.p_source};db.calls.push({fn:'import_sheet',args});return {...rpc(db,'import_sheet',args),kind:b.kind,day:b.day};}).filter(Boolean);
+      return db.manualResults[a.p_request]={days,selected:selected.length,run_id:a.p_request};
+    }
+    case 'reviewed_import_resolve': { const item=rpc(db,'reviewed_import_preview',{p_batches:a.p_batches}).items.find(i=>i.key===a.p_key);if(!item||!item.can_resolve)throw new Error('Open this booking to resolve it safely.');db.manualStatus[item.ref]={status:'unchanged',changes:[]};return rpc(db,'reviewed_import_preview',{p_batches:a.p_batches}); }
+    case 'reviewed_import_undo_preview':return db.undoPreview||{added:[],changed:[]};
+    case 'reviewed_import_history':return db.reviewedHistory||[];
     case "import_sheet": { const sh = db.sheets.find((x) => x.kind === a.p_kind && x.day === a.p_day); (db.imports = db.imports || []).push({ id: 70 + db.imports.length, kind: a.p_kind, day: a.p_day, at: now(), by: "RAKESH", added: a.p_rows.length, changed: 0, undone: false, latest: true }); return { sheet_id: sh ? sh.id : "p0", added: a.p_rows.length, updated: 0, early: 0, moved: 0, new_marked: 0, undo_id: 70 + db.imports.length - 1 }; }
     case "admin_save_client": (db.clientSaves = db.clientSaves || []).push(a.p); return { id: a.p.id, name: a.p.name, brand: a.p.brand };
     case "recent_imports": return db.imports || [];

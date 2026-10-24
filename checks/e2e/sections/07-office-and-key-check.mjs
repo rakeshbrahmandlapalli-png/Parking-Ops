@@ -34,10 +34,10 @@ await scenario(async () => {
   await vis("hidden"); await sleep(1500); await vis("visible");
   await input.setInputFiles({ name: "drops.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("x") });
   await sleep(400);
-  check("import on a phone: the chosen file is taken after the file picker (app back from the background)", /drops\.xlsx/.test(await page.locator(".steps").innerText()) && await page.locator("[data-read]:not([disabled])").count() === 1);
+  check("import on a phone: the chosen file is taken after the file picker (app back from the background)", /drops\.xlsx/.test(await page.locator(".mi-files").innerText()) && await page.locator("[data-read]:not([disabled])").count() === 1);
 });
 
-// 18c. after an import: ✕ and Undo at the top of the "not in this file" box; Undo on the Import screen
+// 18c. Reviewed imports finish on the import page; undo is inside run details.
 await scenario(async () => {
   const db = makeDb();
   const page = await phone(browser, db, { width: 1000 });
@@ -56,13 +56,11 @@ await scenario(async () => {
   await page.setInputFiles('input[data-file="excel"]', { name: "picks.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(b64, "base64") });
   await sleep(200); await page.click("[data-read]"); await page.waitForSelector("[data-create]", { timeout: 8000 });
   await page.click("[data-create]"); await sleep(900);
-  check("after import: the 'not in this file' box has a ✕ and Undo this import at the top", await page.locator("#panelBody .pclose").count() === 1 && await page.locator("#panelBody .pbtns.top [data-undoimport]").count() === 1);
-  await page.click("#panelBody .pclose"); await sleep(300);
-  check("after import: ✕ closes the box and removes nothing", !(await page.evaluate(() => document.getElementById("panel").open)) && !db.calls.some((c) => c.fn === "remove_booking"));
-  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(600);
+  check("after import: completion is shown without suggesting unselected cars are cancelled", await page.locator('.mi-result').count()===1 && !db.calls.some(c=>c.fn==='remove_booking'));
+  await page.locator('.bi-recent>.bi-run').first().locator('summary').click();
   check("Import screen lists the import with an Undo button", await page.locator(".bi-recent [data-undoimport]").count() === 1, await page.locator(".bi-recent").innerText().catch(() => ""));
   await page.click(".bi-recent [data-undoimport]"); await sleep(800);
-  check("Undo asks, then undoes that import on the server", db.calls.some((c) => c.fn === "undo_import" && c.args.p_id === 70) && /Import undone/.test(await toast(page)), await toast(page));
+  check("Undo asks, then undoes that import on the server", db.calls.some(c=>c.fn==="reviewed_import_undo_preview") && db.calls.some((c) => c.fn === "undo_import" && c.args.p_id === 70) && /Import undone/.test(await toast(page)), await toast(page));
   check("undo: no errors", page.__errors.length === 0, page.__errors);
 });
 
