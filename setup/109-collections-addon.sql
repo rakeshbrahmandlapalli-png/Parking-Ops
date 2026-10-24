@@ -2,7 +2,7 @@
 --
 -- 24 Oct: only some clients take an exit fee, so the Collections strip (totals,
 -- filters, the Exit / Overstay line under each DROPS car and Collection details)
--- is given per client in Parking Ops → Clients → Edit → "Collections (add-on)"
+-- is given per client in Parking Ops → Clients → Edit → "Collections on DROPS (add-on)"
 -- (brand.collections).
 --   • can('collections'): as part 105 (checked against the live definition on
 --     24 Oct 2026), plus false for everyone when their client doesn't have the
