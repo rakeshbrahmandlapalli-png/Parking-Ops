@@ -105,6 +105,11 @@
     try {
       var nativeSession = JSON.parse(window.TakeOffPhone.latestSession());
       if (nativeSession.access_token && nativeSession.refresh_token) await sb.auth.setSession(nativeSession);
+      else {
+        // The phone holds no sign-in yet (first run, or an update): give it the one this page already has.
+        var cur = (await sb.auth.getSession()).data.session;
+        if (cur && cur.access_token && cur.refresh_token) window.TakeOffPhone.setSession(cur.access_token, cur.refresh_token);
+      }
     } catch (e) {} finally { restoringPhoneSession = false; }
   }
   window.addEventListener("takeoff:phone-session", restorePhoneSession);
