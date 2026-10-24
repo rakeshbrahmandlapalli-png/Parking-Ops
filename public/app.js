@@ -4295,7 +4295,7 @@
   // Which part of the work an activity line is about, for the filter chips.
   var PICK_ACTIONS = { INTAKE: 1, PT: 1, "PT PHOTOS": 1, "PT COPY": 1, "SHORT DATES": 1, "COLLECTION TIME": 1 };
   function actKind(a) {
-    if (a.action === "STAFF") return "staff";
+    if (a.action === "STAFF" || a.action === "SIGN IN") return "staff";
     if (a.action === "SETTINGS") return "settings";
     var sh = a.sheet_id && S.sheets.filter(function (x) { return x.id === a.sheet_id; })[0];
     if (sh) return sh.kind;

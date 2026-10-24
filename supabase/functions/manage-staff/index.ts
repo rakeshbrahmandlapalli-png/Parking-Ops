@@ -15,6 +15,7 @@
 //   { action: "reset", staff_id }               new link + PIN, the old link stops working
 //   { action: "off" | "on", staff_id }          switch access off / back on (history is kept)
 //   every action also sends app_url, the address the personal link should open
+//   each change is written to the company's activity log (part 108)
 //
 // "Verify JWT" must be OFF (setup runs before anyone exists); everything
 // except setup checks the caller's own sign-in and role here.
@@ -59,6 +60,13 @@ Deno.serve(async (req) => {
   }
   const linkFor = (token: string) => appUrl.replace(/[#?].*$/, "") + "#t=" + token;
 
+  // Every change here goes in the company's activity log (part 108). A failed
+  // line is reported but doesn't undo what was already done.
+  async function log(companyId: string, staffId: string | null, staffName: string, action: string, value: string) {
+    const { error } = await admin.from("activity").insert({ company_id: companyId, staff_id: staffId, staff_name: staffName, action, value });
+    if (error) console.error("activity log: " + error.message);
+  }
+
   // Creates the hidden login, the staff row and their link + PIN.
   async function createPerson(companyId: string, name: string, role: string) {
     const staffId = crypto.randomUUID();
@@ -94,7 +102,9 @@ Deno.serve(async (req) => {
       if ((count ?? 0) > 0) return reply(409, { error: "Setup is already done. Ask the office to add you." });
       const name = String(body.name ?? "").trim().slice(0, 60);
       if (!name) return reply(400, { error: "Enter your name." });
-      return reply(200, await createPerson(company.id, name, "owner"));
+      const made = await createPerson(company.id, name, "owner");
+      await log(company.id, made.staff_id, name, "STAFF", "Set up the first owner login: " + name);
+      return reply(200, made);
     }
 
     // ── everything else: who is asking? ────────
@@ -121,6 +131,7 @@ Deno.serve(async (req) => {
       const host = String((client.brand as Record<string, unknown> | null)?.host ?? "");
       const clientUrl = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? "https://" + host + "/" : appUrl;
       const made = await createPerson(client.id, name, "owner");
+      await log(client.id, null, me.name + " (Parking Ops)", "STAFF", "Added " + name + " (owner)");
       return reply(200, { ...made, link: clientUrl.replace(/[#?].*$/, "") + made.link.slice(made.link.indexOf("#t=")) });
     }
 
@@ -147,8 +158,10 @@ Deno.serve(async (req) => {
         if (found.user_id) await admin.auth.admin.updateUserById(found.user_id, { ban_duration: "none" });
         const { error: onErr } = await admin.from("staff").update({ active: true, removed_at: null }).eq("id", found.id);
         if (onErr) throw new Error(onErr.message);
+        await log(client.id, null, me.name + " (Parking Ops)", "STAFF", "Switched on " + me.name + " (Parking Ops)");
       }
       if (!userId) return reply(500, { error: "No login found for the Parking Ops owner." });
+      await log(client.id, null, me.name + " (Parking Ops)", "SIGN IN", "Parking Ops opened the app");
       const { data: user, error: userError } = await admin.auth.admin.getUserById(userId);
       if (userError || !user.user?.email) return reply(500, { error: userError?.message ?? "No login found." });
       const { data: link, error: linkError } = await admin.auth.admin.generateLink({ type: "magiclink", email: user.user.email });
@@ -167,7 +180,9 @@ Deno.serve(async (req) => {
       // Office can add people but not managers: a manager's link and PIN would
       // give office Settings and staff-access powers (part 17).
       if (role === "manager" && !["owner", "manager"].includes(me.role)) return reply(403, { error: "Only a manager or the owner can add a manager." });
-      return reply(200, await createPerson(me.company_id, name, role));
+      const made = await createPerson(me.company_id, name, role);
+      await log(me.company_id, me.staff_id, me.name, "STAFF", "Added " + name + " (" + role + ")");
+      return reply(200, made);
     }
 
     const staffId = String(body.staff_id ?? "");
@@ -180,6 +195,7 @@ Deno.serve(async (req) => {
       const token = randomToken(), pin = randomPin();
       const { error } = await admin.rpc("set_staff_secret", { p_staff: person.id, p_link_hash: await sha256Hex(token), p_pin: pin });
       if (error) throw new Error(error.message);
+      await log(me.company_id, me.staff_id, me.name, "STAFF", "New link and PIN for " + person.name + " (the old link stops working)");
       return reply(200, { staff_id: person.id, name: person.name, role: person.role, link: linkFor(token), pin });
     }
 
@@ -192,6 +208,7 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.from("staff").update({ active: on }).eq("id", person.id);
       if (error) throw new Error(error.message);
+      if (on !== person.active) await log(me.company_id, me.staff_id, me.name, "STAFF", (on ? "Switched on " : "Switched off ") + person.name);
       return reply(200, { staff_id: person.id, active: on });
     }
 
