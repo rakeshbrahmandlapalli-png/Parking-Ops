@@ -14,7 +14,8 @@ object PhoneSession {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     ).also { cached = it }
     @Synchronized fun save(context: Context, access: String, refresh: String) {
-        if (access.length < 80 || refresh.length < 20) return
+        // A JWT access token (three parts) and a refresh token; Supabase's refresh tokens are only 12 characters.
+        if (access.length < 80 || access.count { it == '.' } != 2 || refresh.length < 6) return
         val previous=PhoneSession.access(context)
         fun subject(token: String) = runCatching { org.json.JSONObject(String(android.util.Base64.decode(token.split('.')[1],android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))).getString("sub") }.getOrNull()
         if(previous!=null && subject(previous)!=subject(access)) {
