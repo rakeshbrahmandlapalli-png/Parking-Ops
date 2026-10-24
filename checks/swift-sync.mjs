@@ -107,6 +107,21 @@ ok("empty and oversized downloads are rejected", /empty/.test(await throws(() =>
   await c.postPage("report.php", {});
   ok("searches by POST are capped per run", /too many searches/.test(await throws(() => c.postPage("report.php", {})))); }
 
+// a dropped connection (24 Oct: "connection closed before message completed" on the Return Report) gets one more try
+{ const s = site(); let drops = 1; s.state.hook = (u, init) => { if (u.pathname.endsWith("report.php")) { if (drops-- > 0) throw new TypeError("connection closed before message completed"); return new Response("<table><tr><th>Ref#</th></tr></table>", { status: 200 }); } return null; };
+  const c = makeClient({ ...CFG, scripts: [...CFG.scripts, "report.php"], post_scripts: ["report.php"] }, { fetch: s.fetch, sleep: async () => {}, user: "u", pass: "p" });
+  await c.login();
+  ok("a dropped connection on a report is tried once more", /<table>/.test(await c.postPage("report.php", {})) && s.calls.filter((x) => x.url.includes("report.php")).length === 2); }
+{ const s = site(); s.state.hook = (u) => { if (u.pathname.endsWith("report.php")) throw new TypeError("connection closed before message completed"); return null; };
+  const c = makeClient({ ...CFG, scripts: [...CFG.scripts, "report.php"], post_scripts: ["report.php"] }, { fetch: s.fetch, sleep: async () => {}, user: "u", pass: "p" });
+  await c.login();
+  const m = await throws(() => c.postPage("report.php", {}));
+  ok("dropped twice: a plain message that nothing was imported", /dropped the connection.*Nothing was imported/.test(m) && s.calls.filter((x) => x.url.includes("report.php")).length === 2, m); }
+{ const s = site(); let n = 0; s.state.hook = (u, init) => { if (u.pathname.endsWith("index.php") && init.method === "POST") { n++; throw new TypeError("connection closed"); } return null; };
+  const c = mk(s);
+  await throws(() => c.login());
+  ok("the sign-in is never sent twice after a dropped connection", n === 1, n); }
+
 // ── fixtures: sanitised ──
 const HEAD = ["Booking Status", "Reference", "Full Name", "Car Reg", "Car Make", "Telephone", "Booking From", "Booking To", "Return Flight", "Supplier", "Notes"];
 const row = (st, ref, name, reg, from, to, fl = "", sup = "TakeOff", note = "") => [st, ref, name, "", reg, "", from, to, fl, sup, note].slice(0, 0).concat([st, ref, name, reg, "Ford", "07000 000000", from, to, fl, sup, note]);
