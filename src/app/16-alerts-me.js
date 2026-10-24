@@ -3,7 +3,7 @@
   // Home Screen (iOS 16.4+). This public key pairs with VAPID_PRIVATE_KEY, a
   // secret held only by the send-alerts Edge Function.
   var VAPID_PUBLIC_KEY = "BIUvnDQXjj4nWd2EIx7kLAGTTWamJ0oM1V806Ubh7HeiUJfaZWRxwvlUrP7pZTVULpFOYBbWrKtmSC1AmdNtnWw";
-  var ALERT_KINDS = [["drops", "DROPS: CALLED, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"]];
+  var ALERT_KINDS = [["drops", "DROPS: CALLED, AT DESK, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"]];
   function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
   function iosOutsideHomeScreen() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(navigator.standalone === true || matchMedia("(display-mode: standalone)").matches); }
   function keyBytes(k) { var raw = atob((k + "=".repeat((4 - k.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }

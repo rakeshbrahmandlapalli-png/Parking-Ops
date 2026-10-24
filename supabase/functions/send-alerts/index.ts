@@ -2,6 +2,7 @@
 //
 // Phone notifications (web push) and Discord messages for:
 //   DROPS  CALLED / OVERSTAY on a car no driver has been SENT to yet
+//          AT DESK (the customer is at the desk) on a car not SENT yet
 //          still no driver SENT 20 minutes after CALLED (not OVERSTAY)
 //          COMPLAINT
 //          flight CANCELLED on a car not yet handed back
@@ -120,11 +121,16 @@ async function onBooking(id: string) {
   const flightLine = b.flight ? `${b.flight} · due ${b.est_time && b.est_time !== "DELAY" ? b.est_time : b.sched_time || time(b.return_at)}` : `back ${time(b.return_at)}`;
   const alerts: { key: string; kind: Kind; channel: "drops" | "picks"; label: string; at: string; by: string | null }[] = [];
 
+  // AT DESK (setup 112/113): the customer is at the desk, once each time it is turned on.
+  const desk = b.kind === "drops" && b.desk_at && !b.sent_at && !b.cleared_at && b.called_word !== "Overstay" && fresh(b.desk_at);
   // OVERSTAY goes once per car, however often it is tapped off and on again.
-  if (b.kind === "drops" && b.called_at && !b.sent_at && !b.cleared_at && fresh(b.called_at)) {
+  // AT DESK on a car not called yet calls it in the same tap: then only the AT DESK push goes.
+  const sameTap = desk && b.called_at && Math.abs(new Date(b.called_at).getTime() - new Date(b.desk_at).getTime()) < 5000;
+  if (b.kind === "drops" && b.called_at && !b.sent_at && !b.cleared_at && fresh(b.called_at) && !sameTap) {
     const over = b.called_word === "Overstay";
     alerts.push({ key: over ? `overstay:${b.id}` : `called:${b.id}:${b.called_at}`, kind: "drops", channel: "drops", label: over ? "OVERSTAY" : "CALLED", at: b.called_at, by: b.called_by });
   }
+  if (desk) alerts.push({ key: `desk:${b.id}:${b.desk_at}`, kind: "drops", channel: "drops", label: "AT DESK", at: b.desk_at, by: b.desk_by });
   if (b.kind === "drops" && b.clear_word === "COMPLAINT" && fresh(b.cleared_at)) {
     alerts.push({ key: `complaint:${b.id}:${b.cleared_at}`, kind: "drops", channel: "drops", label: "🚨 COMPLAINT", at: b.cleared_at, by: b.cleared_by });
   }
@@ -142,7 +148,7 @@ async function onBooking(id: string) {
     const title = `${a.label}: ${car} — ${who}`;
     const body = a.kind === "flights"
       ? `${b.flight} has been cancelled by the airline. The customer may not be coming back as booked.`
-      : `${a.label.replace(/^\S+ /, "")} at ${time(a.at)}${byName ? " by " + byName : ""} · ${a.kind === "picks" ? "drop-off " + time(b.drop_at) : flightLine}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
+      : `${a.label.replace(/^[^A-Z]+ /, "")} at ${time(a.at)}${byName ? " by " + byName : ""} · ${a.kind === "picks" ? "drop-off " + time(b.drop_at) : flightLine}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
     sent += await pushTo(everyoneBut(a.by), a.kind, { title, body, url: "/", tag: `${a.kind}-${b.id}` });
     await discord(b.company_id, a.channel, title, body);
   }
