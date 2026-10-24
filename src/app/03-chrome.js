@@ -2,7 +2,7 @@
   // The header is the one the team already knows from the Sheet app: sheet
   // picker, who is signed in, and a row of icon buttons. The yard tally, TO DO /
   // ALL, search and column captions belong to the board only.
-  var OPS_TITLE = { summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
+  var OPS_TITLE = { calls: "Calls", summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
   var VIEW_TITLE = { lanes: "Yard planner", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
   var YARD_LABEL = { Y: "NB", S: "S YARD" };
   // The tally reads left to right as the Sheet's did; any yard not listed follows.
@@ -226,7 +226,7 @@
     document.body.classList.toggle("on-lanes", S.view === "lanes");
     document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
-    var fn = { lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
+    var fn = { calls: renderCalls, lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
     if (S.switching && S.view === "board" || S.switching && S.switching.o.archive) { boardChunks = null; html = loadingHtml(S.switching); setMain(html, "loading"); return; }
     // One screen going wrong never takes the app down: it says so and offers a way out.
@@ -253,5 +253,5 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
