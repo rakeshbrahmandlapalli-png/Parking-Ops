@@ -430,12 +430,21 @@
   });
 
   // ── add a car by hand, remove a no-show (office) ──
+  // The reasons remove_booking accepts (setup 15, RTC and Early return from 110).
+  var REMOVE_WHY = ["No show", "Cancelled", "Duplicate", "RTC", "Early return"];
+  function removeWhyLine(by) {
+    return REMOVE_WHY.map(function (k) { var n = by[k]; return n ? n + " " + (k === "RTC" ? k : k.toLowerCase()) : ""; }).filter(Boolean).join(" · ");
+  }
   function askRemove(r) {
+    // Two rows of buttons, so five reasons fit a phone in every look.
+    var seg = function (ws, st) {
+      return '<div class="pseg rmwhy"' + (st || "") + ">" + ws.map(function (w) {
+        return '<button type="button" data-removewhy="' + w + '">' + w.toUpperCase() + "</button>";
+      }).join("") + "</div>";
+    };
     $("panelBody").innerHTML = '<h2 id="panelTitle">Remove ' + esc(r.reg || "this car") + "?</h2>" +
       '<p class="sub">It leaves the board and the counts, and is never carried over as an overstay. You can put it back from Menu, Removed cars.</p>' +
-      '<label>WHY</label><div class="pseg">' + ["No show", "Cancelled", "Duplicate"].map(function (w) {
-        return '<button type="button" data-removewhy="' + w + '">' + w.toUpperCase() + "</button>";
-      }).join("") + '</div><div class="pbtns"><button type="button" data-backcar>Back</button></div>';
+      "<label>WHY</label>" + seg(REMOVE_WHY.slice(0, 3)) + seg(REMOVE_WHY.slice(3), ' style="margin-top:6px"') + '<div class="pbtns"><button type="button" data-backcar>Back</button></div>';
   }
   async function removeCar(r, why, btn) {
     btn.disabled = true;

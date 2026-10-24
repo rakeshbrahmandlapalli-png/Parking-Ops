@@ -204,7 +204,9 @@
     var cash = tn("cash", sum(taken.filter(function (x) { return x.charge_method === "cash"; }), "charge_amount")), card = tn("card", sum(taken.filter(function (x) { return x.charge_method === "card"; }), "charge_amount"));
     var N = { added: tn("added", added.length), addedDesk: tn("added_desk", added.filter(function (a) { return a.action === "ADDED"; }).length), taken: tn("taken_n", taken.length), waived: tn("waived_n", waived.length), waivedSum: tn("waived", sum(waived, "charge_amount")),
       removed: tn("removed", removed.length), complaints: tn("complaints", complaints.length), owed: tn("owed_n", (D.owed || []).length) };
-    N.removedBy = { "No show": tn("no_show", removed.filter(function (r) { return r.removed_reason === "No show"; }).length), Cancelled: tn("cancelled", removed.filter(function (r) { return r.removed_reason === "Cancelled"; }).length), Duplicate: tn("duplicate", removed.filter(function (r) { return r.removed_reason === "Duplicate"; }).length) };
+    // RTC and Early return have no database total yet, so they count the list (up to 300 rows).
+    N.removedBy = {};
+    REMOVE_WHY.forEach(function (k) { N.removedBy[k] = tn(k.toLowerCase().replace(/ /g, "_"), removed.filter(function (r) { return r.removed_reason === k; }).length); });
     var owed = (D.owed || []).map(function (r) { var o = owedNow(r); return Object.assign({}, r, { due: o.amount, days: o.days }); }).filter(function (r) { return r.due > 0; });
     var here = owed.filter(function (r) { return !r.cleared_at; }), left = owed.filter(function (r) { return r.cleared_at; });
     var when = function (ts) { return esc(dayShort(ts)) + " " + esc(hhmm(ts)); };
@@ -220,7 +222,7 @@
       tile("Owed now", money(sum(here, "due")), here.length + (here.length === 1 ? " car" : " cars") + " here") +
       tile("Left unpaid", money(sum(left, "due")), left.length + (left.length === 1 ? " car" : " cars"), left.length ? "warn" : "") +
       tile("Waived", money(N.waivedSum), N.waived + (N.waived === 1 ? " car" : " cars")) +
-      tile("Removed", N.removed, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = N.removedBy[k]; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")) +
+      tile("Removed", N.removed, removeWhyLine(N.removedBy)) +
       tile("Complaints", N.complaints, "") +
       tile("Early returns", +D.early || 0, (+D.changed || 0) + " return changes") + "</div>";
     var records = {};
@@ -396,7 +398,7 @@
     var NN = x.N;
     h += '<div class="od-row">' + foldOpen("desk", "Desk activity", "Last " + period, NN.added + " added · " + NN.removed + " removed · " + NN.complaints + (NN.complaints === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
       [["added", "Added at the desk", NN.added, NN.addedDesk + " added · " + (NN.added - NN.addedDesk) + " NEW BOOKING"],
-        ["removed", "Removed", NN.removed, ["No show", "Cancelled", "Duplicate"].map(function (k) { var n = NN.removedBy[k]; return n ? n + " " + k.toLowerCase() : ""; }).filter(Boolean).join(" · ")],
+        ["removed", "Removed", NN.removed, removeWhyLine(NN.removedBy)],
         ["complaints", "Complaints", NN.complaints, ""],
         ["", "Early returns", +D.early || 0, (+D.changed || 0) + " return changes"]].map(function (a) {
         return "<" + (a[0] ? 'button type="button" class="od-line od-tap" data-dashjump="' + a[0] + '"' : 'div class="od-line"') + '><span class="od-label">' + a[1] + (a[3] ? "<small>" + a[3] + "</small>" : "") + '</span><b class="num">' + a[2] + "</b>" + (a[0] ? "</button>" : "</div>");
