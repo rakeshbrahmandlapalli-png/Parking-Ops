@@ -157,8 +157,9 @@ async function collect(company: Co, cfg: Record<string, unknown>, range?: { from
     // deno-lint-ignore no-explicit-any
     const cars = (data ?? []).flatMap((s: any) => (s.bookings ?? []).filter((b: any) => b.ref && !b.removed_at && !b.overstay && !b.early).map((b: any) => ({ ...b, day: s.day })));
     const byHand = new Set<string>();
-    for (let i = 0; i < cars.length; i += 300) {
-      const { data: a, error: e2 } = await admin.from("activity").select("booking_id").eq("action", "ADDED").in("booking_id", cars.slice(i, i + 300).map((c) => c.id));
+    // 100 ids a request keeps the address short (a long query string is refused by the gateway).
+    for (let i = 0; i < cars.length; i += 100) {
+      const { data: a, error: e2 } = await admin.from("activity").select("booking_id").eq("action", "ADDED").in("booking_id", cars.slice(i, i + 100).map((c) => c.id));
       if (e2) throw new Error("Couldn't read the current sheets: " + e2.message);
       (a ?? []).forEach((x: { booking_id: string }) => byHand.add(x.booking_id));
     }
