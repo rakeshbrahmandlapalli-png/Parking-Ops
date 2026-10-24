@@ -26,6 +26,8 @@
   // Booked back on a later day but coming back early: the car moves onto the
   // DROPS sheet for the night picked (tonight unless changed; part 75), marked
   // EARLY. Undo puts it back.
+  // The day of the sheet the car is on ("" when that sheet isn't loaded).
+  function carSheetDay(r) { var s = S.sheets.concat(S.archiveSheet ? [S.archiveSheet] : []).filter(function (x) { return x.id === r.sheet_id; })[0]; return (s && s.day) || ""; }
   function canEarly(r) {
     if (r.kind !== "drops" || r.early || r.cleared_at || !can("called")) return false;
     var here = S.sheets.filter(function (x) { return x.id === r.sheet_id; })[0];
@@ -137,7 +139,12 @@
       return rf ? fld('<label for="' + d + '">' + word + ' date</label><input id="' + d + '" type="date" value="' + esc(p.key) + '">') + fld('<label for="' + t + '">' + word + " time</label>" + timeBox(t, p.time))
         : fld('<label for="' + d + '">' + L(word === "Drop-off" ? "DROP-OFF DATE AND TIME" : "BACK DATE AND TIME") + '</label><div class="when2"><input id="' + d + '" type="date" value="' + esc(p.key) + '">' + timeBox(t, p.time) + "</div>", true);
     }
-    if (!drops && can("import") && !r.removed_at) dropF = when("dropD", "dropT", "Drop-off", r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" });
+    if (!drops && can("import") && !r.removed_at) {
+      var dp = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" }, onDay = carSheetDay(r);
+      dropF = when("dropD", "dropT", "Drop-off", dp);
+      // Added to another day's sheet (a desk booking with tomorrow's board open): Save moves it (part 114).
+      if (dp.key && onDay && dp.key !== onDay) dropF += '<p class="dropday" id="dropDay">On the ' + esc(dayShort(onDay + "T12:00:00Z")) + " sheet. Save moves it to " + esc(dayShort(dp.key + "T12:00:00Z")) + ".</p>";
+    }
     if (canReturn(r)) retF = when("retD", "retT", "Return", r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" });
     if (drops ? can("yard") : picksYard() && can("intake")) {
       yardF = fld('<label>' + L(drops ? "YARD" : "LOCATION") + NOW + '</label><div class="pseg yard">' + (S.company.yards || []).map(function (y) {
@@ -341,10 +348,10 @@
       if ($("dropD")) {
         var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
         if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
-        if ($("dropD").value !== od.key || (dt || "") !== od.time) {
+        if ($("dropD").value !== od.key || (dt || "") !== od.time || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r))) {
           if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
           dl = $("dropD").value + " " + dt;
-          if (dl.slice(0, 10) !== od.key && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
+          if ((dl.slice(0, 10) !== od.key || dl.slice(0, 10) !== carSheetDay(r)) && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
         }
       }
       var f = null, ct, st;

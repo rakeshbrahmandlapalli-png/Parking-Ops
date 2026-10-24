@@ -218,14 +218,29 @@
     if (!sh || sh.kind !== "picks" || sh.archived_at || S.platform || !can("intake")) return "";
     return '<button type="button" class="deskbtn" data-deskbook aria-label="New booking at the desk"><b aria-hidden="true">+</b><span>New booking</span></button>';
   }
-  var deskPhoto = null;
+  var deskPhoto = null, deskSheet = null;
+  // AF14BDU (24 Oct): added at 11:28 with the next day's PICKS board open, so it went on the wrong
+  // day's sheet. A sheet that isn't today's says so, and offers today's when it's in.
+  function deskWarn(sh, today) {
+    if (!sh.day || sh.day === today) return "";
+    var t = S.sheets.filter(function (x) { return x.kind === "picks" && x.day === today && !x.archived_at; })[0];
+    return '<p class="dkwarn" id="dkWarn">This is the PICKS sheet for <b>' + esc(dayShort(sh.day + "T12:00:00Z")) + "</b>, not today (" + esc(dayShort(today + "T12:00:00Z")) + ")." +
+      (t ? ' <button type="button" class="btn ghost small" data-dktoday="' + esc(t.id) + '">Add to today\'s sheet</button>' : "") + "</p>";
+  }
+  function deskToday(id) {
+    var t = S.sheets.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    deskSheet = t;
+    var w = $("dkWarn"); if (w) w.remove();
+    var sm = document.querySelector("#panelTitle small"); if (sm) sm.textContent = sheetLabel(t);
+  }
   function openDeskBooking() {
     var sh = sheet(); if (!sh) return;
     deskPhoto = null;
     var now = londonParts(new Date());
+    deskSheet = sh;
     function f(id, label, attrs) { return '<label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (attrs || "") + ">"; }
     $("panelBody").innerHTML = '<h2 id="panelTitle">New booking <small>' + esc(sheetLabel(sh)) + "</small></h2>" +
-      '<form id="deskForm" novalidate>' +
+      '<form id="deskForm" novalidate>' + deskWarn(sh, now.key) +
       '<label class="docshot" id="dkShot"><input type="file" accept="image/*" capture="environment" data-deskfile hidden><span class="docshot-ico" aria-hidden="true">📷</span><span id="dkShotTxt">Take photo of docket</span></label>' +
       f("dkReg", "REG", 'autocomplete="off" autocapitalize="characters" maxlength="12" required') +
       f("dkName", "NAME", 'autocomplete="off" maxlength="80"') +
@@ -242,8 +257,9 @@
     setTimeout(function () { $("dkReg").focus(); }, 50);
   }
   async function saveDeskBooking() {
-    var sh = sheet(), reg = $("dkReg").value.trim();
+    var sh = deskSheet || sheet(), reg = $("dkReg").value.trim();
     if (!reg) return toast("Enter the registration.", true);
+    if (sh.day && sh.day !== londonParts(new Date()).key && $("dkIn").checked && !confirm("Add " + reg.toUpperCase() + " to PICKS " + dayShort(sh.day + "T12:00:00Z") + "? It was taken in today.")) return;
     var ret = localWhen("dkRet");
     if (ret === null) return toast("Type the time like 13:20 (or 1320).", true);
     var yb = document.querySelector("#dkYard button.on");
@@ -255,7 +271,7 @@
     var photo = deskPhoto; deskPhoto = null;
     $("panel").close();
     await loadRows();
-    toast(x.data.reg + " added" + (photo ? " · saving the docket photo…" : ""));
+    toast(x.data.reg + " added" + (sh !== sheet() ? " to " + sheetLabel(sh) : "") + (photo ? " · saving the docket photo…" : ""));
     if (photo) await uploadDoc(x.data, photo);
     if (can("import")) await askDrops([x.data.id]);
   }
