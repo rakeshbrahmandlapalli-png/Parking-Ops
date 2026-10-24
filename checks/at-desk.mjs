@@ -28,6 +28,10 @@ insert into sheets(company_id, kind, day) select id, 'drops', '2026-10-24' from 
 `);
 const sql = fs.readFileSync(new URL("../setup/112-at-desk.sql", import.meta.url), "utf8");
 await db.exec(sql); await db.exec(sql); // safe to run twice
+// Part 115 changes tap_drop (the stub can() stays); its can() is tested further down.
+const p115 = fs.readFileSync(new URL("../setup/115-at-desk-access.sql", import.meta.url), "utf8");
+const tap115 = p115.slice(p115.indexOf("create or replace function tap_drop"), p115.indexOf("$$;", p115.indexOf("create or replace function tap_drop")) + 3);
+await db.exec(tap115); await db.exec(tap115);
 await db.exec(`create or replace trigger bookings_by_name before insert or update on bookings for each row execute function bookings_by_name();`);
 const q = async (s) => (await db.query(s)).rows;
 let fails = 0; const ok = (n, c, d) => { console.log((c ? "PASS " : "FAIL ") + n + (c ? "" : "  -> " + JSON.stringify(d))); if (!c) fails++; };
@@ -57,7 +61,42 @@ let err = ""; try { await tap(b, "desk", true); } catch (e) { err = e.message; }
 ok("AT DESK is refused on OVERSTAY", /OVERSTAY/.test(err), err);
 
 await db.exec(`insert into perms values ('no-called')`);
+// Part 115: AT DESK is its own permission. The stub can() says no only to a listed "no-<action>".
+await db.exec(`drop table perms; create table perms (p text); insert into perms values ('no-called')`);
+await tap(a, "desk", false);
+await db.exec(`update bookings set called_word = 'Called', called_at = now() where id = '${a}'`);
+await tap(a, "desk", true); r = await get(a);
+ok("without CALLED, AT DESK still works on a car that is already called", r.desk && r.called, r);
+await tap(a, "desk", false); r = await get(a);
+ok("without CALLED, AT DESK comes off again (back to CALLED)", !r.desk && r.called, r);
+const d = await car("D1");
+err = ""; try { await tap(d, "desk", true); } catch (e) { err = e.message; }
+ok("without CALLED, AT DESK on a car not called yet is refused", /Not called yet/.test(err) && !(await get(d)).called, err);
+err = ""; try { await tap(d, "called", true); } catch (e) { err = e.message; }
+ok("without CALLED, CALLED is still refused", /Not allowed/.test(err), err);
+await db.exec(`insert into perms values ('no-desk')`);
 err = ""; try { await tap(a, "desk", true); } catch (e) { err = e.message; }
-ok("AT DESK needs the CALLED permission", /Not allowed/.test(err), err);
+ok("without the AT DESK permission it is refused", /Not allowed/.test(err), err);
+
+// The real can() of part 115 (who gets AT DESK by default, and the -desk / desk grants).
+const cdb = new PGlite();
+await cdb.exec(`
+create schema private;
+create table staff (id uuid primary key default gen_random_uuid(), company_id uuid default gen_random_uuid(), role text, extra text[] not null default '{}');
+create function me() returns staff language sql as $$ select * from staff order by id limit 1 $$;
+create function private.collections_on(c uuid) returns boolean language sql as $$ select true $$;
+`);
+const full = p115;
+const canSql = full.slice(full.indexOf("create or replace function can"), full.indexOf("$$;", full.indexOf("create or replace function can")) + 3);
+await cdb.exec(canSql);
+const who = async (role, extra, act) => { await cdb.exec(`delete from staff; insert into staff(role, extra) values ('${role}', '{${extra}}')`); return (await cdb.query(`select can('${act}') c`)).rows[0].c; };
+ok("terminal: AT DESK yes, CALLED no, OVERSTAY (called) no", (await who("terminal", "", "desk")) && !(await who("terminal", "", "called")), 0);
+ok("bongo: no AT DESK by default", !(await who("bongo", "", "desk")));
+ok("bongo given CALLED gets AT DESK with it", await who("bongo", "called", "desk"));
+ok("office and manager and owner: AT DESK", (await who("office", "", "desk")) && (await who("manager", "", "desk")) && (await who("owner", "", "desk")));
+ok("terminal with -desk: no", !(await who("terminal", "-desk", "desk")));
+ok("office with -desk: no, even though it can press CALLED", !(await who("office", "-desk", "desk")));
+ok("bongo given desk: yes, and still no CALLED", (await who("bongo", "desk", "desk")) && !(await who("bongo", "desk", "called")));
+ok("view-only: no AT DESK", !(await who("view", "", "desk")));
 
 console.log(fails ? "\n" + fails + " failed" : "\nall passed"); process.exit(fails ? 1 : 0);

@@ -248,17 +248,17 @@
   }
 
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
-  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
+  var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
     import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
-  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
+  var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
     ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
   function permShown(x) { return x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
-  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a); }
+  function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
   function canChange(p) { return p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner") && (p.role !== "manager" || S.me.role === "owner" || S.me.role === "manager"); }
   function canManage(p) { return (S.me.role === "manager" || S.me.role === "owner") && p.id !== S.me.id && (p.role !== "owner" || S.me.role === "owner"); }
