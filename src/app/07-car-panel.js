@@ -430,7 +430,7 @@
   });
 
   // ── add a car by hand, remove a no-show (office) ──
-  // The reasons remove_booking accepts (setup 15, RTC and Early return from 109).
+  // The reasons remove_booking accepts (setup 15, RTC and Early return from 110).
   var REMOVE_WHY = ["No show", "Cancelled", "Duplicate", "RTC", "Early return"];
   function removeWhyLine(by) {
     return REMOVE_WHY.map(function (k) { var n = by[k]; return n ? n + " " + (k === "RTC" ? k : k.toLowerCase()) : ""; }).filter(Boolean).join(" · ");

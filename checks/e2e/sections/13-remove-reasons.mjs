@@ -1,6 +1,6 @@
 import { check, sleep, makeDb, phone, open, toast, scenario, browser, dashData } from "../harness.mjs";
 
-// Remove a car: WHY has No show, Cancelled, Duplicate, RTC and Early return (setup 109), every look, on the smallest phone.
+// Remove a car: WHY has No show, Cancelled, Duplicate, RTC and Early return (setup 110), every look, on the smallest phone.
 for (const theme of ["", "pro", "cards", "premium", "board", "stdplus", "ops", "ops-refined"]) await scenario(async () => {
   const db = makeDb(); if (theme) db.company.brand = { theme, colour: "#F9A01B", ink: "#172536", short: "TakeOff" };
   const look = theme || "standard";

@@ -1,4 +1,4 @@
--- Rollback of 109: back to the three reasons of part 15. Cars already removed as RTC or
+-- Rollback of 110: back to the three reasons of part 15. Cars already removed as RTC or
 -- Early return keep that reason and can still be put back.
 create or replace function remove_booking(p_booking uuid, p_reason text)
 returns bookings language plpgsql security definer set search_path = public as $$

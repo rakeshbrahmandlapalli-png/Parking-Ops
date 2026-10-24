@@ -1,4 +1,4 @@
--- 109: two more reasons for removing a car: RTC and Early return (user, 24 Oct).
+-- 110: two more reasons for removing a car: RTC and Early return (user, 24 Oct).
 -- Only the list of allowed reasons changes; the rest is remove_booking from part 15,
 -- which matched the live definition on 24 Oct. Removed cars still leave the board and
 -- the counts, are never carried over as an overstay, and can be put back (restore_booking).
