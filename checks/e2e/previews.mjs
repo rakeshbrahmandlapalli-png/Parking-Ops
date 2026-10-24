@@ -25,6 +25,78 @@ export async function shots(dir) {
     }
     return;
   }
+  // SHOTS_ONLY=calls: incoming calls (part 117): the pop-up on the board, the car's calls and texts, Menu → Calls, Settings → Calls.
+  if (process.env.SHOTS_ONLY === "calls") {
+    const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+    for (const [theme, width, height, name] of [["stdplus", 390, 844, "phone"], ["ops", 1440, 1000, "desktop"], ["premium", 390, 844, "premium-phone"]]) {
+      const db = deskDb(theme);
+      db.company.brand = { ...db.company.brand, calls: true, texts: true };
+      db.company.texts = { on: true, sender: "TAKEOFF", office: "0161 496 0000", meet: "Terminal 2 short stay, level 1", at: "18:00" };
+      db.company.calls = { on: true, number: "0161 850 0000", ring: ["07700 900123", "07700 900456"], auto: "times", from: "20:00", to: "02:00", words: "" };
+      const w = db.bookings.find((b) => b.id === "w3"), w2 = db.bookings.find((b) => b.id === "w5");
+      db.texts = [{ at: ago(31), booking_id: w.id, rule: "landed", to_number: w.phone, body: "Welcome back Ms Jones. Once you have your bags, call us on 0161 496 0000 and we'll bring your car " + w.reg + " to Terminal 2 short stay, level 1. TAKEOFF", status: "delivered", error: "", staff_name: "" }];
+      db.callsLog = [
+        { id: 1, company_id: "c1", at: ago(24), from_number: w.phone, booking_id: w.id, kind: "drops", reg: w.reg, name: w.name, status: "auto", seconds: 0, digit: "1", marked: "CALLED", handled_name: "" },
+        { id: 2, company_id: "c1", at: ago(9), from_number: w.phone, booking_id: w.id, kind: "drops", reg: w.reg, name: w.name, status: "answered", seconds: 48, digit: "", marked: "", handled_name: "KAMU" },
+        { id: 3, company_id: "c1", at: ago(6), from_number: "+447911123456", booking_id: null, kind: "", reg: "", name: "", status: "missed", seconds: 0, digit: "", marked: "", handled_name: "" },
+        { id: 4, company_id: "c1", at: ago(3), from_number: "+447700900777", booking_id: "pk1", kind: "picks", reg: "PK11AAA", name: "PATEL MR", status: "missed", seconds: 0, digit: "", marked: "", handled_name: "" }];
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      const shot = async (n, full) => { await sleep(500); await page.screenshot({ path: path.join(dir, "calls-" + name + "-" + n + ".png"), fullPage: !!full }); };
+      await open(page); await sleep(400);
+      await page.evaluate((k) => window.dispatchEvent(new CustomEvent("takeoff:call", { detail: k })), { id: 9, company_id: "c1", at: new Date().toISOString(), from_number: w2.phone, booking_id: w2.id, kind: "drops", reg: w2.reg, name: w2.name, status: "ringing", marked: "", handled_name: "" });
+      await shot("1-incoming");
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent("takeoff:call", { detail: { id: 9, status: "missed" } })));
+      await shot("2-missed");
+      await page.click('[data-callclose="9"]');
+      await page.click('.row[data-id="' + w.id + '"] .reg'); await page.waitForSelector("#panel[open]"); await sleep(700);
+      await page.evaluate(() => document.getElementById("carCalls").scrollIntoView({ block: "center" }));
+      await shot("3-car");
+      await page.keyboard.press("Escape"); await sleep(400);
+      const menu = async () => { await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300); };
+      await menu(); await shot("4-menu");
+      await page.click('#menuBody [data-view="calls"]'); await sleep(600); await shot("5-calls-list");
+      await menu(); await page.click('#menuBody [data-view="settings"]'); await sleep(700);
+      if (await page.$('[data-setsec="calls"]')) { await page.click('[data-setsec="calls"]'); await sleep(300); }
+      if (await page.$('[data-setgo="calls"]')) { await page.click('[data-setgo="calls"]'); await sleep(300); }
+      await page.evaluate(() => { const b = document.querySelector("[data-savecalls]"); if (b) b.closest("[data-sec]").scrollIntoView({ block: "start" }); window.scrollBy(0, -150); });
+      await page.setViewportSize({ width, height: 1300 }); await shot("6-settings");
+      await page.context().close();
+    }
+    return;
+  }
+  // SHOTS_ONLY=texts: customer texts (part 114): Settings → Customer texts, a DROPS car's Texts with Send a text, a PICKS car's reminder.
+  if (process.env.SHOTS_ONLY === "texts") {
+    const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+    for (const [theme, width, height, name] of [["stdplus", 390, 1500, "phone"], ["ops", 1440, 1100, "desktop"], ["premium", 390, 1500, "premium-phone"]]) {
+      const db = deskDb(theme);
+      db.company.brand = { ...db.company.brand, texts: true };
+      db.company.texts = { on: true, sender: "TAKEOFF", office: "0161 496 0000", meet: "Terminal 2 short stay, level 1", at: "18:00" };
+      const w = db.bookings.find((b) => b.id === "w3"), pk = db.bookings.find((b) => b.id === "pk1");
+      Object.assign(w, { flight_status: "landed", sent_at: ago(6), sent_by: "s2" });
+      db.texts = [
+        { at: ago(6), booking_id: w.id, rule: "sent", to_number: w.phone, body: "Hi Ms Jones, your car " + w.reg + " is on its way to Terminal 2 short stay, level 1. Please wait there for our driver. TAKEOFF", status: "delivered", error: "", staff_name: "" },
+        { at: ago(31), booking_id: w.id, rule: "landed", to_number: w.phone, body: "Welcome back Ms Jones. Once you have your bags, call us on 0161 496 0000 and we'll bring your car " + w.reg + " to Terminal 2 short stay, level 1. TAKEOFF", status: "delivered", error: "", staff_name: "" },
+        { at: ago(60 * 20), booking_id: pk.id, rule: "reminder", to_number: pk.phone, body: "Hi Mr Patel, a reminder from TAKEOFF: we meet you at Terminal 2 short stay, level 1 on Sat 25 Oct at 05:30. Please call 0161 496 0000 30 min before you arrive.", status: "delivered", error: "", staff_name: "" }];
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      const full = async (n) => { await sleep(500); await page.screenshot({ path: path.join(dir, "texts-" + name + "-" + n + ".png"), fullPage: true }); };
+      await open(page); await sleep(400);
+      await page.click('.row[data-id="' + w.id + '"] .reg'); await page.waitForSelector("#panel[open]"); await sleep(700);
+      await page.evaluate(() => document.getElementById("carTexts").scrollIntoView({ block: "center" })); await sleep(200);
+      await page.screenshot({ path: path.join(dir, "texts-" + name + "-2-drops-car.png") });
+      await page.click('[data-txpick="sent"]'); await sleep(300);
+      await page.evaluate(() => document.getElementById("carTexts").scrollIntoView({ block: "center" })); await sleep(200);
+      await page.screenshot({ path: path.join(dir, "texts-" + name + "-3-send-a-text.png") });
+      await page.keyboard.press("Escape"); await sleep(400);
+      await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+      await page.click('#menuBody [data-view="settings"]'); await sleep(700);
+      if (await page.$('[data-setsec="texts"]')) { await page.click('[data-setsec="texts"]'); await sleep(400); }
+      if (await page.$('[data-setgo="texts"]')) { await page.click('[data-setgo="texts"]'); await sleep(400); }
+      await page.evaluate(() => { const b = document.querySelector("[data-savetexts]"); if (b) b.closest("[data-sec]").scrollIntoView({ block: "start" }); window.scrollBy(0, -150); }); await sleep(300);
+      await page.screenshot({ path: path.join(dir, "texts-" + name + "-1-settings.png") });
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=bsite: Settings → Booking website on Airport Parking Bay's look (phone) and the Operations desk, empty and saved.
   if (process.env.SHOTS_ONLY === "bsite") {
     for (const [theme, width, height, name] of [["premium", 390, 844, "apb-phone"], ["ops", 1440, 1000, "ops-desktop"]]) for (const saved of [false, true]) {

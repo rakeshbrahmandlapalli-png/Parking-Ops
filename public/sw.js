@@ -9,7 +9,7 @@ self.addEventListener("fetch", e => {
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   // Tutorial videos stream straight from the network (too big to keep, and
   // phones ask for them in pieces).
-  if (url.pathname.startsWith("/tutorials/")) return;
+  if (url.pathname.startsWith("/tutorials/") || url.pathname.startsWith("/phone/")) return;
   // Newest copy from the network, but on a weak signal the saved copy after
   // 4 seconds, so the app never sits on a blank screen waiting.
   const net = fetch(e.request).then(res => {

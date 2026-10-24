@@ -90,6 +90,17 @@
     if (t.dataset.backup !== undefined) return downloadBackup(t);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
+    if (t.dataset.savetexts !== undefined) return saveTexts(t);
+    if (t.dataset.savecalls !== undefined) return saveCalls(t);
+    if (t.dataset.callclose) return callGone(+t.dataset.callclose);
+    if (t.dataset.callmark) return callMark(t.dataset.callmark);
+    if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
+    if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
+    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }), cr = ck && callRow(ck); if (cr) openPanel(cr); return; }
+    if (t.dataset.txtest !== undefined) return testText(t);
+    if (t.dataset.txpick) return pickText(t.dataset.txpick);
+    if (t.dataset.txsend) return sendTextNow(t);
+    if (t.dataset.txcancel !== undefined) { var txc = $("txConfirm"); if (txc) { txc.hidden = true; txc.innerHTML = ""; } document.querySelectorAll("[data-txpick]").forEach(function (b) { b.classList.remove("on"); }); return; }
     if (t.dataset.saveycol !== undefined) return saveYardColours(t);
     if (t.dataset.ycoff) { var yi = document.querySelector('[data-ycol="' + t.dataset.ycoff + '"]'); if (yi) yardOff(yi); else t.outerHTML = '<span class="note">Not set</span>'; showUnsaved(); return; }
     if (t.dataset.setsec) return toggleSec(t.dataset.setsec);
@@ -364,7 +375,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -385,6 +396,7 @@
   var MENU_ICON = {
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     flights: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
     summary: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
     archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
@@ -409,7 +421,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "flights", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

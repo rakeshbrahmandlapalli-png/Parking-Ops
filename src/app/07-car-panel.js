@@ -180,12 +180,12 @@
     var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
     var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
-    var photos = '<div id="ptPhotos"></div>';
+    var photos = '<div id="ptPhotos"></div>', texts = carTextsHtml(r);
     var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
     var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
     var hist = can("log") ? '<div id="carHist"></div>' : "";
     if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
-      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
+      docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, texts: texts, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
     else {
       h += tel + opsSec("Customer & vehicle") + detList(det);
       if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
@@ -196,7 +196,7 @@
       // A wide screen: the booking, its return and notes on the left; status, payments, photos and the rest on the right.
       var side = "";
       if (extra) side += (desk || can("note") ? "" : opsSec("Status")) + markF;
-      side += pay + early + photos + rm;
+      side += pay + early + (texts ? opsSec(carCommsTitle()) + texts : "") + photos + rm;
       if (desk) R = (R || opsSec("Status")) + side + (docs ? '<div class="ops-docs">' + opsSec("Documents") + docs + "</div>" : ""); else h += side;
       var foot = '<div class="pbtns' + (o ? " ops-foot2" : "") + '">' + (o && saves ? "<small>Changes saved only when confirmed</small>" : "") + '<button type="button" data-close>' + (o && saves ? "Cancel" : "Close") + "</button>" + (saves ? '<button type="button" class="save" data-savepanel>' + (o ? "Save changes" : "Save") + "</button>" : "") + "</div>";
       // Operations: the boxes in one white panel, the history under it, Cancel and Save always in view.
@@ -210,6 +210,8 @@
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
     carHistory(r);
+    carTexts(r);
+    carCalls(r);
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
@@ -240,6 +242,7 @@
     var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
     var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
       sec("rf-pay", "Payments", kv(fee) + P.pay, P.pay ? "Saves when tapped" : "") +
+      sec("rf-texts", carCommsTitle(), P.texts) +
       sec("rf-docs", P.docs ? "Documents & photos" : "Photos", P.docs + P.photos) +
       (P.rm ? '<div class="rf-rm">' + P.rm + "</div>" : "");
     var foot = '<div class="pbtns ops-foot2 rf-foot">' + (P.saves ? '<small id="carState" class="rf-state" role="status" aria-live="polite">No unsaved changes</small><button type="button" data-close>Cancel</button><button type="button" class="save" data-savepanel>Save changes</button>'
