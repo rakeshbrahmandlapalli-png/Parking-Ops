@@ -629,3 +629,6 @@ html.ops .ops-strip > .tap:active,html.ops .ops-tr.tap:active{background:#eef2f7
 html.ops .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){box-shadow:inset 0 -3px 0 var(--brand);}
 /* Import review must fit beside a long connection status on narrow phones. */
 @media(max-width:430px){html.ops body:has(main[data-view="import"]) .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}html.ops body:has(main[data-view="import"]) .bar #sheetPick{min-width:0;flex-shrink:1;}}
+
+/* Booking import: the chosen date shortcut (Today / Next 3 days / Next 7 days) in white on navy (24 Oct: .btn.ghost kept navy text). */
+html.ops .bi .bi-presets .btn[aria-pressed=true]{background:var(--op-ink);border-color:var(--op-ink);color:#fff;}

@@ -47,3 +47,12 @@ await scenario(async()=>{
  const db=biDb('ops'),page=await phone(browser,db,{width:390});db.manualStatus={NEW1:{status:'review',can_resolve:true,booking_id:'b1',reason:'Office edits conflict',changes:[{field:'reg',from:'ZZ99ZZZ',to:'AB21CDE'}]}};await visit(page);await page.click('[data-bitab="manual"]');await page.click('[data-impkind="picks"]');await page.setInputFiles('[data-file="excel"]',files());await page.click('[data-read]');await page.waitForSelector('[data-manualincoming]');await page.click('[data-manualincoming]');await sleep(500);check('manual conflict: accepting incoming values sends checked hash and key',db.calls.some(c=>c.fn==='reviewed_import_resolve'&&c.args.p_hash==='manual-hash'&&!!c.args.p_key));check('manual conflict: resolution is followed by a new preview',db.calls.filter(c=>c.fn==='reviewed_import_preview').length>=2);
  await page.click('[data-bitab="history"]');await page.selectOption('[data-historymethod]','manual');check('history method filter excludes auto runs',!/Auto import/.test(await page.locator('.mi-history').innerText()));check('history fits on a phone',await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
 });
+// 24 Oct: in Operations the chosen date shortcut was navy text on a dark button. Every look: readable.
+for(const theme of ['','stdplus','ops','ops-refined','premium','board','cards','pro']) await scenario(async()=>{
+ for(const width of [390,1440]){
+  const page=await phone(browser,biDb(theme),{width});await visit(page);await page.waitForSelector('[data-bipreset][aria-pressed=true]');
+  const c=await page.evaluate(()=>{const b=document.querySelector('[data-bipreset][aria-pressed=true]'),s=getComputedStyle(b);const lum=(v)=>{const [r,g,bl]=v.match(/\d+(\.\d+)?/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);});return 0.2126*r+0.7152*g+0.0722*bl;};const a=lum(s.color),z=lum(s.backgroundColor);return {ratio:(Math.max(a,z)+0.05)/(Math.min(a,z)+0.05),color:s.color,bg:s.backgroundColor};});
+  check('import '+(theme||'standard')+' '+width+': chosen date shortcut is readable',c.ratio>=4.5,c);
+  await page.close();
+ }
+});
