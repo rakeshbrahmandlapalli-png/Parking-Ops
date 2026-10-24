@@ -276,7 +276,9 @@ const squash = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const same = (a, b) => String(a || "").trim() === String(b || "").trim();
 
 // existing: Map "kind|ref" -> { reg,name,phone,make,drop_local,return_local,flight,flight_typed,note,sheet_day,cleared,removed,early,sent }
-export function plan({ drops = [], picks = [], existing, window: win, cutoff = "06:00", cancelledRows = [] }) {
+// onSheets: the cars the app holds on the sheets whose days were read in full ({ kind, day, ref, reg, name }),
+// so a booking the site no longer lists at all (24 Oct: a deleted temp booking) reaches the review list too.
+export function plan({ drops = [], picks = [], existing, window: win, cutoff = "06:00", cancelledRows = [], onSheets = [] }) {
   const out = { window: win, counts: { new: 0, changed: 0, unchanged: 0, review: 0, invalid: 0, outside: 0 }, items: [], reviews: [], invalid: [], batches: [] };
   const slack = { from: addDaysKey(win.from, -1), to: addDaysKey(win.to, 1) };
   const seen = new Map();
@@ -342,6 +344,15 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
     if (!row.ref || done.has(k)) return; done.add(k);
     const ex = existing.get(k);
     if (ex && !ex.removed) review("cancelled", row.ref, { kind, name: row.name, reg: row.reg, return: row.ret ? row.ret.key + " " + row.ret.time : "", on_sheet: ex.sheet_day });
+  });
+  // Not listed by the site any more, on a day it listed in full: the same question manual import asks
+  // ("isn't in this file any more"). Office review only; nothing is removed.
+  const listed = new Set();
+  [["drops", drops], ["picks", picks]].forEach(([kind, rows]) => rows.forEach((r) => { if (r.ref) listed.add(kind + "|" + r.ref); }));
+  onSheets.forEach((c) => {
+    const k = c.kind + "|" + c.ref;
+    if (!c.ref || listed.has(k) || done.has(k) || out.reviews.some((r) => r.ref === c.ref && r.kind === "cancelled")) return; done.add(k);
+    review("cancelled", c.ref, { kind: c.kind, name: c.name || "", reg: c.reg || "", on_sheet: c.day, missing: true });
   });
 
   function push(kind, day, row) {

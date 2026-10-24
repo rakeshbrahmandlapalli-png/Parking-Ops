@@ -193,6 +193,15 @@ ok("no operational field (yard, driver, called, sent, paid, exit fee, photos) ca
 { const e = new Map([["drops|GONE", ex({ sheet_day: "2026-10-14" })]]);
   const p = P([one], e);
   ok("a booking missing from the report is NOT treated as cancelled", p.reviews.length === 0 && p.items.every((i) => i.ref !== "GONE")); }
+{ // 24 Oct: a temp booking deleted on the site was on the PICKS sheet; manual import asked, auto import didn't.
+  const sheet = [{ kind: "picks", day: "2026-10-12", ref: "GONE", reg: "FV61AOY", name: "Temp Booking" }, { kind: "picks", day: "2026-10-12", ref: "T1", reg: "AB12CDE", name: "A One" }];
+  const p = P([one], new Map(), { onSheets: sheet });
+  const r = p.reviews.filter((x) => x.ref === "GONE");
+  ok("a car on a sheet read in full that the site no longer lists goes to office review (never removed)", r.length === 1 && r[0].kind === "cancelled" && r[0].detail.missing === true && r[0].detail.kind === "picks" && r[0].detail.on_sheet === "2026-10-12" && !JSON.stringify(p.batches).includes("GONE"), p.reviews);
+  ok("a car the site still lists is not flagged as missing", !p.reviews.some((x) => x.ref === "T1"));
+  const c = P([row("Cancelled", "GONE", "Temp Booking", "FV61 AOY", "2026-10-12 09:00", "2026-10-14 10:00"), one], new Map([["picks|GONE", ex({ sheet_day: "2026-10-12" })]]), { onSheets: sheet });
+  ok("a car both cancelled and missing is listed once", c.reviews.filter((x) => x.ref === "GONE").length === 1, c.reviews);
+  ok("the review changes the plan hash, so an apply after a new missing car needs a fresh check", (await planHash(p)) !== (await planHash(P([one])))); }
 { const e = new Map([["drops|T1", ex({ return_local: "2026-10-14 10:00", sheet_day: "2026-10-14", cleared: true })]]);
   const p = P([row("Booked", "T1", "A One", "AB12 CDE", "2026-10-12 08:00", "2026-10-14 15:00")], e, { window: { from: "2026-10-12", to: "2026-10-15" } });
   ok("a changed return on a car already handed back is a conflict for review", p.reviews.some((r) => r.kind === "conflict" && r.ref === "T1") && !p.batches.some((b) => b.kind === "drops"), p.reviews); }

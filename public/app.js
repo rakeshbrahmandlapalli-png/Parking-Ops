@@ -4774,7 +4774,8 @@
       if (r.kind !== "cancelled") return;
       var d = r.detail || {};
       rows.push({ key: "x|" + (d.kind || "") + "|" + r.ref, board: String(d.kind || "").toUpperCase(), date: d.on_sheet ? biDay(d.on_sheet) : "", ref: r.ref, reg: d.reg || "", status: "review",
-        lines: ["Cancellation requires review"], sub: d.name ? [d.name] : [], explain: "Cancelled on the booking site. Nothing is removed here; check the car and remove it by hand if it really is cancelled.",
+        lines: [d.missing ? "Not on the booking site any more" : "Cancellation requires review"], sub: d.name ? [d.name] : [],
+        explain: (d.missing ? "The booking site no longer lists it: cancelled, deleted or moved to another day." : "Cancelled on the booking site.") + " Nothing is removed here; check the car and remove it by hand if it really is cancelled.",
         acts: revActs(d.kind || "", r.ref, "", [], revId(d.kind || "", r.ref, "cancelled")) });
     });
     (P.invalid || []).forEach(function (i) { rows.push({ key: "i|" + (i.kind || "") + "|" + (i.ref || ""), board: String(i.kind || "").toUpperCase(), date: "", ref: i.ref || "No reference", reg: "", status: "invalid", lines: [i.reason || "Can't be read"], sub: [], explain: "Fix this record on the booking site, then check again." }); });
@@ -4897,7 +4898,7 @@
         var d = r.detail || {}, b = S.revCars[(d.kind || "") + "|" + r.ref], reg = (b && b.reg) || d.reg || "";
         var why = r.kind === "cancelled" ? ((d.name || "") + " · " + (d.kind || "")) : String(d.why || "").replace(/\b\d{4}-\d\d-\d\d\b/g, biDay).replace(/^./, function (x) { return x.toUpperCase(); });
         var chg = r.kind === "cancelled" ? [] : (d.changes || []).map(biChange);
-        return '<div class="bi-hr"><span>' + esc((r.kind === "cancelled" ? "Cancelled · " : "Changed · ") + r.ref) + (reg ? ' · <b class="bi-hreg">' + esc(reg) + "</b>" : "") + "<small>" + esc(why) + "</small>" +
+        return '<div class="bi-hr"><span>' + esc((r.kind === "cancelled" ? (d.missing ? "Not on the site · " : "Cancelled · ") : "Changed · ") + r.ref) + (reg ? ' · <b class="bi-hreg">' + esc(reg) + "</b>" : "") + "<small>" + esc(why) + "</small>" +
           (chg.length ? "<small>" + esc(chg.join(" · ")) + "</small>" : "") + '</span><span class="bi-acts">' + revActs(d.kind || "", r.ref, r.kind === "cancelled" ? "" : d.why, d.changes, r.id) +
           '<button type="button" class="btn ghost small" data-reviewdone="' + esc(r.id) + '">Done</button></span></div>';
       }).join("") + "</div></div>";
