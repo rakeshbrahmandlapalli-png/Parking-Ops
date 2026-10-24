@@ -135,8 +135,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
-        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, canCalledTap(r), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, canCalledTap(r), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -442,9 +442,13 @@
   function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
   // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
   // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  // The row's CALLED button: whoever can press CALLED, or (AT DESK permission, part 115)
+  // on any car that is not OVERSTAY: the tap is AT DESK, which calls a car not called yet.
+  function canCalledTap(r) { return can("called") || (can("desk") && r.called_word !== "Overstay"); }
   function tapCalled(r) {
     if (atDesk(r)) return tapDrop(r, "desk");
     if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    if (!can("called")) return tapDrop(r, "desk");   // AT DESK only (part 115): straight to the desk, which calls it too
     return tapDrop(r, "called");
   }
   function tapDrop(r, action, word) {
