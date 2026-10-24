@@ -1,5 +1,6 @@
 -- Parking Ops — database part 114: a PICKS car on the wrong day's sheet can be moved
 -- with its drop-off unchanged (24 Oct).
+-- APPLIED by Claude on 24 Oct at the user's request ("Apply and merge it").
 --
 -- AF14BDU was added at the desk on Sat 24 Oct 11:28 while the Sun 25 Oct PICKS
 -- board was open, so it landed on the 25th's sheet with a drop-off of 24 Oct.
