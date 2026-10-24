@@ -78,6 +78,8 @@ The user wants looks kept **separate** (a change to one must not change another)
 - Every look: menu bottom shows "App version <etag> · up to date" or
   "New version ready · Update now".
 
+- Activity log for every action (setup **108**, written 24 Oct, NOT applied until the user says "merge it"; the user: "Every activity need to be shown on the activity/ app logs" after nobody could see who switched SARFARAZ off): `manage-staff` writes STAFF lines for add, new link and PIN, switch on/off (and the platform's client_owner/client_open); part 108 adds SIGN IN lines (signed in, wrong PIN, locked, tried while switched off), own PIN change, name switch on a shared login, own alerts, access changes say "was … now …", Yard planner area added, booking review Done, Parking Ops client save/pause (staff_name "<name> (Parking Ops)", no staff_id). Summary's Staff chip includes SIGN IN. Deploy `manage-staff` with the setup part. Test `node checks/activity-log.mjs`.
+
 ## Rules the app keeps
 - Roles: owner, manager, office, bongo (driver), terminal, view. Permissions via `can()`.
 - A drop is done when SENT and CLEAR. **"TO DO (N)" counts cars not yet SENT**

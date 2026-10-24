@@ -183,6 +183,7 @@ await scenario(async () => {
     { at: now(), staff_name: "SUGU", sheet_id: "d0", booking_id: "b3", reg: "DV59ACF", action: "SENT", value: "" },
     { at: now(), staff_name: "SUGU", sheet_id: "p0", booking_id: "p4", reg: "HJ12PGK", action: "INTAKE", value: "Collected" },
     { at: new Date(Date.now() - 2 * 864e5).toISOString(), staff_name: "RAKESH", action: "STAFF", value: "PIN changed for Jasnu" },
+    { at: new Date(Date.now() - 2 * 864e5 - 6e4).toISOString(), staff_name: "SARFARAZ", action: "SIGN IN", value: "Tried to sign in, access is off" },
   ];
   const page = await phone(browser, db, { width: 360 });
   await open(page); await sleep(300);
@@ -195,10 +196,12 @@ await scenario(async () => {
   await page.click('#menuBody [data-view="summary"]'); await page.waitForSelector(".actrow");
   const sum = await page.evaluate(() => ({ bar: document.querySelector(".stat.big .pbar i").style.width, pc: document.querySelector(".pbar-pc").textContent, days: [...document.querySelectorAll(".actday")].map((d) => d.textContent), rows: document.querySelectorAll(".actrow").length }));
   check("Premium summary: Cars back with a progress bar", sum.bar === "33%" && /33% done/.test(sum.pc), sum);
-  check("Premium activity: grouped by day", sum.days.length === 2 && sum.rows === 3, sum);
-  check("Premium activity: a coloured dot per line (Sent green, Intake Collected green, Staff grey)", await page.evaluate(() => [...document.querySelectorAll(".actrow .adot")].map((d) => d.className.replace("adot ", "")).join(",") === "d-s,d-s,d-x"));
+  check("Premium activity: grouped by day", sum.days.length === 2 && sum.rows === 4, sum);
+  check("Premium activity: a coloured dot per line (Sent green, Intake Collected green, Staff grey)", await page.evaluate(() => [...document.querySelectorAll(".actrow .adot")].map((d) => d.className.replace("adot ", "")).join(",") === "d-s,d-s,d-x,d-x"));
   await page.click('[data-actf="picks"]'); await sleep(200);
   check("Premium activity: the Picks chip shows only picks work", await page.evaluate(() => document.querySelectorAll(".actrow").length === 1 && /HJ12PGK/.test(document.getElementById("actList").textContent)));
+  await page.click('[data-actf="staff"]'); await sleep(200);
+  check("Premium activity: the Staff chip shows staff changes and sign-ins", await page.evaluate(() => document.querySelectorAll(".actrow").length === 2 && /SARFARAZ · Tried to sign in, access is off/.test(document.getElementById("actList").textContent)));
   await page.click('[data-actf="all"]'); await sleep(200);
   await page.fill("#actQ", "dv59"); await sleep(200);
   check("Premium activity: search finds by reg and keeps the keyboard up", await page.evaluate(() => document.querySelectorAll(".actrow").length === 1 && document.activeElement && document.activeElement.id === "actQ"));
