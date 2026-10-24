@@ -213,6 +213,7 @@
     if (t.dataset.reviewdone !== undefined) return reviewDone(t.dataset.reviewdone);
     if (t.dataset.rvopen) return revOpen(t.dataset.rvopen);
     if (t.dataset.rvmove) return revMoveGo(t.dataset.rvmove, t);
+    if (t.dataset.rvremove) return revRemoveGo(t.dataset.rvremove, t);
     if (t.dataset.autorun !== undefined) return runAutoImport(t);
     if (t.dataset.read !== undefined) return readImport();
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
