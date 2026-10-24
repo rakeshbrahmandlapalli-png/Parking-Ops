@@ -144,7 +144,7 @@ await scenario(async () => {
       stamps: [...document.querySelectorAll("#panelBody .rf-stamps > div")].map((d) => d.innerText.replace(/\s+/g, " ")), mark: [...document.querySelectorAll("#panelBody [data-word]")].map((b) => b.textContent) }; });
   check("Booking details (Refined): Customer and Vehicle side by side, the call link under the name", lay.cv.join("|") === "Customer:Green Mr|Vehicle:Peugeot 208" && lay.cvTop[0] === lay.cvTop[1] && lay.call, lay);
   check("Booking details (Refined): registration beside flight number, return date beside return time, each named", lay.regFlight && lay.dateTime && lay.labels.join("|") === "Return date|Return time", lay);
-  check("Booking details (Refined): Sent / Called / Clear in one row with when and who", lay.stamps.length === 3 && /^Sent \d{2}:\d{2} Sugu$/.test(lay.stamps[0]) && /^Clear —$/.test(lay.stamps[2]) && lay.mark.join("|") === "Overstay|Complaint", lay);
+  check("Booking details (Refined): Sent / Called / Clear in one row with when and who", lay.stamps.length === 3 && /^Sent \d{2}:\d{2} Sugu$/.test(lay.stamps[0]) && /^Clear —$/.test(lay.stamps[2]) && lay.mark.join("|") === "Called|At desk|Overstay|Complaint", lay);
   await page.fill("#noteText", "Customer called. Ready at terminal.");
   check("Booking details (Refined): typing says Unsaved changes", (await text(page, "#carState")) === "Unsaved changes" && await page.evaluate(() => document.getElementById("carState").classList.contains("dirty")));
   // A tap that saves at once redraws the panel; what was typed stays.

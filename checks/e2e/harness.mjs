@@ -250,7 +250,15 @@ function rpc(db, fn, a) {
     case "tap_drop": {
       // part 98: the name picked on a shared login rides with the stamp.
       function byName(b, c) { b.by_name = { ...(b.by_name || {}) }; if (b[c] && db.me && db.me.acting) b.by_name[c] = db.me.acting; else delete b.by_name[c]; }
-      const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared" }[a.p_action];
+      const b = row(a.p_booking), f = { sent: "sent", called: "called", clear: "cleared", desk: "desk" }[a.p_action];
+      // part 112: AT DESK, only on a CALLED car (calls it if not), never OVERSTAY; CALLED off or OVERSTAY takes it off.
+      if (a.p_action === "desk") {
+        if (a.p_on && b.called_word === "Overstay") throw new Error("Take OVERSTAY off first.");
+        if (a.p_on && !b.called_at) { b.called_at = now(); b.called_by = "s1"; b.called_word = "Called"; byName(b, "called_by"); }
+        if (!a.p_on || !b.desk_at) { b.desk_at = a.p_on ? now() : null; b.desk_by = a.p_on ? "s1" : null; byName(b, "desk_by"); }
+        return b;
+      }
+      if (a.p_action === "called" && (!a.p_on || a.p_word === "Overstay")) { b.desk_at = null; b.desk_by = null; byName(b, "desk_by"); }
       b[f + "_at"] = a.p_on ? now() : null; b[f + "_by"] = a.p_on ? "s1" : null;
       byName(b, f + "_by");
       if (a.p_action === "called" && !a.p_on && b.called_word === "Overstay" && !b.early) { const sh = db.sheets.find((x) => x.id === b.sheet_id); if (b.return_at && sh && b.return_at.slice(0, 10) >= sh.day) b.overstay = false; }
@@ -509,6 +517,7 @@ async function scenario(fn, tag) {
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;
   if (process.env.REMOVE_ONLY && tag !== 'remove') return;
+  if (process.env.ATDESK_ONLY && tag !== 'atdesk') return;
   if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
   if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   try { await fn(); } catch (e) {

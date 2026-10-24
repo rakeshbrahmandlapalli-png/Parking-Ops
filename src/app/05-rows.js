@@ -135,7 +135,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by")) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -147,6 +148,7 @@
     else if (r.cleared_at) cls = " done";
     else if (over) cls = " ovst";
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
+    if (atDesk(r) && !r.cleared_at) cls += " atdesk";
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
     if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
     if (isRefined()) return refinedDropRow(r, cls, overWord, cmpl, canc, over);
@@ -436,8 +438,17 @@
   function rowOf(el) { var c = el.closest("[data-id]"); return c ? S.rows.filter(function (r) { return r.id === c.dataset.id; })[0] : null; }
   function nowIso() { return new Date().toISOString(); }
 
+  // The customer is at the desk (part 112): only on a CALLED car, never OVERSTAY.
+  function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
+  // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
+  // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  function tapCalled(r) {
+    if (atDesk(r)) return tapDrop(r, "desk");
+    if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    return tapDrop(r, "called");
+  }
   function tapDrop(r, action, word) {
-    var field = { sent: "sent_at", called: "called_at", clear: "cleared_at" }[action];
+    var field = { sent: "sent_at", called: "called_at", clear: "cleared_at", desk: "desk_at" }[action];
     var on = word ? !(r[field] && (action === "called" ? r.called_word : r.clear_word) === word) : !r[field];
     run("tap_drop", { p_booking: r.id, p_action: action, p_on: on, p_word: word || "" }, r, function (x) {
       if (action === "sent") {
@@ -449,6 +460,11 @@
         if (!on && x.called_word === "Overstay" && !x.early && returnDay(x) && returnDay(x) >= sheetDayOf(x)) x.overstay = false;
         x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null; markBy(x, "called_by");
         if (on && word === "Overstay") x.overstay = true;
+        if (!on || word === "Overstay") { x.desk_at = null; x.desk_by = null; markBy(x, "desk_by"); }
+      } else if (action === "desk") {
+        // AT DESK (part 112): the customer is at the desk; a car not called yet is called too.
+        if (on && !x.called_at) { x.called_word = "Called"; x.called_at = nowIso(); x.called_by = S.me.id; markBy(x, "called_by"); }
+        if (!on || !x.desk_at) { x.desk_at = on ? nowIso() : null; x.desk_by = on ? S.me.id : null; markBy(x, "desk_by"); }
       } else {
         x.clear_word = on ? (word || "Collected") : ""; x.cleared_at = on ? nowIso() : null; x.cleared_by = on ? S.me.id : null; markBy(x, "cleared_by");
       }

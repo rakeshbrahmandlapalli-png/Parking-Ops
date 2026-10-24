@@ -1245,7 +1245,8 @@
         else if (r.called_at && !r.cleared_at && !r.sent_at) wait.push(r);   // customer is there, nobody on it yet
         else main.push(r);
       });
-      wait.sort(function (a, b) { return a.called_at < b.called_at ? -1 : 1; });   // longest wait first
+      // At the desk first (part 112), then longest wait first.
+      wait.sort(function (a, b) { var da = atDesk(a), db = atDesk(b); return da !== db ? (da ? -1 : 1) : da ? (a.desk_at < b.desk_at ? -1 : 1) : a.called_at < b.called_at ? -1 : 1; });
       groups = [{ title: "NEXT IN QUEUE", cls: " hot", rows: wait }, { title: "COMING UP", cls: "", rows: main }, { title: "OVERSTAYS", cls: " old", note: overNote(over, sh), rows: over }]
         .filter(function (g) { return g.rows.length; });
     }
@@ -1295,8 +1296,8 @@
   function noteLine(r) { return r.note ? '<div class="l3' + (/^!/.test(r.note) ? " bang" : "") + '">' + esc(r.note.replace(/^!\s*/, "")) + "</div>" : ""; }
   // A pressed button shows the time and the first name of whoever pressed it.
   // The Cards look's buttons are big enough for words, not codes.
-  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
-  var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
+  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
+  var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   // A card per car (Cards or Premium look); isPremium tells the two apart.
   function isCards() { var c = document.documentElement.classList; return c.contains("cards") || c.contains("premium"); }
   function isPremium() { return document.documentElement.classList.contains("premium"); }
@@ -1480,7 +1481,8 @@
   function dropButtons(r, overWord, cmpl, extra) {
     return '<div class="acts' + (extra || "") + '"' + (extra ? ' data-id="' + r.id + '"' : "") + ">" +
       actBtn(r, 'data-act="sent"', "s", "SENT", !!r.sent_at, r.sent_at, can("sent"), byName(r, "sent_by")) +
-      actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by")) +
+      (atDesk(r) ? actBtn(r, 'data-act="called"', "c dk", "AT DESK", true, r.desk_at, can("called"), byName(r, "desk_by"))
+        : actBtn(r, 'data-act="called"', "c" + (overWord ? " ov" : ""), overWord ? "OVERSTAY" : "CALLED", !!r.called_at, r.called_at, can("called"), byName(r, "called_by"))) +
       actBtn(r, 'data-act="clear"', "x" + (cmpl ? " cm" : ""), cmpl ? "COMPLAINT" : "CLEAR", !!r.cleared_at, r.cleared_at, can("clear"), byName(r, "cleared_by")) +
       "</div>";
   }
@@ -1492,6 +1494,7 @@
     else if (r.cleared_at) cls = " done";
     else if (over) cls = " ovst";
     else if (r.called_at) { var w = minsSince(r.called_at); cls = w > LATE_MINS ? " late" : w > WARN_MINS ? " warn" : " called"; }
+    if (atDesk(r) && !r.cleared_at) cls += " atdesk";
     if (isCards()) return dropCard(r, cls, overWord, cmpl, canc, over);
     if (opsDesk()) return opsDeskRow(r, cls, overWord, cmpl, canc, over);
     if (isRefined()) return refinedDropRow(r, cls, overWord, cmpl, canc, over);
@@ -1781,8 +1784,17 @@
   function rowOf(el) { var c = el.closest("[data-id]"); return c ? S.rows.filter(function (r) { return r.id === c.dataset.id; })[0] : null; }
   function nowIso() { return new Date().toISOString(); }
 
+  // The customer is at the desk (part 112): only on a CALLED car, never OVERSTAY.
+  function atDesk(r) { return !!(r.desk_at && r.called_at && r.called_word !== "Overstay"); }
+  // The row's CALLED button: CALLED, then AT DESK, then back to CALLED. Taking
+  // CALLED off altogether is in the car's panel. OVERSTAY taps off as before.
+  function tapCalled(r) {
+    if (atDesk(r)) return tapDrop(r, "desk");
+    if (r.called_at && r.called_word !== "Overstay") return tapDrop(r, "desk");
+    return tapDrop(r, "called");
+  }
   function tapDrop(r, action, word) {
-    var field = { sent: "sent_at", called: "called_at", clear: "cleared_at" }[action];
+    var field = { sent: "sent_at", called: "called_at", clear: "cleared_at", desk: "desk_at" }[action];
     var on = word ? !(r[field] && (action === "called" ? r.called_word : r.clear_word) === word) : !r[field];
     run("tap_drop", { p_booking: r.id, p_action: action, p_on: on, p_word: word || "" }, r, function (x) {
       if (action === "sent") {
@@ -1794,6 +1806,11 @@
         if (!on && x.called_word === "Overstay" && !x.early && returnDay(x) && returnDay(x) >= sheetDayOf(x)) x.overstay = false;
         x.called_word = on ? (word || "Called") : ""; x.called_at = on ? nowIso() : null; x.called_by = on ? S.me.id : null; markBy(x, "called_by");
         if (on && word === "Overstay") x.overstay = true;
+        if (!on || word === "Overstay") { x.desk_at = null; x.desk_by = null; markBy(x, "desk_by"); }
+      } else if (action === "desk") {
+        // AT DESK (part 112): the customer is at the desk; a car not called yet is called too.
+        if (on && !x.called_at) { x.called_word = "Called"; x.called_at = nowIso(); x.called_by = S.me.id; markBy(x, "called_by"); }
+        if (!on || !x.desk_at) { x.desk_at = on ? nowIso() : null; x.desk_by = on ? S.me.id : null; markBy(x, "desk_by"); }
       } else {
         x.clear_word = on ? (word || "Collected") : ""; x.cleared_at = on ? nowIso() : null; x.cleared_by = on ? S.me.id : null; markBy(x, "cleared_by");
       }
@@ -2946,7 +2963,9 @@
       det.push(["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at)) + (r.orig_return_at ? ' <span class="hint">· was ' + esc(dayShort(r.orig_return_at) + " " + hhmm(r.orig_return_at)) + "</span>" : "")]);
       det.push(["FLIGHT", esc(r.flight || "—") + (r.sched_time ? " · sched " + esc(r.sched_time) : "")]);
       if (r.est_time || r.flight_note) det.push(["ARRIVAL", (r.est_time ? "<b>" + esc(r.est_time) + "</b> " : "") + '<span class="hint">' + esc(r.flight_note) + "</span>"]);
-      det.push(["SENT", by(r.sent_at, byName(r, "sent_by"))], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, byName(r, "called_by"))], [r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, byName(r, "cleared_by"))]);
+      det.push(["SENT", by(r.sent_at, byName(r, "sent_by"))], [r.called_word === "Overstay" ? "OVERSTAY" : "CALLED", by(r.called_at, byName(r, "called_by"))]);
+      if (atDesk(r)) det.push(["AT DESK", by(r.desk_at, byName(r, "desk_by"))]);
+      det.push([r.clear_word === "COMPLAINT" ? "COMPLAINT" : "CLEAR", by(r.cleared_at, byName(r, "cleared_by"))]);
     } else {
       det.push(["DROP-OFF", esc(dayShort(r.drop_at) + " " + hhmm(r.drop_at))], ["BACK", esc(dayShort(r.return_at) + " " + hhmm(r.return_at))]);
       if (r.intake) det.push([esc(r.intake.toUpperCase()), by(r.intake_at, byName(r, "intake_by"))]);
@@ -3001,6 +3020,9 @@
     var noteF = can("note") ? fld('<label for="noteText">' + L("NOTE") + '</label><textarea id="noteText" maxlength="500">' + esc(r.note) + '</textarea>', true) : "";
     var extra = "", W = function (t) { return rf ? sentence(t) : t; }, AP = function (on) { return rf ? ' aria-pressed="' + on + '"' : ""; };
     if (drops) {
+      // CALLED and AT DESK here too: the row's button goes CALLED ↔ AT DESK, so CALLED comes off here (part 112).
+      if (can("called")) extra += '<button type="button" data-word="called:Called" class="' + (r.called_word === "Called" && r.called_at ? "on" : "") + '"' + AP(r.called_word === "Called" && !!r.called_at) + ">" + W("CALLED") + "</button>" +
+        (r.called_word === "Overstay" ? "" : '<button type="button" data-word="desk:" class="' + (atDesk(r) ? "on dk" : "") + '"' + AP(atDesk(r)) + ">" + W("AT DESK") + "</button>");
       if (can("called")) extra += '<button type="button" data-word="called:Overstay" class="' + (r.called_word === "Overstay" ? "on nb" : "") + '"' + AP(r.called_word === "Overstay") + ">" + W("OVERSTAY") + "</button>";
       if (can("clear")) extra += '<button type="button" data-word="clear:COMPLAINT" class="' + (r.clear_word === "COMPLAINT" ? "on cm" : "") + '"' + AP(r.clear_word === "COMPLAINT") + ">" + W("COMPLAINT") + "</button>";
     } else if (can("intake")) {
@@ -3050,7 +3072,7 @@
   // documents and photos; the read-only details as text, the boxes Save changes
   // saves as fields, and what saves on a tap marked "Saves when tapped". The same
   // fields, buttons and saves as Operations; only where they sit changes.
-  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
+  var CAR_PARK = { MEET: 1, BACK: 1, FLIGHT: 1, ARRIVAL: 1, "DROP-OFF": 1 }, CAR_STAMP = { SENT: 1, CALLED: 1, "AT DESK": 1, OVERSTAY: 1, CLEAR: 1, COMPLAINT: 1 };
   function refinedCar(r, head, P) {
     // A detail that has its own box below shows once, in the box.
     var skip = { NAME: 1, CAR: 1, REF: 1 }; if (P.retF) skip.BACK = 1; if (P.dropF) skip["DROP-OFF"] = 1; if (P.flightF) skip.FLIGHT = 1; if (P.exitP) skip["EXIT FEE"] = 1;
@@ -3099,7 +3121,7 @@
   });
   // Operations' words, sections and two-column boxes for the car panel; the
   // other looks get exactly what they had.
-  var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
+  var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
     "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", "DROP-OFF DATE AND TIME": "Drop-off date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
     "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
   function L(t) { return isOps() && OPS_LABEL[t] || t; }
@@ -3604,6 +3626,8 @@
   // What's happening to the car, in words, from the same times the buttons show.
   function opsDropState(r, overWord, cmpl) {
     if (r.cleared_at) return ['<b class="st-x">' + (cmpl ? "Complaint" : "Cleared") + ' <span class="num">' + esc(hhmm(r.cleared_at)) + "</span></b>"];
+    if (atDesk(r)) { var dw = Math.max(0, Math.floor(minsSince(r.desk_at))); return ['<b class="st-d">At desk <span class="num">' + esc(hhmm(r.desk_at)) + " · " + dw + " min</span></b>",
+      r.sent_at ? 'Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span>" : '<span class="num">waiting ' + Math.max(0, Math.floor(minsSince(r.called_at))) + " min</span>"]; }
     if (r.sent_at) return ['<b class="st-s">Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span></b>"];
     if (overWord || inOverstayBlock(r)) return ['<b class="st-o">Overstay' + (r.called_at ? ' <span class="num">' + esc(hhmm(r.called_at)) + "</span>" : "") + "</b>"];
     if (r.called_at) { var w = Math.max(0, Math.floor(minsSince(r.called_at))); return ['<b class="st-c">Called <span class="num">' + esc(hhmm(r.called_at)) + "</span></b>", '<span class="num">waiting ' + w + " min</span>"]; }
@@ -4271,6 +4295,7 @@
     switch (a.action) {
       case "SENT": return /CLEARED|OFF/.test(v) ? "x" : "s";
       case "CALLED": return /CLEARED|OFF/.test(v) ? "x" : /OVERSTAY/.test(v) ? "o" : "c";
+      case "DESK": return /CLEARED|OFF/.test(v) ? "x" : "d";
       case "CLEAR": return /COMPLAINT/.test(v) ? "r" : /CLEARED|OFF/.test(v) ? "x" : "s";
       case "INTAKE": return /RTC/.test(v) ? "r" : /NO SHOW/.test(v) ? "o" : /COLLECTED/.test(v) ? "s" : "x";
       case "PT": case "PT PHOTOS": case "PT COPY": return "p";
@@ -6614,7 +6639,7 @@
     if (r && t.dataset.addflight !== undefined) return openQuickFlight(r, S.view === "flights");
     if (t.dataset.fillflights !== undefined) { var m0 = missingFlights()[0]; if (m0) openQuickFlight(m0, true); return; }
     if (r && t.dataset.open !== undefined) return openPanel(r);
-    if (r && t.dataset.act) { if (t.closest(".pacts") && $("panel").open) $("panel").close(); return tapDrop(r, t.dataset.act); }
+    if (r && t.dataset.act) { if (t.closest(".pacts") && $("panel").open) $("panel").close(); return t.dataset.act === "called" ? tapCalled(r) : tapDrop(r, t.dataset.act); }
     if (r && t.dataset.pick) return tapPick(r, "intake", t.dataset.pick);
     if (r && t.dataset.pt !== undefined) {
       if (r.pt_at) return tapPick(r, "pt");
@@ -6909,7 +6934,7 @@
         '<button type="button" class="swtoggle" data-swipeonlyme role="switch" aria-checked="' + shown + '"><span>Show buttons on drops</span><i aria-hidden="true"></i></button>');
   }
   function stepStatus(r) {
-    var parts = [["sent_at", "sent_by", "Sent", "s"], ["called_at", "called_by", r.called_word === "Overstay" ? "Overstay" : "Called", "c"], ["cleared_at", "cleared_by", r.clear_word === "COMPLAINT" ? "Complaint" : "Clear", "x"]]
+    var parts = [["sent_at", "sent_by", "Sent", "s"], atDesk(r) ? ["desk_at", "desk_by", "At desk", "c dk"] : ["called_at", "called_by", r.called_word === "Overstay" ? "Overstay" : "Called", "c"], ["cleared_at", "cleared_by", r.clear_word === "COMPLAINT" ? "Complaint" : "Clear", "x"]]
       .filter(function (p) { return r[p[0]]; }).map(function (p) {
         var who = nice(byName(r, p[1]).trim().split(/\s+/)[0]);
         return '<span class="st ' + p[3] + '"><b>' + p[2] + '</b><small class="num">' + esc(hhmm(r[p[0]])) + "</small>" + (who ? "<em>" + esc(who) + "</em>" : "") + "</span>";

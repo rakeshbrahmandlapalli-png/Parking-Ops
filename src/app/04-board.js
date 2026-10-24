@@ -351,7 +351,8 @@
         else if (r.called_at && !r.cleared_at && !r.sent_at) wait.push(r);   // customer is there, nobody on it yet
         else main.push(r);
       });
-      wait.sort(function (a, b) { return a.called_at < b.called_at ? -1 : 1; });   // longest wait first
+      // At the desk first (part 112), then longest wait first.
+      wait.sort(function (a, b) { var da = atDesk(a), db = atDesk(b); return da !== db ? (da ? -1 : 1) : da ? (a.desk_at < b.desk_at ? -1 : 1) : a.called_at < b.called_at ? -1 : 1; });
       groups = [{ title: "NEXT IN QUEUE", cls: " hot", rows: wait }, { title: "COMING UP", cls: "", rows: main }, { title: "OVERSTAYS", cls: " old", note: overNote(over, sh), rows: over }]
         .filter(function (g) { return g.rows.length; });
     }
@@ -401,8 +402,8 @@
   function noteLine(r) { return r.note ? '<div class="l3' + (/^!/.test(r.note) ? " bang" : "") + '">' + esc(r.note.replace(/^!\s*/, "")) + "</div>" : ""; }
   // A pressed button shows the time and the first name of whoever pressed it.
   // The Cards look's buttons are big enough for words, not codes.
-  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
-  var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
+  var RF_WORDS = { COLL: "Coll", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
+  var PRO_WORDS = { COLL: "Collected", "NO SHOW": "No show", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", CLEAR: "Clear", OVERSTAY: "Overstay", COMPLAINT: "Complaint" };
   // A card per car (Cards or Premium look); isPremium tells the two apart.
   function isCards() { var c = document.documentElement.classList; return c.contains("cards") || c.contains("premium"); }
   function isPremium() { return document.documentElement.classList.contains("premium"); }

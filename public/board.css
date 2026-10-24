@@ -73,6 +73,8 @@ html.pboard:not(.dark) .acts button.on.x,html.pboard:not(.dark) .acts button.on.
 html.pboard:not(.dark) .acts button.on.r{background:#f4c7c3;border-color:#e09b95;color:#8c1d18;}
 html.pboard:not(.dark) .acts button.on.p{background:#c9daf8;border-color:#9fb9e8;color:#0b3d78;}
 html.pboard:not(.dark) .acts button.on.c.ov{background:#f9cb9c;border-color:#e0aa73;color:#7a3e00;}
+html.pboard:not(.dark) .acts button.on.c.dk{background:#ddcdf6;border-color:#a98bd8;color:#47197a;}
+html.pboard .row.atdesk{box-shadow:inset 4px 0 0 #7b4cc2;}
 html.pboard:not(.dark) .acts button.on.x.cm{background:#f4c7c3;border-color:#e09b95;color:#8c1d18;}
 
 /* sections as grey bands across the list ("COMING UP  152") */
@@ -90,6 +92,7 @@ html.pboard .acts.steps .st em{display:none;}
 html.pboard .acts.steps .st.none{font-size:10px;text-transform:none;letter-spacing:0;}
 html.pboard:not(.dark) .acts.steps .st.s{background:#b6d7a8;color:#274e13;}
 html.pboard:not(.dark) .acts.steps .st.c{background:#9fc5e8;color:#0b3d78;}
+html.pboard:not(.dark) .acts.steps .st.c.dk{background:#ddcdf6;color:#47197a;}
 html.pboard:not(.dark) .acts.steps .st.x{background:#d9d9d9;color:#3c4043;}
 
 /* the car panel's STEPS buttons stay finger-sized (not the small row buttons) */

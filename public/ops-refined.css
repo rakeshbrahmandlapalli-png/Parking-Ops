@@ -381,6 +381,7 @@ html.ops-refined body:not(.ops-desk) .bn-desk,html.ops-refined body:not(.ops-des
  html.ops-refined .drow .tag.pd{padding:1px 5px;border-radius:4px;background:#e6f4ea;color:#137333;}
  html.ops-refined .drow .st-n{font-weight:500;color:var(--op-mut);}
  html.ops-refined .drow .st-c{color:#0b3d78;}html.ops-refined .drow .st-s{color:#1e6b3a;}html.ops-refined .drow .st-o{color:#b06000;}html.ops-refined .drow .st-x{color:#3c4043;}
+ html.ops-refined .drow .st-d{color:#5b2a9a;}
  html.ops-refined .drow .fx{font-weight:650;color:var(--op-ink);}
  html.ops-refined .drow .fx.bad{color:#b42318;}html.ops-refined .drow .fx.warn{color:#9a5b00;}html.ops-refined .drow .fx.ok{color:#1e6b3a;}
  html.ops-refined .drow .code{padding:3px 8px;font-size:12px;}
@@ -713,6 +714,7 @@ html.ops-refined .rf{border-color:var(--rf-line);}
  html.ops-refined .row.rfr.late{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
  html.ops-refined .row.rfr.ovst{background:#fffaf4;box-shadow:inset 3px 0 0 #b06000;}
  html.ops-refined .row.rfr.cmpl{background:#fff5f4;box-shadow:inset 3px 0 0 #c0352b;}
+ html.ops-refined .row.rfr.atdesk{box-shadow:inset 3px 0 0 #7b4cc2;}
  html.ops-refined .row.rfr.done{background:#fafbfc;}
  html.ops-refined .row.rfr.done .reg,html.ops-refined .row.rfr.done .l2{text-decoration:none;color:#8a96a6;}
  html.ops-refined .row.rfr.coll{background:#fff;box-shadow:inset 3px 0 0 #1f9d5b;}
@@ -735,6 +737,7 @@ html.ops-refined .rf{border-color:var(--rf-line);}
  html.ops-refined .row.rfr .acts button.on.r{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
  html.ops-refined .row.rfr .acts button.on.p{border-color:#b4bdea;background:#eef0fb;color:#2b3a8f;}
  html.ops-refined .row.rfr .acts button.on.c.ov{border-color:#e8b97f;background:#fdf1e3;color:#7a3e00;}
+ html.ops-refined .row.rfr .acts button.on.c.dk{border-color:#c3a8ea;background:#f3ecfc;color:#4b1f80;}
  html.ops-refined .row.rfr .acts button.on.x.cm{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
  html.ops-refined .row.rfr .acts .pyard{font-size:12px;}
  html.ops-refined .row.rfr .acts .pyard.on{font-size:13px;font-weight:750;}
@@ -784,6 +787,7 @@ html.ops-refined main .sec.hot span{color:var(--rf-mut);}
  html.ops-refined .drow .code{border-radius:4px;font-size:12px;font-weight:700;}
  html.ops-refined .drow .st-n{color:var(--rf-faint);}
  html.ops-refined .drow.called{background:#fff;box-shadow:inset 3px 0 0 #2f6fd6;}
+ html.ops-refined .drow.atdesk{box-shadow:inset 3px 0 0 #7b4cc2;}
  html.ops-refined .drow.warn{background:#fffbf1;box-shadow:inset 3px 0 0 #d39b21;}
  html.ops-refined .drow.late{background:#fff6f5;box-shadow:inset 3px 0 0 #c0352b;}
  html.ops-refined .drow.ovst{background:#fffaf4;box-shadow:inset 3px 0 0 #b06000;}
@@ -806,6 +810,7 @@ html.ops-refined main .sec.hot span{color:var(--rf-mut);}
  html.ops-refined .drow .acts button.on.r{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
  html.ops-refined .drow .acts button.on.p{border-color:#b4bdea;background:#eef0fb;color:#2b3a8f;}
  html.ops-refined .drow .acts button.on.c.ov{border-color:#e8b97f;background:#fdf1e3;color:#7a3e00;}
+ html.ops-refined .drow .acts button.on.c.dk{border-color:#c3a8ea;background:#f3ecfc;color:#4b1f80;}
  html.ops-refined .drow .acts button.on.x.cm{border-color:#eba59d;background:#fdecea;color:#8c1d18;}
  html.ops-refined .ops-bfoot{border-color:var(--rf-line);color:var(--rf-mut);}
 }

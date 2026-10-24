@@ -46,6 +46,7 @@ html.stdplus .acts.steps .st small{margin-left:4px;font-size:10px;font-weight:60
 html.stdplus .acts.steps .st em{display:none;}
 html.stdplus .acts.steps .st.s{background:#b6d7a8;color:#274e13;}
 html.stdplus .acts.steps .st.c{background:#9fc5e8;color:#0b3d78;}
+html.stdplus .acts.steps .st.c.dk{background:#ddcdf6;color:#47197a;}
 html.stdplus .acts.steps .st.x{background:#d9d9d9;color:#3c4043;}
 html.stdplus .acts.steps .st.none{background:none;color:#80868b;font-size:10px;text-transform:none;letter-spacing:0;font-weight:600;}
 /* the car panel's STEPS buttons, finger-sized */
@@ -89,6 +90,7 @@ html.stdplus .actrow .note{margin-top:2px;}
 html.stdplus .actrow .adot{flex:none;width:9px;height:9px;margin-top:5px;border-radius:50%;background:#A3ADBB;}
 html.stdplus .actrow .adot.d-s{background:#1F9D5B;}
 html.stdplus .actrow .adot.d-c{background:#2F6FD6;}
+html.stdplus .actrow .adot.d-d{background:#7B4CC2;}
 html.stdplus .actrow .adot.d-r{background:#D2463B;}
 html.stdplus .actrow .adot.d-o{background:#E39A1C;}
 html.stdplus .actrow .adot.d-p{background:#5B6F94;}
