@@ -1,6 +1,10 @@
--- Reviewed imports. PREPARED ONLY: do not apply without the owner's approval.
--- Prerequisites: existing setup parts through 108 (including 104).
--- No schedule is enabled, no existing booking or config is changed by installation.
+-- 111: reviewed booking imports (auto import selection, manual import preview/apply, history, undo preview).
+-- Prerequisites: setup parts through 110 (lanes from 104). Additive: no schedule is enabled and no existing
+-- booking or config is changed by installing it. The 90-day trim of private.import_review_runs is in
+-- 111b-reviewed-import-trim.sql (kept apart: the Supabase MCP refuses SQL that holds a DELETE).
+-- Snapshots compare only what an import reads or protects (supplier fields, sheet, SENT/CLEAR/removed/early/
+-- overstay and typed-by-office marks), so flight checks, yards, lanes and other staff work during a review
+-- don't make every import "changed since the preview".
 create or replace function private.import_review_existing(p_company uuid, p_refs text[]) returns jsonb
 language sql volatile security definer set search_path=public,pg_temp as $$
  select coalesce(jsonb_agg(x.item order by x.kind,x.ref),'[]'::jsonb) from (
@@ -15,7 +19,7 @@ language sql volatile security definer set search_path=public,pg_temp as $$
     'return_typed',exists(select 1 from activity a where a.booking_id=b.id and a.action='RETURN CHANGED' and a.value not like '%(moved from %'),
     'drop_typed',exists(select 1 from activity a where a.booking_id=b.id and a.action='DROP-OFF CHANGED'),
     'lane',l.name,'position',pp.position,
-    'revision',md5(to_jsonb(b)::text || coalesce(to_jsonb(pp)::text,'') || coalesce((select jsonb_agg(to_jsonb(a) order by a.id)::text from activity a where a.booking_id=b.id),''))) item
+    'revision',md5(concat_ws('|',b.id,b.sheet_id,b.ref,b.reg,b.name,b.phone,b.make,b.drop_at,b.return_at,b.flight,b.note,b.sent_at is not null,b.cleared_at is not null,b.removed_at is not null,b.early,b.overstay,b.moved_from))) item
   from bookings b join sheets s on s.id=b.sheet_id join companies c on c.id=b.company_id
   left join parking_positions pp on pp.booking_id=b.id and pp.company_id=b.company_id
   left join parking_lanes l on l.id=pp.lane_id and l.company_id=b.company_id
@@ -64,8 +68,7 @@ begin
    select e into ex from jsonb_array_elements(all_existing) e where e->>'kind'=k and e->>'ref'=row_out->>'ref' limit 1;
    duplicate_key:=k||'|'||upper(regexp_replace(coalesce(row_out->>'ref',''),'[^a-zA-Z0-9]','','g'));
    if coalesce(row_out->>'ref','')='' then st:='invalid'; why:='Missing booking reference';
-   elsif coalesce(row_out->>'reg','')='' then st:='invalid'; why:='Missing registration';
-   elsif length(row_out->>'reg')>12 or row_out->>'reg' !~ '^[A-Za-z0-9 -]+$' then st:='invalid';why:='Check registration: use the vehicle plate, not its description';
+   elsif coalesce(row_out->>'reg','') ~ '[A-Za-z0-9]' and (length(row_out->>'reg')>12 or row_out->>'reg' !~ '^[A-Za-z0-9 -]+$') then st:='invalid';why:='Check registration: use the vehicle plate, not its description';
    elsif duplicate_key=any(seen) then st:='invalid'; why:='Duplicate reference in these files';
    else
     seen:=array_append(seen,duplicate_key);
@@ -84,6 +87,7 @@ begin
      incoming:=coalesce(row_out->>f,''); current_value:=coalesce(ex->>f,'');
      if f='note' and current_value<>'' then continue; end if;
      if f='flight' and (ex->>'flight_typed')::boolean then continue; end if;
+     if f='reg' and (ex->>'reg_typed')::boolean and incoming<>'' and upper(regexp_replace(incoming,'\s','','g'))=upper(regexp_replace(current_value,'\s','','g')) then continue; end if;
      if incoming<>'' and incoming<>current_value then
       changes:=changes||jsonb_build_array(jsonb_build_object('field',case f when 'return_local' then 'return' when 'drop_local' then 'drop' else f end,'from',current_value,'to',incoming));
      end if;
@@ -97,7 +101,7 @@ begin
    -- Row key refers to source position, never editable customer text.
    items:=items||jsonb_build_array(jsonb_build_object('key',k||'|'||day_key||'|'||row_num,'kind',k,'day',day_key,'ref',row_out->>'ref','reg',row_out->>'reg','name',row_out->>'name',
     'can_resolve',st='review' and why like 'Office edits%' and not exists(select 1 from jsonb_array_elements(changes) ch where ch->>'field'='drop'),'status',st,'changes',changes,'reason',why,'source',left(r->>'source',250),'row',row_out,'booking_id',ex->>'id','yard',ex->>'yard','number',ex->>'num','lane',ex->>'lane','position',ex->>'position',
-    'attention',case when exists(select 1 from jsonb_array_elements(changes) ch where ch->>'field'='return' and ch->>'to'<ch->>'from') then 'Earlier return — check yard access' when exists(select 1 from jsonb_array_elements(changes) ch where ch->>'field'='reg') then 'Registration changed — check key tag' else '' end));
+    'attention',case when exists(select 1 from jsonb_array_elements(changes) ch where ch->>'field'='return' and ch->>'to'<ch->>'from') then 'Earlier return — check yard access' when exists(select 1 from jsonb_array_elements(changes) ch where ch->>'field'='reg') then 'Registration changed — check key tag' when coalesce(row_out->>'reg','') !~ '[A-Za-z0-9]' and st in ('new','changed') then 'No registration yet' else '' end));
    clean_rows:=clean_rows||jsonb_build_array(row_out);
   end loop;
   clean_batches:=clean_batches||jsonb_build_array(jsonb_build_object('kind',k,'day',day_key,'rows',clean_rows));
@@ -111,7 +115,7 @@ begin
   items:=items||jsonb_build_array(jsonb_build_object('key','missing|'||(ex->>'kind')||'|'||(ex->>'ref'),'kind',ex->>'kind','day',ex->>'sheet_day','ref',ex->>'ref','reg',ex->>'reg','booking_id',ex->>'id','status','review','changes','[]'::jsonb,'reason','Not listed in these files. Confirm a cancellation or date change in the booking before taking action.'));
  end loop;
  select jsonb_object_agg(status,total) into cnt from (select i->>'status' status,count(*) total from jsonb_array_elements(items) i group by 1) x;
- snapshot:=md5(p_batches::text||all_existing::text);
+ snapshot:=md5(p_batches::text||(select coalesce(jsonb_agg(i-array['yard','number','lane','position'] order by i->>'key'),'[]') from jsonb_array_elements(items) i)::text);
  return jsonb_build_object('hash',snapshot,'items',items,'counts',coalesce(cnt,'{}'),'batches',clean_batches);
 end $$;
 revoke all on function reviewed_import_preview(jsonb) from public,anon;
@@ -140,8 +144,9 @@ begin
   if prior.company_id<>s.company_id or prior.staff_id<>s.id or prior.input_hash<>input_hash then raise exception 'This import request ID was already used.'; end if;
   return prior.result;
  end if;
- -- Freeze existing rows against staff edits between checking and applying.
- perform 1 from bookings where company_id=s.company_id order by id for update;
+ -- Lock only the cars this import can touch: the uploaded refs and the cars on the uploaded sheets.
+ perform 1 from bookings b where b.company_id=s.company_id and (b.ref in (select trim(x->>'ref') from jsonb_array_elements(p_batches) pb cross join lateral jsonb_array_elements(pb->'rows') x)
+  or b.sheet_id in (select sh.id from sheets sh join jsonb_array_elements(p_batches) pb on pb->>'kind'=sh.kind and (pb->>'day')::date=sh.day where sh.company_id=s.company_id)) order by b.id for update;
  p:=reviewed_import_preview(p_batches);
  if p->>'hash' is distinct from p_hash then raise exception 'Bookings changed since the preview. Check the files again before importing.'; end if;
  if cardinality(p_selected)<>(select count(distinct k) from unnest(p_selected) k) or exists(select 1 from unnest(p_selected) k where not exists(select 1 from jsonb_array_elements(p->'items') i where i->>'key'=k and i->>'status' in ('new','changed'))) then raise exception 'Selection includes an unchanged, invalid or unresolved booking.'; end if;
@@ -152,7 +157,6 @@ begin
  select jsonb_agg(i-'row') into before_after from jsonb_array_elements(p->'items') i where i->>'key'=any(p_selected);
  r:=jsonb_build_object('days',out,'selected',cardinality(p_selected),'changes',before_after,'run_id',p_request);
  insert into private.import_review_runs(id,company_id,staff_id,source,input_hash,result) values(p_request,s.company_id,s.id,coalesce(p_source,'{}'),input_hash,r);
- delete from private.import_review_runs where company_id=s.company_id and at<now()-interval '90 days';
  return r;
 end $$;
 revoke all on function reviewed_import_apply(jsonb,text,text[],uuid,jsonb) from public,anon;
@@ -161,16 +165,17 @@ grant execute on function reviewed_import_apply(jsonb,text,text[],uuid,jsonb) to
 -- Recheck the same database snapshot inside the automatic import transaction.
 create or replace function swift_apply_checked(p_company uuid,p_batches jsonb,p_existing jsonb,p_refs text[],p_source jsonb,p_user uuid) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare days jsonb; actor uuid; run uuid:=gen_random_uuid();
+declare days jsonb; actor uuid; run uuid:=gen_random_uuid(); writing text[];
 begin
  perform 1 from companies where id=p_company for update;
- perform 1 from bookings where company_id=p_company and ref=any(p_refs) order by id for update;
- if (select jsonb_object_agg(e->>'kind'||'|'||(e->>'ref'),e) from jsonb_array_elements(private.import_review_existing(p_company,p_refs)) e)
- is distinct from (select jsonb_object_agg(e->>'kind'||'|'||(e->>'ref'),e) from jsonb_array_elements(p_existing) e) then raise exception 'Bookings changed since the preview. Check them again before importing.'; end if;
+ -- Only the bookings this run writes need to be as they were when the plan was made.
+ select coalesce(array_agg(distinct x->>'ref'),'{}') into writing from jsonb_array_elements(p_batches) b cross join lateral jsonb_array_elements(b->'rows') x where coalesce(x->>'ref','')<>'' and x->>'ref'=any(coalesce(p_refs,'{}'));
+ perform 1 from bookings where company_id=p_company and ref=any(writing) order by id for update;
+ if coalesce((select jsonb_object_agg(e->>'kind'||'|'||(e->>'ref'),e-array['yard','num','lane','position']) from jsonb_array_elements(private.import_review_existing(p_company,writing)) e),'{}')
+ is distinct from coalesce((select jsonb_object_agg(e->>'kind'||'|'||(e->>'ref'),e-array['yard','num','lane','position']) from jsonb_array_elements(coalesce(p_existing,'[]')) e where e->>'ref'=any(writing)),'{}') then raise exception 'Bookings changed since the preview. Check them again before importing.'; end if;
  days:=swift_apply(p_company,p_batches,(p_source-'changes')||jsonb_build_object('run_id',run),p_user);
  select id into actor from staff where user_id=p_user and company_id=p_company and active;
  insert into private.import_review_runs(id,company_id,staff_id,source,input_hash,result) values(run,p_company,actor,p_source-'changes',md5(p_batches::text),jsonb_build_object('days',days,'changes',coalesce(p_source->'changes','[]'),'selected',(select coalesce(sum(jsonb_array_length(b->'rows')),0) from jsonb_array_elements(p_batches) b)));
- delete from private.import_review_runs where company_id=p_company and at<now()-interval '90 days';
  return days;
 end $$;
 revoke all on function swift_apply_checked(uuid,jsonb,jsonb,text[],jsonb,uuid) from public,anon,authenticated;
@@ -209,7 +214,9 @@ declare s staff:=me(); p jsonb; i jsonb; ch jsonb; b uuid;
 begin
  if s.id is null or not can('import') then raise exception 'Not allowed for your role: import'; end if;
  perform 1 from companies where id=s.company_id for update;
- perform 1 from bookings where company_id=s.company_id order by id for update;
+ -- Lock only the cars this import can touch: the uploaded refs and the cars on the uploaded sheets.
+ perform 1 from bookings b where b.company_id=s.company_id and (b.ref in (select trim(x->>'ref') from jsonb_array_elements(p_batches) pb cross join lateral jsonb_array_elements(pb->'rows') x)
+  or b.sheet_id in (select sh.id from sheets sh join jsonb_array_elements(p_batches) pb on pb->>'kind'=sh.kind and (pb->>'day')::date=sh.day where sh.company_id=s.company_id)) order by b.id for update;
  p:=reviewed_import_preview(p_batches);
  if p->>'hash' is distinct from p_hash then raise exception 'Bookings changed since the preview. Check the files again.'; end if;
  select x into i from jsonb_array_elements(p->'items') x where x->>'key'=p_key;

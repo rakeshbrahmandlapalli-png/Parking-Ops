@@ -1,11 +1,8 @@
-# Booking import review upgrade — prepared, not released
+# Booking import review upgrade
 
-Date: 24 October 2026. Base: `31b9a53` on `main`.
-Local branch: `codex/import-review-upgrade`.
-
-The owner requested implementation and local verification, followed by a stop
-before database changes or deployment. No SQL has been applied to the hosted
-project, no edge function has been deployed, and no branch has been pushed.
+Date: 24 October 2026. Prepared against `31b9a53` (review package, local commit
+`f4fb146`), rebased onto `main` after #123–#127 and released at the owner's
+request: setup 111, `takeoff-bookings` v20, then the frontend.
 
 ## Behaviour
 
@@ -77,17 +74,28 @@ not assigned an invented filename or method.
 Board numbers are labelled as board numbers. This upgrade does not invent a
 separate physical key-tag identity where the existing schema has none.
 
-## Prepared database change
+## Database change
 
-`supabase/migrations/20261024013128_reviewed_booking_import.sql`
+`setup/111-reviewed-import.sql` (the package's
+`supabase/migrations/20261024013128_reviewed_booking_import.sql`, renumbered:
+this database is installed from numbered setup parts, never `supabase db push`).
+Prerequisites: setup through 110, lanes from 104. Additive; no schedule or
+config changes. Changes made while adapting it to the live data:
 
-Prerequisites: the existing numbered setup through 108, including the lane
-planner schema in 104. The file was created with `supabase migration new`, but
-this repository's existing database was installed through numbered SQL parts.
-Do not blindly run `supabase db push` against that installation. After explicit
-owner approval, review and apply this specific additive SQL file using the
-established SQL-editor workflow, then deploy `takeoff-bookings`, then release
-the frontend. Existing importer functions remain available for older clients.
+- Snapshots compare only supplier fields, sheet, SENT/CLEAR/removed/early/
+  overstay and the office's typed marks. The first version hashed whole rows
+  and all activity, so a flight check, a yard move or a SENT on any car of the
+  sheet between Check and Import refused it.
+- `swift_apply_checked` locks and compares only the bookings it writes;
+  manual apply/resolve lock the uploaded refs and the uploaded sheets' cars,
+  not every booking of the company.
+- A booking with no registration (blank or ".", as the booking site and
+  Airport Parking Bay's files send) is imported and flagged "No registration
+  yet" instead of being invalid; the auto planner no longer counts it invalid
+  (which would have held every scheduled import). Misread registrations
+  (dates, descriptions) are still invalid.
+- The 90-day trim of `private.import_review_runs` is `setup/111b-reviewed-import-trim.sql`,
+  run in the SQL editor (the Supabase MCP refuses SQL containing DELETE). Optional.
 
 There are no new browser runtime dependencies. `public/app.js` is generated
 from the 21 source parts with `node src/build.mjs`.
@@ -118,13 +126,12 @@ Operations Refined staff-row height, and Operations tile overflow. These were
 not changed as part of the import work. The full application suite is therefore
 not represented as completely green.
 
-## Approval boundary and rollback
+## Rollback
 
-No hosted changes are authorised yet. Present this local work to the owner
-before applying SQL, deploying an edge function, merging or publishing.
-
-For rollback after a later approved release: first restore the previous
-frontend and edge code. The new schema is additive and can remain installed;
-retain the private audit runs. If disabling the new RPCs is required, use
-`setup/rollback/109-reviewed-import.sql` only after restoring the old code.
-Do not drop historical run data as a routine rollback.
+1. Revert the frontend merge commit on `main` (Vercel redeploys).
+2. Redeploy `takeoff-bookings` v19 (`git show <merge>^:supabase/functions/takeoff-bookings/*`),
+   verify_jwt off as before.
+3. Only then, if the new RPCs must be disabled, run
+   `setup/rollback/111-reviewed-import-rollback.sql` (revokes them, restores
+   the 110 `recent_imports`). It keeps `private.import_review_runs` and every
+   booking/import row; don't drop run history as a routine rollback.

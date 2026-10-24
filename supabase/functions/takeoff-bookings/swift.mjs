@@ -299,7 +299,6 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
     });
     const usable = live.filter((r) => {
       if (!r.ref) { out.invalid.push({ kind, ref: "", reason: "no booking reference", name: r.name }); out.counts.invalid++; return false; }
-      if (!r.reg) { out.invalid.push({ kind, ref: r.ref, reason: "missing registration" }); out.counts.invalid++; return false; }
       if (bad.has(r.ref)) return false;
       const need = kind === "drops" ? r.ret : r.meet;
       if (!need || !need.key || (kind === "drops" && !r.meet) ) { out.invalid.push({ kind, ref: r.ref, reason: "missing or unreadable date" }); out.counts.invalid++; return false; }
@@ -370,7 +369,11 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
 }
 
 export async function planHash(p) {
-  const s = JSON.stringify({ b: p.batches, r: p.reviews, i: p.items, e: p.existing, w: p.window });
+  // What an import writes or holds back, and the current state of the cars it writes. Yards, numbers and lanes are
+  // shown but never written by an import, so moving a car while someone reviews doesn't make the preview stale.
+  const writing = new Set(p.batches.flatMap((b) => b.rows.map((r) => b.kind + "|" + r.ref)));
+  const strip = (o) => { const { yard, number, num, lane, position, ...rest } = o || {}; return rest; };
+  const s = JSON.stringify({ b: p.batches, r: p.reviews, i: p.items.filter((i) => i.status !== "unchanged").map(strip), e: (p.existing || []).filter((e) => writing.has(e.kind + "|" + e.ref)).map(strip), w: p.window });
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 24);
 }

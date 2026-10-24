@@ -153,11 +153,18 @@ export/API.
   `checks/lane-live.sql` (live, rolls itself back).
 
 
-## Prepared import review upgrade (24 Oct — NOT applied or deployed)
-
-`codex/import-review-upgrade` adds `src/app/13-manual-review.js` and the additive
-`supabase/migrations/20261024013128_reviewed_booking_import.sql`. See
-`docs/import-review-upgrade.md` for behaviour, local tests, release order and
-baseline test failures. The owner explicitly requires a stop for review before
-any database change, push live, merge or deployment. Do not apply the new SQL or
-deploy it as part of reviewing this branch. Supplier integration remains read only.
+## Reviewed booking import (setup 111, takeoff-bookings v20, 24 Oct)
+- From the user's review package (24 Oct, released at their request). Auto import: Today / 3 days / 7 days
+  shortcuts, checkboxes per new/updated booking (`selected` keys checked by the edge against the fresh plan,
+  `selectedBatches`), writes through `swift_apply_checked` (re-reads the bookings it writes inside the transaction).
+  Manual import: several files at once (`src/app/13-manual-review.js`), read-only `reviewed_import_preview`, then
+  `reviewed_import_apply` (selected keys, preview hash, idempotent request id); conflicts held, "Use incoming values"
+  via `reviewed_import_resolve` (set_reg / set_return / set_pick_return). History `reviewed_import_history`
+  (private.import_review_runs), undo preview `reviewed_import_undo_preview`, `recent_imports` returns run_id/files.
+- Snapshots/hashes cover only what an import reads or protects; yards, board numbers, lanes, flight checks and a
+  kept note don't make a preview stale (the package's first version hashed whole rows: every flight check would
+  have refused the import). A booking with no registration (blank or ".") is imported and flagged, never invalid.
+- Setup 111b (90-day trim of import_review_runs, holds a DELETE) is for the user's SQL editor; optional.
+  Rollback `setup/rollback/111-*` after restoring the old frontend and takeoff-bookings v19. Docs
+  `docs/import-review-upgrade.md`. Tests `node checks/reviewed-import.mjs`, `node --experimental-strip-types
+  checks/import-edge.mjs`, `node checks/e2e/import-review-run.mjs`.
