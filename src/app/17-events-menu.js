@@ -91,6 +91,7 @@
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
+    if (t.dataset.savevoice !== undefined) return saveVoiceMenu(t);
     if (t.dataset.savecalls !== undefined) return saveCalls(t);
     if (t.dataset.callclose) return callGone(+t.dataset.callclose);
     if (t.dataset.callmark) return callMark(t.dataset.callmark);

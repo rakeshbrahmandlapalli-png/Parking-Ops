@@ -1,0 +1,25 @@
+project_id = "takeoff-ops"
+# Mirrors the live settings (checked 25 Oct 2026): every existing function runs with
+# verify_jwt off and checks its own caller. A CLI deploy without these entries would
+# switch JWT checking on and break them. The voice-menu webhook validates its own
+# provider signature; voice-access needs a signed-in staff JWT.
+[functions.manage-staff]
+verify_jwt = false
+[functions.staff-login]
+verify_jwt = false
+[functions.flights]
+verify_jwt = false
+[functions.send-alerts]
+verify_jwt = false
+[functions.send-texts]
+verify_jwt = false
+[functions.pt-photos]
+verify_jwt = false
+[functions.pt-r2]
+verify_jwt = false
+[functions.takeoff-bookings]
+verify_jwt = false
+[functions.voice-menu]
+verify_jwt = false
+[functions.voice-access]
+verify_jwt = true

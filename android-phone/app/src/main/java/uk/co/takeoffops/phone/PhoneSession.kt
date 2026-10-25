@@ -19,6 +19,7 @@ object PhoneSession {
         val previous=PhoneSession.access(context)
         fun subject(token: String) = runCatching { org.json.JSONObject(String(android.util.Base64.decode(token.split('.')[1],android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))).getString("sub") }.getOrNull()
         if(previous!=null && subject(previous)!=subject(access)) {
+            VoiceCalls.end(); VoiceRegistration.offline(context)
             prefs(context).edit().remove("company").remove("pending").putBoolean("online",false).commit()
             context.stopService(android.content.Intent(context,PhoneBridgeService::class.java))
         }
@@ -37,8 +38,9 @@ object PhoneSession {
         return try { context.getSystemService(android.telephony.SubscriptionManager::class.java).activeSubscriptionInfoCount } catch (_: SecurityException) { -1 }
     }
     fun online(context: Context) = prefs(context).getBoolean("online", false)
-    fun setOnline(context: Context, on: Boolean) { prefs(context).edit().putBoolean("online", on).commit() }
+    fun setOnline(context: Context, on: Boolean) { if(!on) VoiceRegistration.offline(context); prefs(context).edit().putBoolean("online", on).commit() }
     fun clear(context: Context) {
+        VoiceCalls.end(); VoiceRegistration.offline(context)
         // Keep the durable SMS journal until outstanding modem callbacks have resolved.
         prefs(context).edit().remove("access").remove("refresh").remove("company").remove("pending").putBoolean("online", false).commit()
         context.stopService(android.content.Intent(context, PhoneBridgeService::class.java))

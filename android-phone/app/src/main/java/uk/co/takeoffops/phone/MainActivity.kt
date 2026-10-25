@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
                 PhoneSession.setOnline(this@MainActivity,false)
                 stopService(Intent(this@MainActivity,PhoneBridgeService::class.java)); updateStatus()
             } else connectPhone(false)
-        } }; controls.addView(online,LinearLayout.LayoutParams(0,-2,1f)); top.addView(controls); root.addView(top)
+        } }; controls.addView(online,LinearLayout.LayoutParams(0,-2,1f)); top.addView(controls); top.addView(Button(this).apply { text="Voice calls"; setOnClickListener { VoiceCalls.open(this@MainActivity) } }); root.addView(top)
         web=WebView(this).apply {
             settings.javaScriptEnabled=true; settings.domStorageEnabled=true; settings.allowFileAccess=false; settings.allowContentAccess=false
             addJavascriptInterface(SessionBridge(this@MainActivity),"TakeOffPhone")
@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(web,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f)); setContentView(root); updateStatus()
     }
     override fun onResume() {
-        super.onResume(); handler.post(statusTick)
+        super.onResume(); handler.post(statusTick); VoiceRegistration.ensure(this)
         if(PhoneSession.online(this) && !PhoneSession.access(this).isNullOrBlank()) ContextCompat.startForegroundService(this,Intent(this,PhoneBridgeService::class.java))
         if(::web.isInitialized) web.evaluateJavascript("window.dispatchEvent(new Event('takeoff:phone-session'));",null)
         PhoneQueueWorker.runNow(this); CallLogWorker.runNow(this)
