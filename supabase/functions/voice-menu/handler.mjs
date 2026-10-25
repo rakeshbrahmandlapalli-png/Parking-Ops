@@ -7,7 +7,7 @@ export function createVoiceHandler({base,account,secret,rpc}) {
   if(req.method!=='POST') return new Response('POST only',{status:405});
   if(!base || !account || !secret) return new Response('Voice setup is incomplete',{status:503});
   const url=new URL(req.url), canonical=new URL(base);
-  if(url.pathname!==canonical.pathname || !/^https:$/.test(canonical.protocol) || canonical.search) return new Response('Invalid endpoint',{status:400});
+  if(!(url.pathname===canonical.pathname||canonical.pathname.endsWith(url.pathname)&&url.pathname.length>1) || !/^https:$/.test(canonical.protocol) || canonical.search) return new Response('Invalid endpoint',{status:400});
   if(!req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) return new Response('Form required',{status:415});
   const body=await req.text(); if(body.length>32768) return new Response('Too large',{status:413});
   const form=new URLSearchParams(body);
