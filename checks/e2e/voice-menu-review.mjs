@@ -17,9 +17,10 @@ const realtime=async(page)=>page.context().routeWebSocket('**/realtime/v1/websoc
  });
 });
 
-let state={configured:true,approved:true,app_ready:true,on:false,greeting:'Welcome to TakeOff parking.'},saved;
+let state={configured:true,approved:true,app_ready:true,on:false,greeting:'Welcome to TakeOff parking.',menu_text:'demo'},saved,savedText;
 try {
  const page=await phone(browser,db,{width:420});await page.setViewportSize({width:420,height:940});
+ await page.context().route('**/rest/v1/rpc/set_voice_menu_text',r=>{savedText=r.request().postDataJSON();state={...state,menu_text:savedText.p_mode};return r.fulfill({json:state})});
  await page.context().route('**/rest/v1/rpc/voice_menu_settings',r=>r.fulfill({json:state}));
  await page.context().route('**/rest/v1/rpc/set_voice_menu',r=>{saved=r.request().postDataJSON();state={...state,on:saved.p_on,greeting:saved.p_greeting};return r.fulfill({json:state})});
  await realtime(page);await open(page);
@@ -29,8 +30,10 @@ try {
  if(await page.$('[data-setsec="calls"]')) await page.click('[data-setsec="calls"]');
  await page.waitForSelector('#vmOn');await page.locator('#voiceMenu').scrollIntoViewIfNeeded();
  assert.equal(await page.locator('#vmOn').inputValue(),'false');
- await page.selectOption('#vmOn','true');await page.fill('#vmGreeting','Welcome to TakeOff.');await page.click('[data-savevoice]');await sleep(150);
+ assert.equal(await page.locator('#vmText').inputValue(),'demo');
+ await page.selectOption('#vmOn','true');await page.fill('#vmGreeting','Welcome to TakeOff.');await page.selectOption('#vmText','off');await page.click('[data-savevoice]');await sleep(150);
  assert.deepEqual(saved,{p_on:true,p_greeting:'Welcome to TakeOff.'});
+ assert.deepEqual(savedText,{p_mode:'off'});
  assert.equal(await page.locator('#vmOn').inputValue(),'true');
  await sleep(4500);await page.locator('#voiceMenu').evaluate(e=>e.scrollIntoView({block:'center'}));
  await page.screenshot({path:path.join(dir,'Caller_Menu_Settings.png')});
