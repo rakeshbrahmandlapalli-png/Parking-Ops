@@ -11,7 +11,9 @@ const test=async(name,fn)=>{await fn();console.log('PASS '+name);count++};
 const as=n=>q('update cur set staff_id=$1',[id(n)]);
 const ca=n=>'CA'+String(n).padStart(32,'0'), ac='AC'+'a'.repeat(32), device=id(100),company=id(1);
 await db.exec(`create role anon;create role authenticated;create role service_role;create schema private;
-create table companies(id uuid primary key,name text,time_zone text default 'Europe/London',brand jsonb default '{"calls":true,"voice":true}',calls jsonb default '{"on":true}');
+create table companies(id uuid primary key,name text,time_zone text default 'Europe/London',brand jsonb default '{"calls":true,"voice":true}',calls jsonb default '{"on":true}',texts jsonb default '{}');
+create table customer_texts(id bigint generated always as identity primary key,company_id uuid,booking_id uuid,rule text,to_number text,body text,status text,parts int,staff_name text,dedupe_key text);
+create unique index on customer_texts(company_id,dedupe_key);
 create table staff(id uuid primary key,company_id uuid,name text,role text,acting text default '',active boolean default true,extra text[] default '{}');
 create table cur(staff_id uuid);insert into cur values(null);
 create function me() returns staff language sql stable security definer as $$select s.* from staff s join cur on cur.staff_id=s.id where active$$;
@@ -76,5 +78,35 @@ await test('Voice add-on off: no identity, no call, no menu settings',async()=>{
  await q("update companies set brand='{\"calls\":true,\"voice\":true}' where id=$1",[company]);
  assert.equal((await rpc('voice_menu_settings')).addon,true);
  assert.ok((await rpc('voice_device_context',[company,id(12),device])).ready);
+});
+await test('Part 122: caller menu text defaults to demo, never sent, once per caller per day',async()=>{
+ const t=fs.readFileSync(new URL('../setup/122-voice-menu-text.sql',import.meta.url),'utf8');await db.exec(t);await db.exec(t);
+ await as(11);
+ await q("update companies set calls='{\"on\":true}',texts='{\"on\":true,\"office\":\"01234 567890\"}',brand='{\"calls\":true,\"voice\":true,\"texts\":true}' where id=$1",[company]);
+ await q("update private.voice_routes set menu_on=true");
+ assert.equal((await rpc('voice_menu_settings')).menu_text,'demo');
+ await begin(50,'+447700900555');await begin(50,'+447700900555');await begin(51,'+447700900555');
+ assert.equal(await scalar("select count(*)::int from customer_texts where to_number='+447700900555'"),1);
+ assert.equal(await scalar("select status from customer_texts where to_number='+447700900555'"),'demo');
+ assert.match(await scalar("select body from customer_texts where to_number='+447700900555'"),/Press 1 if your flight has landed, 2 if you are dropping off, or 0 for the office\. Office: 01234 567890/);
+});
+await test('Part 122: landline, foreign and off callers get no text; on needs Customer texts on and not demo',async()=>{
+ await begin(52,'+442080000777');await begin(53,'+33612345678');
+ assert.equal(await scalar("select count(*)::int from customer_texts where to_number in ('+442080000777','+33612345678')"),0);
+ await rpc('set_voice_menu_text',['off']);await begin(54,'+447700900556');
+ assert.equal(await scalar("select count(*)::int from customer_texts where to_number='+447700900556'"),0);
+ await rpc('set_voice_menu_text',['on']);await begin(55,'+447700900557');
+ assert.equal(await scalar("select status from customer_texts where to_number='+447700900557'"),'queued');
+ await q("update companies set texts='{\"on\":true,\"demo\":true}' where id=$1",[company]);await begin(56,'+447700900558');
+ assert.equal(await scalar("select status from customer_texts where to_number='+447700900558'"),'demo');
+ await q("update companies set texts='{\"on\":false}' where id=$1",[company]);await begin(57,'+447700900559');
+ assert.equal(await scalar("select status from customer_texts where to_number='+447700900559'"),'demo');
+});
+await test('Part 122: menu off sends nothing; only an owner can set it; bad mode refused',async()=>{
+ await q("update private.voice_routes set menu_on=false,menu_text='demo'");await begin(58,'+447700900560');
+ assert.equal(await scalar("select count(*)::int from customer_texts where to_number='+447700900560'"),0);
+ await assert.rejects(()=>rpc('set_voice_menu_text',['loud']),/Choose/);
+ await as(12);await assert.rejects(()=>rpc('set_voice_menu_text',['on']),/owner/);await as(11);
+ assert.equal(await scalar("select has_function_privilege('anon','set_voice_menu_text(text)','execute')"),false);
 });
 await db.close(); console.log(`${count} passed`);

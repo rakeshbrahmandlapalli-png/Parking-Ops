@@ -317,6 +317,7 @@
     var v = r.data, ready = v.approved && v.app_ready;
     host.innerHTML = '<h3>Caller keypad menu</h3><p class="note">' + (v.approved ? (v.app_ready ? 'Company phone ready for calls in TakeOff.' : 'Open Voice calls on the company phone to register it.') : 'Waiting for service cost approval.') + '</p>' +
       '<label class="field">Caller menu<select id="vmOn"><option value="false"' + (!v.on ? ' selected' : '') + '>Off</option><option value="true"' + (v.on ? ' selected' : '') + (!ready && !v.on ? ' disabled' : '') + '>On</option></select></label>' +
+      '<label class="field">Text the caller the instructions<select id="vmText"><option value="demo"' + (v.menu_text === "demo" || !v.menu_text ? ' selected' : '') + '>Demo: write it on the call, don\'t send</option><option value="on"' + (v.menu_text === "on" ? ' selected' : '') + '>On: send from the company phone</option><option value="off"' + (v.menu_text === "off" ? ' selected' : '') + '>Off</option></select></label>' +
       '<label class="field">Greeting<textarea id="vmGreeting" maxlength="400" rows="3">' + esc(v.greeting) + '</textarea></label>' +
       '<p class="note">Leave the greeting blank for the standard welcome. TakeOff then reads: 1 if you have landed, 2 if you are dropping off, or 0 for the office. A single matching booking is marked CALLED. Calls ring inside TakeOff; internet is required.</p>' +
       '<button type="button" class="btn brand" data-savevoice>Save caller menu</button>';
@@ -324,6 +325,7 @@
   async function saveVoiceMenu(btn) {
     btn.disabled = true;
     var r = await sb.rpc("set_voice_menu", { p_on: $("vmOn").value === "true", p_greeting: $("vmGreeting").value });
+    if (!r.error && $("vmText")) r = await sb.rpc("set_voice_menu_text", { p_mode: $("vmText").value });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
     savedSec(btn); toast("Caller menu saved"); loadVoiceMenu();
