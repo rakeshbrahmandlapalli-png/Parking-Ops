@@ -77,6 +77,26 @@ for (const theme of ["", "ops", "ops-refined", "premium"]) await scenario(async 
   await btn(page, "b1").click(); await sleep(300);
   const b1 = db.bookings.find((b) => b.id === "b1");
   check("Terminal AT DESK (" + look + "): a car not called yet goes straight to AT DESK", /^AT DESK/.test(await word(page, "b1")) && !!b1.called_at && !!b1.desk_at, [await word(page, "b1"), b1.called_at]);
+  // 24 Oct, Airport Parking Bay: the button was live on SENT cars too, and Terminal marked a run of cars
+  // already on their way AT DESK. On a SENT car it is grey again for AT DESK only; b3 is SENT.
+  check("Terminal AT DESK (" + look + "): the button on a SENT car is grey", await btn(page, "b3").isDisabled());
+  const n = db.calls.filter((x) => x.fn === "tap_drop").length;
+  await btn(page, "b3").click({ force: true }).catch(() => {}); await sleep(300);
+  check("Terminal AT DESK (" + look + "): tapping a SENT car sends nothing", db.calls.filter((x) => x.fn === "tap_drop").length === n && !db.bookings.find((b) => b.id === "b3").desk_at);
   check("Terminal AT DESK (" + look + "): no errors", page.__errors.length === 0, page.__errors);
 }, "atdesk");
 
+// A SENT car someone already put AT DESK: Terminal can still take it off (back to CALLED).
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "premium", colour: "#1560BD", ink: "#FFFFFF", short: "Parking Bay" };
+  db.perms = { sent: false, called: false, desk: true, clear: true, yard: false, note: true, intake: true, flights: false, picksinfo: true };
+  Object.assign(db.bookings.find((b) => b.id === "b3"), { called_at: ago(5), called_by: "s2", called_word: "Called", desk_at: ago(2), desk_by: "s2" });
+  const page = await phone(browser, db);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await open(page);
+  check("Terminal AT DESK (premium): a SENT car at the desk can be tapped", !(await btn(page, "b3").isDisabled()) && /^AT DESK/.test(await word(page, "b3")));
+  await btn(page, "b3").click(); await sleep(300);
+  const c = db.calls.filter((x) => x.fn === "tap_drop").pop();
+  check("Terminal AT DESK (premium): the tap takes AT DESK off", c && c.args.p_action === "desk" && c.args.p_on === false && /^CALLED/.test(await word(page, "b3")), c && c.args);
+  check("Terminal AT DESK (premium, SENT at desk): no errors", page.__errors.length === 0, page.__errors);
+}, "atdesk");
