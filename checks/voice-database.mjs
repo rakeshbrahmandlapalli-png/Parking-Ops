@@ -11,7 +11,7 @@ const test=async(name,fn)=>{await fn();console.log('PASS '+name);count++};
 const as=n=>q('update cur set staff_id=$1',[id(n)]);
 const ca=n=>'CA'+String(n).padStart(32,'0'), ac='AC'+'a'.repeat(32), device=id(100),company=id(1);
 await db.exec(`create role anon;create role authenticated;create role service_role;create schema private;
-create table companies(id uuid primary key,name text,time_zone text default 'Europe/London',brand jsonb default '{"calls":true}',calls jsonb default '{"on":true}');
+create table companies(id uuid primary key,name text,time_zone text default 'Europe/London',brand jsonb default '{"calls":true,"voice":true}',calls jsonb default '{"on":true}');
 create table staff(id uuid primary key,company_id uuid,name text,role text,acting text default '',active boolean default true,extra text[] default '{}');
 create table cur(staff_id uuid);insert into cur values(null);
 create function me() returns staff language sql stable security definer as $$select s.* from staff s join cur on cur.staff_id=s.id where active$$;
@@ -28,7 +28,9 @@ create table customer_calls(id bigint generated always as identity primary key,c
 const bridge=fs.readFileSync(new URL('../setup/118-android-sim-bridge.sql',import.meta.url),'utf8');
 await db.exec(bridge.slice(bridge.indexOf('create or replace function private.phone_booking('),bridge.indexOf('revoke all on function private.phone_booking')));
 const sql=fs.readFileSync(new URL('../setup/120-integrated-voice.sql',import.meta.url),'utf8');
+const addon=fs.readFileSync(new URL('../setup/121-voice-addon.sql',import.meta.url),'utf8');
 await test('Migration applies twice and matches CLI migration',async()=>{await db.exec(sql);await db.exec(sql);assert.equal(sql,fs.readFileSync(new URL('../supabase/migrations/20261025002747_integrated_voice_menu.sql',import.meta.url),'utf8'))});
+await test('Part 121 applies twice (the platform form is checked as text)',async()=>{const fns=addon.slice(addon.indexOf('begin;')+6,addon.indexOf('create or replace function admin_save_client'));await db.exec(fns);await db.exec(fns);assert.match(addon,/set_vc boolean := coalesce\(p->'brand', '\{\}'\) \? 'voice'/);assert.match(addon,/'voice', case when set_vc then/);assert.match(addon,/- \(case when set_vc then 'voice' else '' end\)/);assert.match(addon,/where slug = 'takeoff' and not \(brand \? 'voice'\)/)});
 for(const n of [1,2]) await q('insert into companies(id,name) values($1,$2)',[id(n),'Company '+n]);
 for(const [n,c,r] of [[11,1,'owner'],[12,1,'office'],[13,1,'bongo'],[21,2,'owner']])await q('insert into staff(id,company_id,name,role)values($1,$2,$3,$4)',[id(n),id(c),'Staff '+n,r]);
 await q('insert into company_phones(company_id,staff_id,device_id) values($1,$2,$3)',[company,id(12),device]);
@@ -63,4 +65,16 @@ await test('Late answer corrects an out-of-order missed callback',async()=>{awai
 await test('Ended and old sessions cannot replay booking choices',async()=>{assert.equal(await begin(1),null);await q("update private.voice_sessions set at=now()-interval '25 hours' where sid=$1",[ca(7)]);assert.equal(await choose(7,'2'),null)});
 await test('Private routes and privileged voice hooks are inaccessible to app logins',async()=>{for(const role of ['anon','authenticated']) {assert.equal(await scalar("select has_table_privilege($1,'private.voice_routes','select')",[role]),false);for(const fn of ['voice_call_choice(text,text)','voice_device_context(uuid,uuid,uuid)','voice_call_status(text,text,integer)'])assert.equal(await scalar('select has_function_privilege($1,$2,\'execute\')',[role,'public.'+fn]),false)}assert.equal(await scalar("select has_function_privilege('service_role','public.voice_call_choice(text,text)','execute')"),true)});
 await test('Other owner sees only their own unconfigured service',async()=>{await as(21);assert.equal((await rpc('voice_menu_settings')).configured,false)});
+await test('Voice add-on off: no identity, no call, no menu settings',async()=>{
+ await as(11);
+ await q("update companies set brand='{\"calls\":true}' where id=$1",[company]);
+ await assert.rejects(()=>rpc('voice_device_context',[company,id(12),device]),/not approved/);
+ assert.equal(await begin(40),null);
+ assert.equal(await rpc('voice_call_route',[ca(1)]),null);
+ assert.equal((await rpc('voice_menu_settings')).addon,false);
+ await assert.rejects(()=>rpc('set_voice_menu',[false,'']),/not enabled/);
+ await q("update companies set brand='{\"calls\":true,\"voice\":true}' where id=$1",[company]);
+ assert.equal((await rpc('voice_menu_settings')).addon,true);
+ assert.ok((await rpc('voice_device_context',[company,id(12),device])).ready);
+});
 await db.close(); console.log(`${count} passed`);

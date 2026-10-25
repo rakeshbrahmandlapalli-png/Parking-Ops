@@ -4,6 +4,7 @@
   // day before a PICKS drop-off. Owners set it in Settings → Customer texts;
   // the send-texts function sends them (once each) and every text goes on the
   // car's Texts list and the activity log. The office can send one by hand.
+  function voiceAddon() { return !!(S.company && S.company.brand && S.company.brand.voice === true); }
   function textsAddon() { return !!(S.company && S.company.brand && S.company.brand.texts === true); }
   var TEXT_RULES = [
     ["landed", "Flight landed", "DROPS: when the flight lands",
@@ -287,12 +288,12 @@
   function callsHtml() {
     if (!callsAddon() || !S.me || S.me.role !== "owner") return "";
     var C = callsCfg();
-    setTimeout(loadVoiceMenu, 0);
+    if (voiceAddon()) setTimeout(loadVoiceMenu, 0);
     return setBox("calls", "Calls", C.on ? "On · company Android" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       (textsAddon() ? '' : phoneHealthHtml()) + '<label class="field">Calls in the app<select id="clOn"><option value="true"' + (C.on ? " selected" : "") + '>On</option><option value="false"' + (C.on ? "" : " selected") + ">Off</option></select></label>" +
       '<p class="note">Calls use the company Android phone and its SIM. Customers keep calling the usual company number. The TakeOff phone app shows the matching booking and call status. The optional caller menu below can answer calls through an approved voice service.</p>' +
       '<div class="row-actions"><button type="button" class="btn brand" data-savecalls>Save calls</button></div>' +
-      '<div id="voiceMenu" style="margin-top:20px"><h3>Caller keypad menu</h3><p class="note">Checking voice setup…</p></div>');
+      (voiceAddon() ? '<div id="voiceMenu" style="margin-top:20px"><h3>Caller keypad menu</h3><p class="note">Checking voice setup…</p></div>' : ""));
   }
   async function saveCalls(btn) {
     var p = { on: $("clOn").value === "true" };

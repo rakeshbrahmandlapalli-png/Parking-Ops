@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fs,path,makeDb,phone,open,browser,server,sleep} from './harness.mjs';
 const dir=process.env.VOICE_SHOTS; if(!dir || !path.isAbsolute(dir)) throw Error('Set VOICE_SHOTS');
 fs.mkdirSync(dir,{recursive:true});
-const db=makeDb();db.company.brand={theme:'ops',colour:'#F9A01B',short:'TakeOff',calls:true,texts:true};db.company.calls={on:true};
+const db=makeDb();db.company.brand={theme:'ops',colour:'#F9A01B',short:'TakeOff',calls:true,texts:true,voice:true};db.company.calls={on:true};
 const realtime=async(page)=>page.context().routeWebSocket('**/realtime/v1/websocket*',socket=>{
  socket.onMessage(raw=>{
   try {
@@ -42,6 +42,14 @@ try {
  if(await page.$('[data-settab="texts"]')) await page.click('[data-settab="texts"]');
  if(await page.$('[data-setsec="calls"]')) await page.click('[data-setsec="calls"]');
  await page.waitForSelector('#voiceMenu');await sleep(100);assert.match(await page.locator('#voiceMenu').innerText(),/Not set up/);assert.equal(await page.locator('#vmOn').count(),0);
+ // Add-on off (brand.voice missing): the caller menu is not offered at all.
+ db.company.brand={theme:'ops',colour:'#F9A01B',short:'TakeOff',calls:true,texts:true};
+ await page.reload();await open(page);
+ await page.evaluate(()=> (document.querySelector('#bnav [data-bn=menuBtn]')||document.getElementById('menuBtn')).click());
+ await page.waitForSelector('#menu[open]');await page.click('#menuBody [data-view="settings"]');await sleep(200);
+ if(await page.$('[data-settab="texts"]')) await page.click('[data-settab="texts"]');
+ if(await page.$('[data-setsec="calls"]')) await page.click('[data-setsec="calls"]');
+ await page.waitForSelector('#clOn');await sleep(300);assert.equal(await page.locator('#voiceMenu').count(),0);
  assert.equal(page.__errors.length,0,page.__errors.join('; '));
  console.log('PASS actual settings: save, state reload, unconfigured gate, no browser errors');
 } finally {await browser.close();server.close()}

@@ -5479,6 +5479,7 @@
       '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clVoice"' + (b.voice ? " checked" : "") + "> Voice calls: caller menu and calls in the app (add-on, needs Calls)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5494,7 +5495,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked, calls: $("clCalls").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -6550,6 +6551,7 @@
   // day before a PICKS drop-off. Owners set it in Settings → Customer texts;
   // the send-texts function sends them (once each) and every text goes on the
   // car's Texts list and the activity log. The office can send one by hand.
+  function voiceAddon() { return !!(S.company && S.company.brand && S.company.brand.voice === true); }
   function textsAddon() { return !!(S.company && S.company.brand && S.company.brand.texts === true); }
   var TEXT_RULES = [
     ["landed", "Flight landed", "DROPS: when the flight lands",
@@ -6833,12 +6835,12 @@
   function callsHtml() {
     if (!callsAddon() || !S.me || S.me.role !== "owner") return "";
     var C = callsCfg();
-    setTimeout(loadVoiceMenu, 0);
+    if (voiceAddon()) setTimeout(loadVoiceMenu, 0);
     return setBox("calls", "Calls", C.on ? "On · company Android" : "Off", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">',
       (textsAddon() ? '' : phoneHealthHtml()) + '<label class="field">Calls in the app<select id="clOn"><option value="true"' + (C.on ? " selected" : "") + '>On</option><option value="false"' + (C.on ? "" : " selected") + ">Off</option></select></label>" +
       '<p class="note">Calls use the company Android phone and its SIM. Customers keep calling the usual company number. The TakeOff phone app shows the matching booking and call status. The optional caller menu below can answer calls through an approved voice service.</p>' +
       '<div class="row-actions"><button type="button" class="btn brand" data-savecalls>Save calls</button></div>' +
-      '<div id="voiceMenu" style="margin-top:20px"><h3>Caller keypad menu</h3><p class="note">Checking voice setup…</p></div>');
+      (voiceAddon() ? '<div id="voiceMenu" style="margin-top:20px"><h3>Caller keypad menu</h3><p class="note">Checking voice setup…</p></div>' : ""));
   }
   async function saveCalls(btn) {
     var p = { on: $("clOn").value === "true" };

@@ -312,6 +312,11 @@ await scenario(async () => {
   check("Parking Ops: the Collections add-on is named on the client form", /Collections on DROPS \(add-on\)/.test(await page.locator("#clCollections").locator("..").innerText()));
   await page.check("#clCollections"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: ticking Collections (add-on) saves collections on", db.clientSaves[db.clientSaves.length - 1].brand.collections === true, db.clientSaves[db.clientSaves.length - 1]);
+  check("Parking Ops: Voice calls add-on is off unless ticked", db.clientSaves[db.clientSaves.length - 1].brand.voice === false);
+  await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clVoice");
+  check("Parking Ops: the Voice calls add-on is named on the client form", /Voice calls.*add-on/.test(await page.locator("#clVoice").locator("..").innerText()));
+  await page.check("#clVoice"); await page.click("#clGo"); await sleep(400);
+  check("Parking Ops: ticking Voice calls (add-on) saves voice on", db.clientSaves[db.clientSaves.length - 1].brand.voice === true, db.clientSaves[db.clientSaves.length - 1]);
   await page.click('[data-clientedit="c1"]'); await page.waitForSelector("#clLook");
   await page.selectOption("#clLook", "cards"); await page.click("#clGo"); await sleep(400);
   check("Parking Ops: choosing Cards saves theme cards", (db.clientSaves || []).slice(-1)[0].brand.theme === "cards");
