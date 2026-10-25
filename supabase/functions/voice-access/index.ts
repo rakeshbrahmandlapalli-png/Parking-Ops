@@ -21,7 +21,17 @@ Deno.serve(async(req:Request)=>{
  if(error)return reply(403,{message:'This company phone is not approved for voice calls.'});
  if(!ctx?.ready)return reply(409,{message:'Voice service setup and cost approval are required.'});
  const account=Deno.env.get('TWILIO_ACCOUNT_SID')||'',key=Deno.env.get('TWILIO_API_KEY_SID')||'',secret=Deno.env.get('TWILIO_API_KEY_SECRET')||'',push=Deno.env.get('TWILIO_PUSH_CREDENTIAL_SID')||'';
- if(account!==ctx.account||!/^AC[0-9a-f]{32}$/i.test(account)||!/^SK[0-9a-f]{32}$/i.test(key)||!secret||!/^CR[0-9a-f]{32}$/i.test(push))return reply(503,{message:'Voice provider credentials are not configured.'});
+ // Say which setting is wrong by name only, never its value.
+ const bad:string[]=[];
+ if(!account)bad.push('TWILIO_ACCOUNT_SID is missing');
+ else if(!/^AC[0-9a-f]{32}$/i.test(account))bad.push('TWILIO_ACCOUNT_SID is not in the AC + 32 characters form (length '+account.length+')');
+ else if(account!==ctx.account)bad.push('TWILIO_ACCOUNT_SID is a different account from the approved route');
+ if(!key)bad.push('TWILIO_API_KEY_SID is missing');
+ else if(!/^SK[0-9a-f]{32}$/i.test(key))bad.push('TWILIO_API_KEY_SID is not in the SK + 32 characters form (length '+key.length+')');
+ if(!secret)bad.push('TWILIO_API_KEY_SECRET is missing');
+ if(!push)bad.push('TWILIO_PUSH_CREDENTIAL_SID is missing');
+ else if(!/^CR[0-9a-f]{32}$/i.test(push))bad.push('TWILIO_PUSH_CREDENTIAL_SID is not in the CR + 32 characters form (length '+push.length+')');
+ if(bad.length)return reply(503,{message:'Voice provider credentials are not configured: '+bad.join('; ')+'.'});
  if(body.action==='authorize')return reply(200,{ok:true,identity:ctx.identity});
  if(body.action==='token')return reply(200,{token:await accessToken(account,key,secret,push,ctx.identity),identity:ctx.identity,expires_in:600});
  if(body.action==='ready'||body.action==='offline'){
