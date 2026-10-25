@@ -46,6 +46,7 @@ class PhoneBridgeService : Service() {
             var healthy=false
             while(isActive && PhoneSession.online(this@PhoneBridgeService)) {
                 try {
+                    VoiceRegistration.ensure(this@PhoneBridgeService)
                     token=SupabasePhoneApi.token(this@PhoneBridgeService)
                     if(socket==null) connect()
                     else {

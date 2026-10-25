@@ -78,3 +78,12 @@ Validate on the actual company phone and SIM: locked screen, battery restriction
 Release and debug APKs assembled with the Gradle 8.9 wrapper, JDK 21 and SDK 35; the release APK verifies with the v2 signature scheme. 38 SIM-bridge database checks (pairing request/approve/refuse/unpair, switched-off login, ambiguous reply and call, outbox), the customer-text and incoming-call schema checks, and eight native SMS-result unit tests passed. Browser suites: TEXTS_ONLY 106 passed, CALLS_ONLY 78 passed. Android lint: 0 errors; warnings are synchronous durable preference writes, dependency versions, the launcher artwork and JavaScript required by the trusted web app.
 
 The phone parts were renumbered twice on 24 October: main had already used 114 (move pick same time) and 115 (AT DESK access). The parts are 116/116b (texts), 117 (calls schema), 118/118b (SIM bridge, pairing, outbox). Do not apply older numbers from abandoned branches.
+
+## Optional integrated voice review (0.3.0)
+
+The optional incoming voice SDK, self-managed Telecom call screen and push
+registration are in this app. The default build leaves Firebase configuration
+blank and voice inactive. The existing SIM text/caller bridge remains available.
+See [the voice integration guide](../docs/integrated-voice.md) for cost approval,
+server/FCM configuration, public build variables, rollout and handset checks.
+Keep using the existing production signing key for an installable update.

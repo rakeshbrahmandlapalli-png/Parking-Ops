@@ -60,6 +60,20 @@ object SupabasePhoneApi {
         val calls = rm.isRoleHeld(android.app.role.RoleManager.ROLE_CALL_SCREENING) && androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALL_LOG) == android.content.pm.PackageManager.PERMISSION_GRANTED
         rpc(context, "phone_heartbeat", JSONObject().put("p_device", PhoneSession.device(context)).put("p_ready", ready).put("p_sms", sms).put("p_calls", calls).put("p_battery", battery))
     }
+    /** Best-effort "offline" with the credentials captured before sign-out wipes them. */
+    fun voiceOffline(token: String, device: String) {
+        request("/functions/v1/voice-access", JSONObject().put("action","offline").put("device",device), token)
+    }
+    fun voice(context: Context, action: String): JSONObject {
+        val args=JSONObject().put("action",action).put("device",PhoneSession.device(context))
+        val used=token(context)
+        val body=try { request("/functions/v1/voice-access",args,used) }
+        catch(e: HttpError) {
+            if(e.status!=401) throw e
+            request("/functions/v1/voice-access",args,token(context,true))
+        }
+        return JSONObject(body)
+    }
     fun claimTexts(context: Context) = JSONArray(rpc(context, "phone_texts_claim", JSONObject().put("p_device", PhoneSession.device(context))))
     fun finishText(context: Context, row: JSONObject, status: String, error: String = "") {
         rpc(context, "phone_texts_finish", JSONObject().put("p_device", row.getString("device")).put("p_id", row.getLong("id")).put("p_token", row.getString("claim_token")).put("p_status", status).put("p_error", error))

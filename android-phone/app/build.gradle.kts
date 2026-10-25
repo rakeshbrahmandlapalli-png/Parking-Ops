@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+fun voiceBuildValue(name: String) = "\"" + (System.getenv(name) ?: "").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 android {
     namespace = "uk.co.takeoffops.phone"
     compileSdk = 35
@@ -11,8 +13,12 @@ android {
         applicationId = "uk.co.takeoffops.phone"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.3.0"
+        buildConfigField("String", "VOICE_FCM_APP_ID", voiceBuildValue("VOICE_FCM_APP_ID"))
+        buildConfigField("String", "VOICE_FCM_API_KEY", voiceBuildValue("VOICE_FCM_API_KEY"))
+        buildConfigField("String", "VOICE_FCM_PROJECT_ID", voiceBuildValue("VOICE_FCM_PROJECT_ID"))
+        buildConfigField("String", "VOICE_FCM_SENDER_ID", voiceBuildValue("VOICE_FCM_SENDER_ID"))
         buildConfigField("String", "SUPABASE_URL", "\"https://oioqjfrlwrjovnouhusp.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pb3FqZnJsd3Jqb3Zub3VodXNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2Mjk3MDQsImV4cCI6MjEwNTIwNTcwNH0.09ddpfS4_KwZN7QWJoAiwaIl02wQLaw6yJWEltNMQ2U\"")
     }
@@ -43,6 +49,9 @@ android {
 }
 
 dependencies {
+    implementation("com.twilio:voice-android:6.10.5")
+    implementation("com.twilio:audioswitch:1.2.5")
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
