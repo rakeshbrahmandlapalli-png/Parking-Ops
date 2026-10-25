@@ -65,7 +65,7 @@ begin
      values(r.company_id,'voice:'||p_sid,left(coalesce(p_from,''),40),b.id,coalesce(b.kind,''),coalesce(b.reg,''),coalesce(b.name,'')) returning * into k;
    insert into private.voice_sessions(sid,company_id,call_id) values(p_sid,r.company_id,k.id);
    -- The keypad instructions as a text, once per caller number per day. A failure here
-   -- must never stop the call, so it is caught and dropped.
+   -- must never stop the call, so it is caught and discarded.
    if r.menu_on and coalesce(r.menu_text,'demo')<>'off' and p_from ~ '^\+447[0-9]{9}$' then
      begin
        select * into co from companies where id=r.company_id;
