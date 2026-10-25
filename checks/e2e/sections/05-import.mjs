@@ -109,6 +109,39 @@ await scenario(async () => {
   }
 }, 'held');
 
+// 18b1b. A cancelled review whose car is still on a board offers Remove as cancelled; Done asks first (24 Oct: LLHGPC stayed on PICKS after Done).
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: false, open_reviews: 3 };
+  db.reviews = [
+    { id: 21, ref: "R5", kind: "cancelled", detail: { kind: "drops", name: "JANKO MS", reg: "EN11KOO" } },
+    { id: 22, ref: "R4", kind: "cancelled", detail: { kind: "drops", name: "ATANASOV MX", reg: "DY16MYO", missing: true } },
+    { id: 23, ref: "T9", kind: "cancelled", detail: { kind: "drops", name: "Gone Already", reg: "AB12CDE" } },
+  ];
+  const page = await phone(browser, db, { width: 390 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+  await page.waitForSelector("[data-autoreviews] [data-rvremove]", { timeout: 6000 });
+  const rowOf = (ref) => page.locator("[data-autoreviews] .bi-hr", { hasText: ref + " ·" });
+  check("cancelled review: a car still on a board offers Remove as cancelled", await rowOf("R5").locator("[data-rvremove]").count() === 1 && /Remove as cancelled/.test(await rowOf("R5").innerText()));
+  check("cancelled review: a booking with no car offers no Remove", await rowOf("T9").locator("[data-rvremove]").count() === 0);
+  await rowOf("R5").locator("[data-rvremove]").click(); await sleep(800);
+  check("cancelled review: Remove confirms, removes the car as Cancelled and closes the review",
+    page.__dialogs.some((d) => /Remove EN11KOO \(R5\) from DROPS .* as cancelled\?/.test(d)) &&
+    db.calls.some((c) => c.fn === "remove_booking" && c.args.p_booking === "b5" && c.args.p_reason === "Cancelled") &&
+    db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 21), page.__dialogs);
+  check("cancelled review: the removed car leaves the list", !(await page.locator("[data-autoreviews]").innerText()).includes("R5 ·"));
+  const n = page.__dialogs.length;
+  await page.click('[data-reviewdone="22"]'); await sleep(500);
+  check("cancelled review: Done on a car still on a board says it stays", page.__dialogs.length === n + 1 && /DY16MYO is still on DROPS .*Done closes this without removing it/.test(page.__dialogs[n]), page.__dialogs);
+  check("cancelled review: and Done never removes the car", !db.calls.some((c) => c.fn === "remove_booking" && c.args.p_booking === "b4") && db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 22));
+  const m = page.__dialogs.length;
+  await page.click('[data-reviewdone="23"]'); await sleep(500);
+  check("cancelled review: Done with no car on a board doesn't ask", page.__dialogs.length === m && db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 23));
+  check("cancelled review: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, 'held');
+
 // 18b2. A failed check shows the reason and offers no import; an invalid record blocks it.
 await scenario(async () => {
   const db = makeDb();

@@ -95,7 +95,30 @@
     reload0.onclick = function () { location.reload(); }; $("boot").appendChild(reload0);
     return;
   }
-  var sb = window.supabase.createClient(CFG.url, CFG.key, { global: { fetch: timedFetch } });
+  var sb = window.supabase.createClient(CFG.url, CFG.key, { global: { fetch: timedFetch }, auth: { autoRefreshToken: !window.TakeOffPhone } });
+  // Native relay refreshes the phone session while the screen is off. Adopt its
+  // latest token on startup/resume instead of overwriting it with an old WebView token.
+  var restoringPhoneSession = false;
+  async function restorePhoneSession() {
+    if (!window.TakeOffPhone || !window.TakeOffPhone.latestSession || restoringPhoneSession) return;
+    restoringPhoneSession = true;
+    try {
+      var nativeSession = JSON.parse(window.TakeOffPhone.latestSession());
+      if (nativeSession.access_token && nativeSession.refresh_token) await sb.auth.setSession(nativeSession);
+      else {
+        // The phone holds no sign-in yet (first run, or an update): give it the one this page already has.
+        var cur = (await sb.auth.getSession()).data.session;
+        if (cur && cur.access_token && cur.refresh_token) window.TakeOffPhone.setSession(cur.access_token, cur.refresh_token);
+      }
+    } catch (e) {} finally { restoringPhoneSession = false; }
+  }
+  window.addEventListener("takeoff:phone-session", restorePhoneSession);
+  try { sb.auth.onAuthStateChange(function (event, session) {
+    if (!window.TakeOffPhone) return;
+    if (event === "INITIAL_SESSION") { setTimeout(restorePhoneSession, 0); return; }
+    if (session && session.access_token && session.refresh_token) window.TakeOffPhone.setSession(session.access_token, session.refresh_token);
+    else if (event === "SIGNED_OUT" && window.TakeOffPhone.clearSession) window.TakeOffPhone.clearSession();
+  }); } catch (e) {}
 
   async function callFunction(name, body, withSession) {
     var headers = { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + CFG.key };

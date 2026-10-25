@@ -131,11 +131,11 @@
           : [[30, "30 minutes before landing"], [60, "1 hour before"], [90, "90 minutes before"], [120, "2 hours before"], [180, "3 hours before"], [240, "4 hours before"]], o ? "Start watching" : "Start watching a flight") +
         sel("after_hours", [[1, "1 hour after its time"], [2, "2 hours after"], [3, "3 hours after"], [4, "4 hours after"], [5, "5 hours after"], [6, "6 hours after"]].map(function (x) { return o && x[0] === 1 ? [1, "1 hour after"] : x; }), o ? "Stop watching" : "Give up on a flight not seen")) +
       '<div class="row-actions">' + (rf ? '<span class="rf-dirty" role="status">' + (dirty ? "Unsaved changes" : "") + "</span>" : "") + '<button type="button" class="btn ghost" data-resetsettings>' + (o ? "Restore defaults" : "Back to defaults") + '</button><button type="button" class="btn brand" data-savesettings>' + (o ? "Save flight settings" : "Save") + "</button></div>", "fchecks");
-    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), back = backupHtml();
-    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + back;
+    var cap = capacityHtml(), disc = discordHtml(), ptn = ptNumberHtml(), ovr = overstayRateHtml(), ycol = yardColoursHtml(), exit = exitFeeHtml(), bsite = bookingSiteHtml(), txt = textsHtml(), cls = callsHtml(), back = backupHtml();
+    if (!opsDesk() && !rf) return unsaved + cap + flights + disc + ptn + ovr + ycol + exit + bsite + txt + cls + back;
     // A wide screen: the same boxes in groups, with a list of them on the left.
     var groups = [["parking", "Parking & yards", cap + ycol, "Parking"], ["flights", "Flight checks", flights, "Flights"], ["charges", "Exit fees & charges", exit + ovr, "Charges"],
-      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
+      ["alerts", "Alerts & photos", disc + ptn, "Alerts"], ["texts", "Customer texts", txt, "Texts"], ["calls", "Calls", cls, "Calls"], ["bookings", "Booking website", bsite, "Booking website"], ["data", "Backup", back, "Backup"]].filter(function (g) { return g[2]; });
     // Operations Refined on a phone or tablet: the sections as tabs, one open at a time
     // (the others stay on the page, hidden, so nothing typed is lost by switching).
     if (!opsDesk()) {
@@ -150,6 +150,8 @@
           var c = S.company || {}, what = {
             parking: [c.capacity ? c.capacity + " spaces" : "", (c.yards || []).length ? c.yards.length + " yards" : ""],
             flights: ["Automatic checks " + (String(T.enabled) === "false" ? "off" : "on")],
+            texts: [textsOn() ? "On" : "Off"],
+            calls: [callsOn() ? "On" : "Off"],
             charges: [exitFee() > 0 ? "Exit fee " + money(exitFee()) : "", +c.overstay_rate ? money(c.overstay_rate) + " a day" : ""]
           }[g[0]] || [];
           return '<button type="button" data-settab="' + g[0] + '"' + (g[0] === cur ? " hidden" : "") + "><b>" + esc(g[1]) + "</b><small>" + esc(what.filter(Boolean).join(" · ")) + "</small></button>";
@@ -175,7 +177,7 @@
   }
   // Unsaved changes: the flight checks draft, or a field typed in and not saved.
   function flightsDirty() { var T = S.settingsDraft, base = timing(); return !!T && Object.keys(T).some(function (k) { return String(T[k]) !== String(base[k]); }); }
-  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]),textarea")); }
+  function setFields(sec) { return Array.prototype.slice.call(sec.querySelectorAll("input:not([type=file]):not([type=checkbox]):not([data-nodirty]),textarea")); }
   function fieldEdited(el) {
     if (el.dataset.ycol !== undefined) return el.hasAttribute("data-off") !== el.hasAttribute("data-offdef") || (!el.hasAttribute("data-off") && el.value.toLowerCase() !== el.defaultValue.toLowerCase());
     return el.value !== el.defaultValue;

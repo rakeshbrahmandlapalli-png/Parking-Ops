@@ -14,7 +14,7 @@ begin;
 
 -- Part 2's PIN check (called by staff-login with the service role), logged.
 create or replace function staff_login_check(p_link_hash text, p_pin text) returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   sec staff_secrets;
   st staff;
@@ -53,7 +53,7 @@ $$;
 
 -- Part 16, logged when the PIN is changed.
 create or replace function change_my_pin(p_current text, p_new text) returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   s staff := me();
   sec staff_secrets;
