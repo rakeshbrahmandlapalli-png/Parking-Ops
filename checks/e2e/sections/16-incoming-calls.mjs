@@ -39,7 +39,7 @@ for (const theme of ["", "pro", "cards", "premium", "board", "stdplus", "ops", "
 }, "calls");
 
 // A call about a car on another sheet than the one on screen (26 Oct): the card still shows the car's details
-// and Open booking opens that sheet and the car; CALLED is left to the car itself.
+// and Open booking opens that sheet and the car; CALLED and AT DESK work on it from the card.
 await scenario(async () => {
   const db = callsDb("stdplus");
   const page = await phone(browser, db);
@@ -47,7 +47,13 @@ await scenario(async () => {
   await ring(page, { id: 11, company_id: "c1", at: ago(0), from_number: "07700 900123", booking_id: "b4", kind: "drops", reg: "DY16MYO", name: "ATANASOV MX", status: "ringing", marked: "", handled_name: "" }); await sleep(500);
   const pop = await page.innerText("#callPop");
   check("Calls: a car on another sheet still shows its details", /DY16MYO/.test(pop) && /Return due/.test(pop) && /Vehicle status/.test(pop) && /Key tag/.test(pop) && /Open booking/.test(pop), pop);
-  check("Calls: no CALLED button for a car not on the sheet in view", !(await page.$('[data-callmark="11"]')));
+  check("Calls: CALLED and AT DESK are offered for a car on another sheet", !!(await page.$('[data-callmark="11"][data-callwhat="called"]')) && !!(await page.$('[data-callmark="11"][data-callwhat="desk"]')), pop);
+  await page.click('[data-callmark="11"][data-callwhat="called"]'); await sleep(500);
+  const oc = db.calls.filter((x) => x.fn === "tap_drop").pop();
+  check("Calls: CALLED on another sheet's car goes to that car and the card shows CALLED ✓", oc && oc.args.p_booking === "b4" && oc.args.p_action === "called" && /CALLED ✓/.test(await page.innerText("#callPop")), oc);
+  await page.click('[data-callmark="11"][data-callwhat="desk"]'); await sleep(500);
+  const od = db.calls.filter((x) => x.fn === "tap_drop").pop();
+  check("Calls: AT DESK on another sheet's car", od && od.args.p_booking === "b4" && od.args.p_action === "desk" && /AT DESK ✓/.test(await page.innerText("#callPop")), od);
   await page.click('[data-callopen="11"]'); await page.waitForSelector("#panel[open]", { timeout: 4000 }).catch(() => {}); await sleep(600);
   check("Calls: Open booking opens that car's sheet and panel", /DY16MYO/.test(await page.innerText("#panel")), await page.innerText("#panel").catch(() => ""));
   check("Calls (other sheet): no errors", page.__errors.length === 0, page.__errors);
@@ -140,5 +146,20 @@ for (const theme of ["stdplus", "ops", "ops-refined", "premium"]) await scenario
   const p = db.calls.filter((x) => x.fn === "set_calls").pop()?.args.p;
   check("Settings → Calls (" + theme + "): saves the SIM call switch", p && p.on === true && Object.keys(p).join() === "on", p);
   check("Settings → Calls (" + theme + "): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "calls");
+
+// A PICKS car on another sheet gets CALLED from the card.
+await scenario(async () => {
+  const db = callsDb("stdplus");
+  const b4 = db.bookings.find((x) => x.id === "b4"); b4.kind = "picks"; b4.pick_called = "";
+  const page = await phone(browser, db);
+  await open(page);
+  await ring(page, { id: 21, company_id: "c1", at: ago(0), from_number: "07700 900123", booking_id: "b4", kind: "picks", reg: "DY16MYO", name: "ATANASOV MX", status: "ringing", marked: "", handled_name: "" }); await sleep(600);
+  check("Calls: a PICKS car on another sheet offers CALLED", !!(await page.$('[data-callmark="21"][data-callwhat="called"]')));
+  await page.click('[data-callmark="21"]'); await sleep(500);
+  const c = db.calls.filter((x) => x.fn === "tap_pick").pop();
+  check("Calls: CALLED reaches that PICKS car and the card shows CALLED ✓", c && c.args.p_booking === "b4" && c.args.p_key === "called" && c.args.p_value === "Called" && /CALLED ✓/.test(await page.innerText("#callPop")), c);
+  check("Calls (picks, other sheet): no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
 }, "calls");

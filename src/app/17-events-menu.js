@@ -94,7 +94,7 @@
     if (t.dataset.savevoice !== undefined) return saveVoiceMenu(t);
     if (t.dataset.savecalls !== undefined) return saveCalls(t);
     if (t.dataset.callclose) return callGone(+t.dataset.callclose);
-    if (t.dataset.callmark) return callMark(t.dataset.callmark);
+    if (t.dataset.callmark) return callMark(t.dataset.callmark, t.dataset.callwhat);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
     if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
     if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }); if (ck) callOpenCar(ck); return; }
