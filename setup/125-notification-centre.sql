@@ -1,6 +1,7 @@
 -- Part 125: notification centre and push queue (from the 26 Oct handoff).
--- NOT APPLIED. Exactly docs/notifications/schema.sql then push-schema.sql.
--- Its functions contain DELETE: the Supabase MCP cancels such SQL, so this goes through the SQL editor or a CLI migration.
+-- Exactly docs/notifications/schema.sql then push-schema.sql. Applied 26 Oct as migrations
+-- notification_centre_125a_tables, 125b_inbox, 125c_push_queue (all but ops_push_result and
+-- ops_notification_trim); those two contain DELETE and are in 125d-notification-result-trim.sql for the SQL editor.
 -- Notification centre candidate. Apply after existing parts 93, 104, 123.
 -- Claude: inspect hosted schema, create the next migration with the CLI, then
 -- copy this SQL into it. This file is deliberately not an applied migration.
