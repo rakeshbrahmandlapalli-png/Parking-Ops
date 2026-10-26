@@ -254,7 +254,7 @@
       var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
       var mask = callMask(k.from_number) || "Number hidden";
       var body = hit
-        ? '<div class="cp-top"><div><div class="cp-reg">' + esc(k.reg || "NO REG") + '</div><div style="font-weight:600;margin-top:2px">' + esc(nice(k.name) || "Customer") + '</div></div><span class="cp-kind">' + (k.kind === "picks" ? "Return pickup" : "Flying back") + "</span></div>" +
+        ? '<div class="cp-top"><div><div class="cp-reg">' + esc(k.reg || "NO REG") + '</div><div style="font-weight:600;margin-top:2px">' + esc(nice(k.name) || "Customer") + '</div></div><span class="cp-kind">' + (k.kind === "picks" ? "PICKS" : "DROPS") + "</span></div>" +
           '<div class="cp-sub">' + esc(mask) + " · Number matched</div>"
         : '<div class="cp-reg" style="font-size:18px">Not on today\'s cars</div><div class="cp-sub">' + esc(mask) + " · Number not matched</div>";
       var grid = hit && r ? '<div class="cp-grid"><div><span>Return due</span><b>' + esc(dayShort(r.return_at) + " · " + hhmm(r.return_at)) + "</b></div><div><span>Vehicle status</span><b>" + esc(callStatus(r)) + "</b></div>" +
