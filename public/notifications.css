@@ -1,0 +1,34 @@
+/* Notification UI only. Existing boards and the eight looks retain their styles. */
+.nc{max-width:980px;margin:0 auto;color:#18283b;font:14px/1.5 system-ui,-apple-system,sans-serif;overflow-wrap:anywhere}
+.nc h2,.nc h3,.nc h4{color:#12253b;margin:0 0 8px;line-height:1.25}
+.nc h2{font-size:24px}.nc h3{font-size:22px}.nc h4{margin-top:24px;font-size:16px}
+.nc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 16px;flex-wrap:wrap}
+.nc-head p{font-size:12px;color:#566578;margin:4px 0}
+.nc .row-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.nc .btn{min-height:42px;padding:9px 14px;border:1px solid #b9c5d2;border-radius:5px;font:600 13px/1.3 system-ui,sans-serif;cursor:pointer}
+html body .nc .btn.brand{background:#1b2a3a;color:#fff;border-color:#1b2a3a}.nc .btn.ghost{background:#fff;color:#22374d}
+.nc button:disabled{opacity:.5;cursor:wait}.nc button:focus-visible,.nc select:focus-visible,.nc input:focus-visible{outline:3px solid #067f88;outline-offset:3px}
+.nc-tabs{display:flex;gap:0;border-bottom:1px solid #d6dfe8;margin-bottom:0;background:white;overflow:auto}
+.nc-tabs button{flex:1;border:0;border-bottom:3px solid transparent;min-height:48px;padding:12px 8px;background:none;white-space:nowrap;font:600 14px system-ui;color:#43566d}
+.nc-tabs button[aria-pressed=true]{color:#006c74;border-color:#007e85}.nc-tabs span{font-size:12px;background:#edf1f5;padding:2px 6px;border-radius:10px}
+.nc-list{border:1px solid #d6dfe8;border-top:0;background:white;border-radius:0 0 6px 6px;overflow:hidden}
+.nc-row{padding:16px 18px;border-left:4px solid #cbd4df;border-bottom:1px solid #e0e6ed}.nc-row:last-child{border-bottom:0}
+.nc-row.nc-urgent{border-left-color:#bd303c;background:#fffafa}.nc-row.nc-done{border-left-color:#2d795b}
+.nc-meta{display:flex;gap:12px;justify-content:space-between;font-size:11px;color:#5b6979;margin-bottom:5px}
+.nc-urgent .nc-meta>span{color:#a42632;font-weight:700}.nc-title{display:block;padding:0;text-align:left;border:0;background:none;color:#15283d;font:700 16px/1.4 system-ui;cursor:pointer}
+.nc-dot{display:inline-block;width:7px;height:7px;margin:0 8px 2px 0;background:#007e85;border-radius:50%}.nc-row p{margin:5px 0 0;color:#4b5d71;font-size:13px}.nc-row small{color:#8a4c0a}
+.nc-detail{margin:14px 0;background:white;border:1px solid #d6dfe8;padding:20px;border-radius:6px}.nc-status{color:#a42632;font-size:12px;font-weight:700;margin-top:0}
+.nc-detail dl{display:grid;grid-template-columns:minmax(100px,1fr) 2fr;margin:20px 0}.nc-detail dt,.nc-detail dd{border-bottom:1px solid #e1e6ed;padding:10px 0;margin:0}.nc-detail dd{text-align:right;font-weight:600}
+.nc-assign{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:18px}.nc label{display:block;font-size:13px}.nc select{display:block;width:100%;min-height:44px;padding:9px;background:white;border:1px solid #b9c5d2;border-radius:4px;color:#18283b;margin-top:6px}.nc input[type=checkbox]{accent-color:#007e85;min-width:20px;min-height:20px;vertical-align:middle}
+.nc-timeline{padding:0;list-style:none;border-left:2px solid #dce3eb;margin-left:5px}.nc-timeline li{padding:9px 0 9px 14px;font-size:13px}.nc-timeline time{display:block;font-size:11px;color:#647387}
+.nc-warning{padding:12px;background:#fff4dc;border:1px solid #ecd39b;color:#754b0c;border-radius:5px;font-size:13px}.nc-empty{padding:40px 20px;text-align:center;background:white;border:1px solid #d6dfe8;color:#53657a}.nc-options{padding-top:20px}.nc-options .note{color:#586a7c;font-size:12px}
+.nc-bell{position:relative;flex-shrink:0}.nc-bell span:not(:empty){position:absolute;top:-5px;right:-5px;border-radius:10px;background:#be2637;color:white;font:700 10px/16px system-ui;padding:0 4px;min-width:16px}
+@media(max-width:430px){.nc-head{gap:4px}.nc-row{padding:14px 12px}.nc-meta{font-size:10px}.nc-detail{padding:16px}.nc-head .row-actions{margin-top:0}.nc .btn{padding:9px 11px}}
+/* Phones: no bell in the top bar (it would push the board down in Operations and Cards); the count sits on Menu. */
+@media(max-width:899px){#notifyBtn.nc-bell{display:none}}
+@media(max-width:899px){
+#menuBtn[data-unread],#bnav [data-bn="menuBtn"][data-unread]{position:relative}
+#menuBtn[data-unread]::after,#bnav [data-bn="menuBtn"][data-unread]::after{content:attr(data-unread);position:absolute;top:-4px;right:-4px;border-radius:10px;background:#be2637;color:#fff;font:700 10px/16px system-ui,sans-serif;padding:0 4px;min-width:16px;text-align:center;letter-spacing:0;pointer-events:none}
+#bnav [data-bn="menuBtn"][data-unread]::after{top:2px;right:calc(50% - 22px)}
+body:has(#bnav:not(.hidden)) #menuBtn[data-unread]::after{content:none}
+}

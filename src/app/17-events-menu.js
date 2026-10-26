@@ -130,6 +130,19 @@
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.lpcar) { LP.selected = t.dataset.lpcar; render(); var detail = document.querySelector(".lp-detail"); if (detail && window.innerWidth < 761) detail.scrollIntoView({block:"start"}); return; }
     if (t.dataset.lpreload !== undefined) return loadLanes();
+    if (t.id === 'notifyBtn') return go('notifications');
+    if (t.dataset.ncrefresh !== undefined) return loadNotificationCentre();
+    if (t.dataset.ncsettings !== undefined) { NC.selected='settings'; render(); return; }
+    if (t.dataset.ncback !== undefined) { NC.selected=''; render(); return; }
+    if (t.dataset.nctab) { NC.tab=t.dataset.nctab; NC.selected=''; render(); return; }
+    if (t.dataset.ncopen) { NC.selected=t.dataset.ncopen; render(); return ncAct(t.dataset.ncopen,'read'); }
+    if (t.dataset.ncaccept) return ncAct(t.dataset.ncaccept,'accept');
+    if (t.dataset.ncrelease) return ncAct(t.dataset.ncrelease,'release');
+    if (t.dataset.ncassign) { var ns=$('ncAssignee').value; if (!ns) return toast('Choose a staff member.',true); return ncAct(t.dataset.ncassign,'assign',ns); }
+    if (t.dataset.ncbooking) return ncOpenBooking(t.dataset.ncbooking,false);
+    if (t.dataset.nckeys) return ncOpenBooking(t.dataset.nckeys,true);
+    if (t.dataset.nccalls !== undefined) return go('calls');
+    if (t.dataset.ncsave !== undefined) return ncSaveOptions();
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
@@ -377,7 +390,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -395,7 +408,7 @@
   }
   // Premium looks: the menu in sections with icons (Today, Office, This sheet,
   // Display, You), and "Delete this sheet" alone at the bottom, in red.
-  var MENU_ICON = {
+  var MENU_ICON = { notifications: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/>',
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
@@ -423,7 +436,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

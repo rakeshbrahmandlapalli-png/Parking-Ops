@@ -276,6 +276,7 @@
     }
     S.bootFailed = false; clearTimeout(S.bootRetry);
     if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
+    if (!S.me || S.me.id !== me.data.id || S.me.company_id !== me.data.company_id) resetNotificationCentre();
     S.me = me.data;
     sb.rpc("i_am_here").then(function () {}, function () {});
     var res = await Promise.all([
@@ -302,6 +303,7 @@
     flush();
     ptResume();
     loadLastDownload();
+    startNotificationCentre();
   }
   var PICKER_DAYS = 90;
   async function loadSheets() {
@@ -460,7 +462,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
@@ -678,7 +680,7 @@
   // picker, who is signed in, and a row of icon buttons. The yard tally, TO DO /
   // ALL, search and column captions belong to the board only.
   var OPS_TITLE = { calls: "Calls", summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
-  var VIEW_TITLE = { lanes: "Yard planner", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
+  var VIEW_TITLE = { notifications: "Notifications", lanes: "Yard planner", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
   var YARD_LABEL = { Y: "NB", S: "S YARD" };
   // The tally reads left to right as the Sheet's did; any yard not listed follows.
   var YARD_ORDER = ["Y", "S", "CP", "NY", "T"];
@@ -718,6 +720,7 @@
       $("kindSeg").querySelector('[data-kind="drops"]').setAttribute("aria-pressed", sh.kind === "drops");
       $("kindSeg").querySelector('[data-kind="picks"]').setAttribute("aria-pressed", sh.kind === "picks");
     }
+    show("notifyBtn", !S.platform); notificationBadge();
     show("logBtn", !S.platform && (can("summary") || can("log")));
     show("flBtn", !S.platform && can("flights") && !picks);
     show("rtBtn", !S.platform && can("picksinfo") && picks);
@@ -901,7 +904,7 @@
     document.body.classList.toggle("on-lanes", S.view === "lanes");
     document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
-    var fn = { calls: renderCalls, lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
+    var fn = { notifications: renderNotifications, calls: renderCalls, lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
     if (S.switching && S.view === "board" || S.switching && S.switching.o.archive) { boardChunks = null; html = loadingHtml(S.switching); setMain(html, "loading"); return; }
     // One screen going wrong never takes the app down: it says so and offers a way out.
@@ -928,7 +931,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -6320,10 +6323,17 @@
   }
   // S.notify: null until loaded; {ready:false} when part 4 hasn't been run yet.
   async function loadNotify() {
+    if (!S.me) return;
+    var uid=S.me.id;
     var prefs = await sb.from("alert_prefs").select("*").maybeSingle();
     var sub = null; try { sub = await currentSubscription(); } catch (e) {}
-    S.notify = { ready: !prefs.error, prefs: prefs.data || {}, on: !!sub && pushSupported() && Notification.permission === "granted" };
-    if (S.view === "me") render();
+    var saved = null;
+    if (sub) { try { saved = await sb.from("push_subscriptions").select("endpoint").eq("staff_id", uid).eq("endpoint", sub.endpoint).maybeSingle(); } catch (e) {} }
+    var device = null;
+    if (sub && saved && saved.data) { try { var ds=await sb.rpc("ops_push_device_status",{p_endpoint:sub.endpoint}); if (!ds.error) device=ds.data; } catch (e) {} }
+    if (!S.me || S.me.id!==uid) return;
+    S.notify = { ready: !prefs.error, prefs: prefs.data || {}, device: device, on: !!sub && !!(saved && !saved.error && saved.data) && pushSupported() && Notification.permission === "granted" };
+    if (S.view === "me" || (S.view === "notifications" && NC.selected === "settings")) render();
   }
   function notifyHtml() {
     var N = S.notify;
@@ -6333,9 +6343,10 @@
     if (iosOutsideHomeScreen()) text = "On iPhone, add " + brandName() + " to your Home Screen (Share, then Add to Home Screen) and open it from there to get notifications.";
     else if (!pushSupported()) text = "This browser can't show notifications. On Android use Chrome; on iPhone open " + brandName() + " from your Home Screen.";
     else if (Notification.permission === "denied") text = "Notifications are blocked for " + brandName() + ". Allow them in your phone's settings, then come back here.";
-    else if (N.on) text = "On for this phone.";
+    else if (N.on) text = "Registered on this device. Send a test to check that alerts appear.";
     else { text = "Off for this phone."; canOn = true; }
     return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Phone notifications</strong><p class="note" style="margin:4px 0 10px">' + esc(text) + "</p>" +
+      (N.device ? '<p class="note">This device: ' + (N.device.queued || 0) + ' queued · ' + (N.device.failed_24h || 0) + ' failed in 24 hours' + (N.device.last_accepted ? ' · Last accepted by push service ' + esc(hhmm(N.device.last_accepted)) : '') + '. Acceptance does not confirm display.</p>' : '') +
       (N.on ? ALERT_KINDS.filter(function (k) { return k[0] !== "calls" || (callsAddon() && can("callpop")); }).map(function (k) {
         return '<label class="check"><input type="checkbox" data-alertpref="' + k[0] + '"' + (N.prefs[k[0]] === false ? "" : " checked") + "> " + esc(k[1]) + "</label>";
       }).join("") : "") +
@@ -6358,6 +6369,16 @@
     } catch (err) { toast(err.message || String(err), true); }
     S.notify = null; render();
   }
+  async function syncCurrentPushSubscription() {
+    if (!S.me || !pushSupported() || Notification.permission!=="granted") return;
+    var uid=S.me.id;
+    try {
+      var sub=await currentSubscription(); if (!sub || !S.me || S.me.id!==uid) return;
+      var j=sub.toJSON();
+      var r=await sb.rpc("save_push_subscription",{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth});
+      if (!r.error && S.me && S.me.id===uid) { S.notify=null; if(S.view==="me" || S.view==="notifications" && NC.selected==="settings") render(); }
+    } catch(e) { /* Offline: existing subscription and server ownership stay put. */ }
+  }
   // Also runs quietly on sign-out, so a shared phone stops getting the last person's alerts.
   async function turnOffNotifications(quiet) {
     try {
@@ -6370,9 +6391,11 @@
   async function sendTest(btn, discord) {
     btn.disabled = true;
     try {
-      var r = await callFunction("send-alerts", { type: "test", discord: !!discord }, true);
+      var sub = discord ? null : await currentSubscription();
+      if (!discord && !sub) throw new Error("Re-enable notifications on this device before sending a test.");
+      var r = await callFunction("send-alerts", { type: "test", discord: !!discord, endpoint: sub ? sub.endpoint : undefined }, true);
       if (discord) toast("Discord: DROPS " + (r.drops ? "sent" : "not set or failed") + " · PICKS " + (r.picks ? "sent" : "not set or failed"), !(r.drops || r.picks));
-      else toast(r.sent ? "Test sent. It should arrive in a few seconds." : "Nothing sent: notifications aren't on for this phone.", !r.sent);
+      else toast(r.sent ? "Push service accepted the test. Check this device; delivery is not confirmed." : "No test accepted. Re-enable notifications on this device and try again.", !r.sent);
     } catch (err) { toast(err.message, true); }
     finally { btn.disabled = false; }
   }
@@ -6594,6 +6617,162 @@
     var pos=e.target.selectionStart; LP.query=e.target.value; render(); var q=$('lpQuery'); q.focus(); try { q.setSelectionRange(pos,pos); } catch(e) {}
   });
   setInterval(function(){ if(S.me && S.view==='lanes' && document.visibilityState==='visible') laneChanged(); },15000);
+  // Shared operational inbox. Nothing is stored in localStorage or the offline
+  // booking queue: acceptance must be confirmed by the server.
+  var NC = { items: [], ready: false, loaded: false, loading: false, error: '', seq: 0, timer: null, tab: 'all', selected: '', busy: false, options: {}, draft: null };
+  function resetNotificationCentre() {
+    clearInterval(NC.timer); NC.seq++;
+    NC.items = []; NC.loaded = NC.loading = NC.ready = NC.busy = false;
+    NC.selected = NC.error = ''; NC.options = {}; NC.draft = null; NC.timer = null; S.notify = null;
+    notificationBadge();
+    if ($('main') && $('main').dataset.view==='notifications') { $('main').innerHTML=''; $('main').dataset.view=''; }
+  }
+  function startNotificationCentre() {
+    clearInterval(NC.timer); syncCurrentPushSubscription(); loadNotificationCentre();
+    NC.timer = setInterval(function () { if (S.me && !S.platform && document.visibilityState === 'visible') loadNotificationCentre(); }, 45000);
+    openNotificationLink();
+  }
+  async function loadNotificationCentre() {
+    if (!S.me || S.platform || NC.loading || NC.busy) return;
+    var seq = ++NC.seq, uid = S.me.id, company = S.me.company_id;
+    NC.loading = true;
+    try {
+      var r = await sb.rpc('ops_notification_feed');
+      if (seq !== NC.seq || !S.me || S.me.id !== uid || S.me.company_id !== company) return;
+      if (r.error) throw r.error;
+      NC.ready = !!(r.data && Array.isArray(r.data.items));
+      NC.items = NC.ready ? r.data.items : []; NC.options = NC.ready ? (r.data.options || {}) : {};
+      NC.error = ''; NC.loaded = true; NC.at = new Date();
+    } catch (e) {
+      if (seq !== NC.seq || !S.me || S.me.id !== uid) return;
+      NC.error = /PGRST202|42883/.test(String(e.code)) ? 'The notification centre needs its database update. Existing phone alerts still work.' : (e.message || 'Could not refresh notifications.');
+      NC.loaded = true;
+    } finally {
+      if (seq === NC.seq) {
+        NC.loading = false; notificationBadge();
+        if (S.me && S.view === 'notifications') render();
+      }
+    }
+  }
+  function ncUnread() { return NC.items.filter(function (x) { return !x.read_at && !x.resolved; }).length; }
+  // Phones have no room for a bell in the top bar (Operations would go to two
+  // lines), so below 900 px the count sits on Menu instead; notifications.css.
+  function notificationBadge() {
+    var b = $('notifyBadge'), button = $('notifyBtn'); if (!b || !button) return;
+    var n = ncUnread(), t = n ? (n > 99 ? '99+' : String(n)) : '';
+    b.textContent = t;
+    button.setAttribute('aria-label', 'Notifications' + (n ? ', ' + n + ' unread' : ''));
+    [$('menuBtn'), document.querySelector('#bnav [data-bn="menuBtn"]')].forEach(function (m) { if (!m) return; if (t) m.setAttribute('data-unread', t); else m.removeAttribute('data-unread'); });
+  }
+  function ncWhen(at) { return at ? dayShort(at) + ' ' + hhmm(at) : ''; }
+  function ncItem(id) { return NC.items.filter(function (n) { return n.id === id || n.event_key === id; })[0]; }
+  function ncStatus(n) { return n.resolved ? 'Resolved' : n.claimed_by ? 'Accepted by ' + (n.claimed_name || 'staff') : n.urgency === 'urgent' ? 'Urgent · needs attention' : 'Update'; }
+  function ncButton(n, attr, label, primary) { return '<button type="button" class="btn ' + (primary ? 'brand' : 'ghost') + '" data-' + attr + '="' + esc(n.id) + '"' + (NC.busy || !navigator.onLine ? ' disabled' : '') + '>' + esc(label) + '</button>'; }
+  function ncActions(n) {
+    var h = '';
+    if (!n.resolved && n.can_accept && !n.claimed_by) h += ncButton(n, 'ncaccept', 'Accept task', true);
+    if (!n.resolved && n.claimed_by && (n.claimed_by === S.me.id || can('called'))) h += ncButton(n, 'ncrelease', 'Release task', false);
+    if (n.booking_id) h += ncButton(n, 'ncbooking', 'Open booking', false);
+    if (n.kind === 'calls' && callsAddon() && can('callpop')) h += '<button type="button" class="btn ghost" data-nccalls>Open calls</button>';
+    if (n.kind === 'import' && can('import')) h += '<button type="button" class="btn ghost" data-view="import">Open imports</button>';
+    if (n.kind === 'lanes' && lanePlanner()) h += '<button type="button" class="btn ghost" data-view="lanes">View yard planner</button>';
+    if (n.kind === 'keys') h += ncButton(n, 'nckeys', 'Open key check', false);
+    return h;
+  }
+  function renderNotifications() {
+    if (!NC.loaded && !NC.loading) loadNotificationCentre();
+    var selected = ncItem(NC.selected), h = '<section class="nc"><div class="nc-head"><div><p>' + (NC.at ? 'Updated ' + hhmm(NC.at.toISOString()) + ' · last 7 days' : 'Your team alerts in one place') + '</p></div><div class="row-actions"><button type="button" class="btn ghost small" data-ncrefresh' + (NC.loading ? ' disabled' : '') + '>Refresh</button><button type="button" class="btn ghost small" data-ncsettings>Preferences</button></div></div>';
+    if (NC.error) h += '<p class="nc-warning" role="alert">' + esc(NC.error) + '</p>';
+    if (!navigator.onLine) h += '<p class="nc-warning" role="status">Offline. This list may be out of date. Connect before accepting a task.</p>';
+    if (!NC.loaded) return h + '<p role="status">Loading notifications…</p></section>';
+    if (!NC.ready) return h + '<p class="nc-empty">Notification history will be available after the database update. Phone alert settings are still available in Me.</p></section>';
+    if (NC.selected === 'settings') return h + ncSettingsHtml() + '</section>';
+    if (selected) return h + ncDetailHtml(selected) + '</section>';
+    var active = NC.items.filter(function (n) { return !n.resolved; }), urgent = active.filter(function (n) { return n.urgency === 'urgent'; }), mine = active.filter(function (n) { return n.claimed_by === S.me.id; });
+    h += '<nav class="nc-tabs" aria-label="Filter notifications">' + [['all','All',active.length],['urgent','Urgent',urgent.length],['mine','Mine',mine.length],['history','Resolved',NC.items.length-active.length]].map(function (t) { return '<button type="button" data-nctab="' + t[0] + '" aria-pressed="' + (NC.tab === t[0]) + '">' + t[1] + ' <span>' + t[2] + '</span></button>'; }).join('') + '</nav>';
+    var rows = NC.tab === 'urgent' ? urgent : NC.tab === 'mine' ? mine : NC.tab === 'history' ? NC.items.filter(function (n) { return n.resolved; }) : active;
+    rows = rows.slice().sort(function (a,b) { return Number(b.urgency === 'urgent')-Number(a.urgency === 'urgent') || Number(!!a.claimed_by)-Number(!!b.claimed_by) || Date.parse(b.created_at)-Date.parse(a.created_at); });
+    if (!rows.length) h += '<div class="nc-empty"><strong>' + (NC.tab === 'mine' ? 'No tasks accepted by you' : 'Nothing here right now') + '</strong><p>New alerts will appear here when the team needs them.</p></div>';
+    h += '<div class="nc-list">' + rows.map(function (n) { return '<article class="nc-row ' + (n.resolved ? 'nc-done' : n.urgency === 'urgent' ? 'nc-urgent' : '') + '"><div class="nc-meta"><span>' + esc(ncStatus(n)) + '</span><time>' + esc(ncWhen(n.created_at)) + '</time></div><button type="button" class="nc-title" data-ncopen="' + esc(n.id) + '">' + (!n.read_at ? '<span class="nc-dot" aria-label="Unread"></span>' : '') + esc(n.title) + '</button><p>' + esc(n.body) + '</p>' + (n.escalated_at ? '<small>Escalated to supervisors ' + esc(hhmm(n.escalated_at)) + '</small>' : '') + '<div class="row-actions">' + ncActions(n) + '</div></article>'; }).join('') + '</div></section>';
+    return h;
+  }
+  function ncDetailHtml(n) {
+    var h = '<button type="button" class="btn ghost small" data-ncback>‹ All notifications</button><article class="nc-detail"><p class="nc-status">' + esc(ncStatus(n)) + '</p><h3>' + esc(n.title) + '</h3><p>' + esc(n.body) + '</p>';
+    if (n.booking_id) h += '<dl><dt>Registration</dt><dd>' + esc(n.reg || 'Not recorded') + '</dd><dt>Yard location</dt><dd>' + esc(n.yard || 'Not recorded') + '</dd><dt>Key tag</dt><dd>' + esc(n.key_tag == null ? 'Not recorded' : String(n.key_tag)) + '</dd><dt>Handling this</dt><dd>' + esc(n.claimed_name || 'Unassigned') + '</dd></dl>';
+    h += '<div class="row-actions">' + ncActions(n) + '</div>';
+    if (!n.resolved && n.can_accept && can('called')) {
+      var people = Object.values(S.staff).filter(function (s) { return s.active; });
+      h += '<div class="nc-assign"><label>Assign to staff<select id="ncAssignee"><option value="">Choose a person</option>' + people.map(function (s) { return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>'; }).join('') + '</select></label>' + ncButton(n, 'ncassign', 'Assign task', false) + '</div>';
+    }
+    h += '<p class="note">Accepting only says who is on it. Mark SENT, RTC and the rest on the booking as usual.</p><h4>Activity</h4><ol class="nc-timeline"><li><time>' + esc(ncWhen(n.created_at)) + '</time><span>Alert created</span></li>';
+    h += (n.activity || []).map(function (a) { return '<li><time>' + esc(ncWhen(a.at)) + '</time><span>' + esc(a.action) + (a.staff_name ? ' · ' + esc(a.staff_name) : '') + '</span></li>'; }).join('');
+    if (n.resolved) h += '<li>Resolved from the current booking or check state, or expired.</li>';
+    return h + '</ol>' + (!n.resolved && n.urgency === 'urgent' && n.can_accept ? '<p class="nc-warning">Unaccepted urgent tasks are escalated on the first 5-minute timer run after they have waited 5 minutes.</p>' : '') + '</article>';
+  }
+  function ncSettingsHtml() {
+    return '<button type="button" class="btn ghost small" data-ncback>‹ All notifications</button><div class="nc-detail"><h3>Notification preferences</h3>' + notifyHtml() + '<div class="nc-options"><label><input id="ncSilent" type="checkbox"' + ((NC.draft ? NC.draft.silent : NC.options.routine_silent) ? ' checked' : '') + '> Silent routine push alerts</label><p class="note">Urgent alerts request normal device behaviour. Your phone controls sound and Do Not Disturb.</p><label>Pause operational push alerts<select id="ncPause">' + [[-1,'Keep current setting'],[0,'Receive alerts now'],[1,'Pause for 1 hour'],[8,'Pause for 8 hours']].map(function(x){ return '<option value="'+x[0]+'"'+(NC.draft && NC.draft.pause===x[0]?' selected':'')+'>'+x[1]+'</option>'; }).join('') + '</select></label><p class="note">' + (NC.options.paused_until && Date.parse(NC.options.paused_until) > Date.now() ? 'Paused until ' + esc(ncWhen(NC.options.paused_until)) + '. ' : '') + 'The inbox keeps receiving alerts. Account and system warnings still arrive.</p><button type="button" class="btn brand" data-ncsave' + (NC.busy ? ' disabled' : '') + '>Save preferences</button></div></div>';
+  }
+  async function ncAct(id, action, staff) {
+    var n = ncItem(id); if (!n || NC.busy || !S.me) return;
+    if (!navigator.onLine) return toast('Connect before changing a shared task.', true);
+    var uid = S.me.id, seq = NC.seq;
+    NC.busy = true; render();
+    try {
+      var r = await sb.rpc('ops_notification_action', {p_id:n.id,p_action:action,p_staff:staff || null});
+      if (!S.me || uid !== S.me.id || seq !== NC.seq) return;
+      if (r.error) throw r.error;
+      if (action !== 'read') toast(action === 'accept' ? 'Task accepted' : action === 'assign' ? 'Task assigned' : 'Task released');
+    } catch (e) { if (S.me && uid === S.me.id) toast(e.message || 'Could not update this task.', true); }
+    finally { if (S.me && uid === S.me.id && seq === NC.seq) { NC.busy = false; await loadNotificationCentre(); } }
+  }
+  async function ncSaveOptions() {
+    if (NC.busy || !S.me) return;
+    var hours = +$('ncPause').value, silent = $('ncSilent').checked, uid = S.me.id;
+    if (hours === -1) hours = NC.options.paused_until && Date.parse(NC.options.paused_until) > Date.now() ? -1 : 0;
+    // -1 preserves the exact server timestamp instead of extending a pause.
+    NC.busy = true;
+    try { var r = await sb.rpc('set_ops_notification_options', {p_pause_hours:hours,p_routine_silent:silent}); if (r.error) throw r.error; if (S.me && S.me.id === uid) { NC.draft=null; toast('Preferences saved'); } }
+    catch (e) { if (S.me && S.me.id === uid) toast(e.message || 'Could not save preferences.',true); }
+    finally { if (S.me && S.me.id === uid) { NC.busy = false; await loadNotificationCentre(); } }
+  }
+  async function ncOpenBooking(id, keys) {
+    var n = ncItem(id); if (!n || !n.booking_id || !S.me) return;
+    var uid = S.me.id;
+    try {
+      var r = await sb.from('bookings').select('*').eq('id',n.booking_id).maybeSingle();
+      if (!S.me || uid !== S.me.id) return;
+      if (r.error) throw r.error; if (!r.data || r.data.company_id !== S.me.company_id) throw new Error('This booking is no longer available.');
+      if (go('board') === false) return;
+      await openArchived(r.data.sheet_id,r.data.reg);
+      if (!S.me || uid !== S.me.id) return;
+      if (keys) { if (!keyOn()) await toggleKeyMode(); return; }
+      var row = S.rows.filter(function (x) { return x.id === r.data.id; })[0];
+      if (row) openPanel(row); else toast('The booking moved or is no longer on this sheet. Refresh and try again.',true);
+    } catch(e) { if (S.me && uid === S.me.id) toast(e.message || 'Could not open this booking.',true); }
+  }
+  async function openNotificationLink() {
+    var params = new URL(location.href).searchParams, notice = params.get('notice'), booking = params.get('booking');
+    if ((!notice && !booking) || !S.me || S.platform) return;
+    if (S.view !== 'notifications' && go('notifications') === false) return;
+    // Await a fresh list for this session, not a late result from the PIN screen.
+    if (NC.loading) { setTimeout(openNotificationLink,100); return; }
+    await loadNotificationCentre();
+    if (!S.me) return;
+    var n = notice ? ncItem(notice) : NC.items.filter(function (x) { return x.booking_id === booking; })[0];
+    if (n) { NC.selected=n.id; render(); ncAct(n.id,'read'); }
+    else toast('This alert is unavailable, expired or belongs to another account.',true);
+    params.delete('notice'); params.delete('booking');
+    var url = new URL(location.href); url.search=params.toString(); history.replaceState(null,'',url.pathname+url.search+url.hash);
+  }
+  document.addEventListener('change',function(e){ if(e.target.id==='ncSilent'||e.target.id==='ncPause') NC.draft={silent:$('ncSilent').checked,pause:+$('ncPause').value}; });
+  document.addEventListener('visibilitychange',function () { if (S.me && document.visibilityState==='visible') loadNotificationCentre(); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message',function (e) {
+    if (!S.me || !e.data) return;
+    if (e.data.type==='PUSH_SUBSCRIPTION_CHANGED') { syncCurrentPushSubscription(); return; }
+    if (e.data.type!=='OPEN_NOTIFICATION') return;
+    var u = new URL(e.data.url,location.origin); if (u.origin!==location.origin) return;
+    history.replaceState(null,'',u.pathname+u.search+location.hash); openNotificationLink();
+  });
   // ── customer texts (database part 116) ──
   // An add-on (Parking Ops → Clients → Edit, brand.texts): the app texts the
   // customer by itself when their flight lands, when a driver is SENT, and the
@@ -7152,6 +7331,19 @@
     if (t.dataset.setgo) { var sg = $("set-" + t.dataset.setgo); if (sg) sg.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
     if (t.dataset.lpcar) { LP.selected = t.dataset.lpcar; render(); var detail = document.querySelector(".lp-detail"); if (detail && window.innerWidth < 761) detail.scrollIntoView({block:"start"}); return; }
     if (t.dataset.lpreload !== undefined) return loadLanes();
+    if (t.id === 'notifyBtn') return go('notifications');
+    if (t.dataset.ncrefresh !== undefined) return loadNotificationCentre();
+    if (t.dataset.ncsettings !== undefined) { NC.selected='settings'; render(); return; }
+    if (t.dataset.ncback !== undefined) { NC.selected=''; render(); return; }
+    if (t.dataset.nctab) { NC.tab=t.dataset.nctab; NC.selected=''; render(); return; }
+    if (t.dataset.ncopen) { NC.selected=t.dataset.ncopen; render(); return ncAct(t.dataset.ncopen,'read'); }
+    if (t.dataset.ncaccept) return ncAct(t.dataset.ncaccept,'accept');
+    if (t.dataset.ncrelease) return ncAct(t.dataset.ncrelease,'release');
+    if (t.dataset.ncassign) { var ns=$('ncAssignee').value; if (!ns) return toast('Choose a staff member.',true); return ncAct(t.dataset.ncassign,'assign',ns); }
+    if (t.dataset.ncbooking) return ncOpenBooking(t.dataset.ncbooking,false);
+    if (t.dataset.nckeys) return ncOpenBooking(t.dataset.nckeys,true);
+    if (t.dataset.nccalls !== undefined) return go('calls');
+    if (t.dataset.ncsave !== undefined) return ncSaveOptions();
     if (t.dataset.view) return go(t.dataset.view);
     if (t.id === "menuBtn" || t.closest("#cHead")) return openMenu();
     if (t.id === "shiftBtn" || t.closest("#cShift")) return openShiftPick();
@@ -7399,7 +7591,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -7417,7 +7609,7 @@
   }
   // Premium looks: the menu in sections with icons (Today, Office, This sheet,
   // Display, You), and "Delete this sheet" alone at the bottom, in red.
-  var MENU_ICON = {
+  var MENU_ICON = { notifications: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/>',
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
@@ -7445,7 +7637,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

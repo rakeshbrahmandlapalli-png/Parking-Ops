@@ -6,3 +6,5 @@
 
 SECRET-*
 .git-old-history-backup-*/
+
+checks/node_modules/

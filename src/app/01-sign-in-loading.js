@@ -112,6 +112,7 @@
     }
     S.bootFailed = false; clearTimeout(S.bootRetry);
     if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
+    if (!S.me || S.me.id !== me.data.id || S.me.company_id !== me.data.company_id) resetNotificationCentre();
     S.me = me.data;
     sb.rpc("i_am_here").then(function () {}, function () {});
     var res = await Promise.all([
@@ -138,6 +139,7 @@
     flush();
     ptResume();
     loadLastDownload();
+    startNotificationCentre();
   }
   var PICKER_DAYS = 90;
   async function loadSheets() {
@@ -296,7 +298,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
