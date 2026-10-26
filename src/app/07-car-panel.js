@@ -91,7 +91,8 @@
   function openPanel(r) {
     if (S.switching || (r && r.sheet_id && S.sheetId && r.sheet_id !== S.sheetId)) return;
     // Operations Refined: drawn again after a tap that saves at once (yard, charge), it keeps what was typed.
-    var draft = isRefined() && $("panel").open && panelRow && panelRow.id === r.id && $("carState") ? carDraft() : null;
+    // Any look, after a yard tap: the same.
+    var draft = $("panel").open && panelRow && panelRow.id === r.id && (isRefined() ? $("carState") : keepTyped) ? panelDraft() : null;
     panelRow = r;
     var drops = r.kind === "drops";
     function by(at, who) { return at ? esc(hhmm(at)) + (who ? " · " + esc(who) : "") : "—"; }
@@ -208,7 +209,9 @@
     }
     $("panelBody").innerHTML = h;
     $("panel").classList.toggle("ops-car", o);
-    if (rf) { carInit = carFieldVals(); if (draft) Object.keys(draft).forEach(function (k) { if ($(k)) $(k).value = draft[k]; }); carState(); }
+    carInit = panelVals(); carBase = Object.assign({}, r);
+    if (draft) Object.keys(draft).forEach(function (k) { if ($(k)) $(k).value = draft[k]; });
+    if (rf) carState();
     if (o) opsMenuPlace();
     if (!$("panel").open) $("panel").showModal();
     ptPhotosList(r);
@@ -254,7 +257,11 @@
       (P.hist ? '<section class="rf-sec rf-hist">' + P.hist + "</section>" : "") + foot;
   }
   // What's typed in the car's boxes and not saved yet (Operations Refined).
-  var CAR_FIELDS = ["regText", "phoneText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
+  var CAR_FIELDS = ["regText", "phoneText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {}, carBase = null, keepTyped = false;
+  // The charge boxes too: a tap that draws the panel again (yard) keeps them, though Save changes doesn't send them.
+  var PANEL_EXTRA = ["chgAmount", "chgReason"];
+  function panelVals() { var v = {}; CAR_FIELDS.concat(PANEL_EXTRA).forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
+  function panelDraft() { var v = panelVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
   function carFieldVals() { var v = {}; CAR_FIELDS.forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
   function carDraft() { var v = carFieldVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
   function carState(msg) {
@@ -316,6 +323,90 @@
   var downOn = {};
   ["panel", "menu"].forEach(function (id) { $(id).addEventListener("pointerdown", function (e) { downOn[id] = e.target; }); });
   function outside(id, e) { var hit = e.target === $(id) && downOn[id] === $(id); downOn[id] = null; return hit; }
+  // Save changes: only the boxes typed in since the car was drawn are sent (an untouched box never
+  // overwrites what a colleague saved meanwhile), and "Saved" shows once every write is confirmed.
+  // Returns false when nothing was saved (a box to fix, a "no" to the question, the NO FLIGHT screen).
+  function touched(ids) { return ids.some(function (id) { return $(id) && carInit[id] !== undefined && $(id).value !== carInit[id]; }); }
+  // A box typed in whose value somebody else changed since this car was drawn: ask before replacing it.
+  function clashOk(r, pf, g, ph, dl, rl, f) {
+    var b = carBase; if (!b || b.id !== r.id) return true;
+    var bad = [];
+    function chk(on, cols, label) { if (on && cols.some(function (c) { return (r[c] || "") !== (b[c] || ""); })) bad.push(label); }
+    chk(pf, ["flight"], "return flight"); chk(g, ["reg"], "registration"); chk(ph, ["phone"], "phone number");
+    chk(dl, ["drop_at"], "drop-off"); chk(rl, ["return_at"], "return time"); chk(f, ["flight", "sched_time", "est_time"], "flight");
+    chk($("noteText") && touched(["noteText"]), ["note"], "note");
+    return !bad.length || confirm("Someone else changed this car's " + bad.join(", ") + " after you opened it. Replace it with what you typed?");
+  }
+  function savePanelEdits(r) {
+    var saved = false;
+    // Check everything first: nothing is queued while any field is invalid.
+    var pf = $("pickFlightText") && touched(["pickFlightText"]) ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
+    if (pf && pf.length > 10) return saveErr("That does not look like a flight number.");
+    var g = null;
+    if ($("regText") && touched(["regText"])) {
+      g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
+      if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
+    }
+    var ph = null;
+    if ($("phoneText") && touched(["phoneText"])) {
+      ph = $("phoneText").value.trim().replace(/\s+/g, " ");
+      var phd = ph.replace(/\D/g, "").length;
+      if (ph !== (r.phone || "") && ph && (!/^\+?[0-9 ()-]*$/.test(ph) || phd < 7 || phd > 15)) return saveErr("Check the phone number: digits only, like 07700 900123.");
+    }
+    var rl = null;
+    if ($("retD") && touched(["retD", "retT"])) {
+      var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
+      if (rt === null) return saveErr("Type the time like 13:20 (or 1320).");
+      if ($("retD").value !== old.key || (rt || "") !== old.time) {
+        if (!$("retD").value || !rt) return saveErr("Enter when the car is back: the date and the time.");
+        rl = $("retD").value + " " + rt;
+      }
+    }
+    var dl = null;
+    if ($("dropD") && (touched(["dropD", "dropT"]) || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r)))) {
+      var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
+      if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
+      if ($("dropD").value !== od.key || (dt || "") !== od.time || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r))) {
+        if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
+        dl = $("dropD").value + " " + dt;
+        if ((dl.slice(0, 10) !== od.key || dl.slice(0, 10) !== carSheetDay(r)) && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
+      }
+    }
+    var f = null, ct, st;
+    if ($("flightText") && touched(["flightText", "collectText", "schedText"])) {
+      f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
+      if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
+    }
+    if (!clashOk(r, pf !== null && pf !== r.flight, g !== null && g !== r.reg, ph !== null && ph !== (r.phone || ""), !!dl, !!rl, f !== null)) return false;
+    var batch = beginBatch();
+    if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
+    if (ph !== null && ph !== (r.phone || "")) { run("set_phone", { p_booking: r.id, p_phone: ph }, r, function (x) { x.phone = ph; }); saved = true; }
+    if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
+    if (dl) {
+      run("move_pick", { p_booking: r.id, p_drop_local: dl }, r, function (x) { x.drop_at = londonIso(dl); });
+      saved = true;
+    }
+    if (rl) {
+      if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
+      else run("set_return", { p_booking: r.id, p_return_local: rl }, r);
+      saved = true;
+    }
+    // The note first: turning a car into NO FLIGHT moves on to the
+    // collection-time screen, and a note typed alongside must not be lost.
+    if ($("noteText") && touched(["noteText"])) {
+      var text = $("noteText").value.trim();
+      if (text !== r.note) { run("set_note", { p_booking: r.id, p_note: text }, r, function (x) { x.note = text; }); saved = true; }
+    }
+    if (f !== null) {
+      if (f === "NO FLIGHT" && r.flight !== "NO FLIGHT") { endBatch(batch); panelRow = null; quick = { id: r.id, chain: false, suggest: [], noFlight: true }; drawQuickFlight(); return; }
+      // The old flight's time left in the box doesn't carry over to a new flight number.
+      if (f !== r.flight && st === (r.sched_time || "")) st = undefined;
+      if (f !== r.flight || (f === "NO FLIGHT" && ct !== undefined && ct !== (r.est_time || "")) || (st !== undefined && st !== (r.sched_time || ""))) { setFlight(r, f, ct, st); saved = true; }
+    }
+    endBatch(batch);
+    return true;
+  
+  }
   $("panel").addEventListener("click", function (e) {
     if (outside("panel", e)) return $("panel").close();          // tap outside the sheet
     if (e.target === $("panel")) return;
@@ -333,81 +424,16 @@
     if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined)) return staffPanelAction(t);
     if (!panelRow) return;
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
-    if (t.dataset.savepanel !== undefined) {
-      var saved = false;
-      // Check everything first: nothing is queued while any field is invalid.
-      var pf = $("pickFlightText") ? normFlight($("pickFlightText").value).replace(/^NO FLIGHT$/, "") : null;
-      if (pf && pf.length > 10) return saveErr("That does not look like a flight number.");
-      var g = null;
-      if ($("regText")) {
-        g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
-        if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
-      }
-      var ph = null;
-      if ($("phoneText")) {
-        ph = $("phoneText").value.trim().replace(/\s+/g, " ");
-        var phd = ph.replace(/\D/g, "").length;
-        if (ph !== (r.phone || "") && ph && (!/^\+?[0-9 ()-]*$/.test(ph) || phd < 7 || phd > 15)) return saveErr("Check the phone number: digits only, like 07700 900123.");
-      }
-      var rl = null;
-      if ($("retD")) {
-        var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
-        if (rt === null) return saveErr("Type the time like 13:20 (or 1320).");
-        if ($("retD").value !== old.key || (rt || "") !== old.time) {
-          if (!$("retD").value || !rt) return saveErr("Enter when the car is back: the date and the time.");
-          rl = $("retD").value + " " + rt;
-        }
-      }
-      var dl = null;
-      if ($("dropD")) {
-        var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
-        if (dt === null) return saveErr("Type the time like 13:20 (or 1320).");
-        if ($("dropD").value !== od.key || (dt || "") !== od.time || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r))) {
-          if (!$("dropD").value || !dt) return saveErr("Enter the drop-off: the date and the time.");
-          dl = $("dropD").value + " " + dt;
-          if ((dl.slice(0, 10) !== od.key || dl.slice(0, 10) !== carSheetDay(r)) && !confirm("Move " + (r.reg || "this car") + " to PICKS " + biWhen(dl) + "?")) return;
-        }
-      }
-      var f = null, ct, st;
-      if ($("flightText")) {
-        f = normFlight($("flightText").value); ct = readTime("collectText"); st = readTime("schedText");
-        if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
-      }
-      if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
-      if (ph !== null && ph !== (r.phone || "")) { run("set_phone", { p_booking: r.id, p_phone: ph }, r, function (x) { x.phone = ph; }); saved = true; }
-      if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
-      if (dl) {
-        run("move_pick", { p_booking: r.id, p_drop_local: dl }, r, function (x) { x.drop_at = londonIso(dl); });
-        saved = true;
-      }
-      if (rl) {
-        if (r.kind === "picks") run("set_pick_return", { p_booking: r.id, p_return_local: rl }, r, function (x) { x.return_at = londonIso(rl); });
-        else run("set_return", { p_booking: r.id, p_return_local: rl }, r);
-        saved = true;
-      }
-      // The note first: turning a car into NO FLIGHT moves on to the
-      // collection-time screen, and a note typed alongside must not be lost.
-      if ($("noteText")) {
-        var text = $("noteText").value.trim();
-        if (text !== r.note) { run("set_note", { p_booking: r.id, p_note: text }, r, function (x) { x.note = text; }); saved = true; }
-      }
-      if (f !== null) {
-        if (f === "NO FLIGHT" && r.flight !== "NO FLIGHT") { panelRow = null; quick = { id: r.id, chain: false, suggest: [], noFlight: true }; drawQuickFlight(); return; }
-        // The old flight's time left in the box doesn't carry over to a new flight number.
-        if (f !== r.flight && st === (r.sched_time || "")) st = undefined;
-        if (f !== r.flight || (f === "NO FLIGHT" && ct !== undefined && ct !== (r.est_time || "")) || (st !== undefined && st !== (r.sched_time || ""))) { setFlight(r, f, ct, st); saved = true; }
-      }
-      if (saved) toast("Saved");
-      return $("panel").close();
-    }
+    if (t.dataset.savepanel !== undefined) { if (savePanelEdits(r)) $("panel").close(); return; }
     if (t.dataset.setyard) {
       var y = r.yard === t.dataset.setyard ? "" : t.dataset.setyard;
       run("set_yard", { p_booking: r.id, p_yard: y }, r, function (x) { x.yard = y; x.yard_before_t = ""; });
-      return openPanel(r);
+      keepTyped = true; try { return openPanel(r); } finally { keepTyped = false; }
     }
-    if (t.dataset.word) { var p = t.dataset.word.split(":"); tapDrop(r, p[0], p[1]); return $("panel").close(); }
-    if (t.dataset.pcall) { tapPick(r, "called", t.dataset.pcall); return $("panel").close(); }
-    if (t.dataset.pnoshow !== undefined) { tapPick(r, "intake", "No Show"); return $("panel").close(); }
+    // A mark pressed with boxes typed in saves them too (closing the panel dropped them); a box that can't be saved stops the mark.
+    if (t.dataset.word) { var p = t.dataset.word.split(":"); if (!savePanelEdits(r)) return; tapDrop(r, p[0], p[1]); return $("panel").close(); }
+    if (t.dataset.pcall) { if (!savePanelEdits(r)) return; tapPick(r, "called", t.dataset.pcall); return $("panel").close(); }
+    if (t.dataset.pnoshow !== undefined) { if (!savePanelEdits(r)) return; tapPick(r, "intake", "No Show"); return $("panel").close(); }
     if (t.dataset.ptcam !== undefined) return ptCamera(r);
     if (t.dataset.shutter !== undefined) return ptShoot(r);
     if (t.dataset.camtorch !== undefined) return camToggleTorch();
