@@ -24,11 +24,7 @@ html body .nc .btn.brand{background:#1b2a3a;color:#fff;border-color:#1b2a3a}.nc 
 .nc-warning{padding:12px;background:#fff4dc;border:1px solid #ecd39b;color:#754b0c;border-radius:5px;font-size:13px}.nc-empty{padding:40px 20px;text-align:center;background:white;border:1px solid #d6dfe8;color:#53657a}.nc-options{padding-top:20px}.nc-options .note{color:#586a7c;font-size:12px}
 .nc-bell{position:relative;flex-shrink:0}.nc-bell span:not(:empty){position:absolute;top:-5px;right:-5px;border-radius:10px;background:#be2637;color:white;font:700 10px/16px system-ui;padding:0 4px;min-width:16px}
 @media(max-width:430px){.nc-head{gap:4px}.nc-row{padding:14px 12px}.nc-meta{font-size:10px}.nc-detail{padding:16px}.nc-head .row-actions{margin-top:0}.nc .btn{padding:9px 11px}}
-/* Phones: no bell in the top bar (it would push the board down in Operations and Cards); the count sits on Menu. */
-@media(max-width:899px){#notifyBtn.nc-bell{display:none}}
-@media(max-width:899px){
-#menuBtn[data-unread],#bnav [data-bn="menuBtn"][data-unread]{position:relative}
-#menuBtn[data-unread]::after,#bnav [data-bn="menuBtn"][data-unread]::after{content:attr(data-unread);position:absolute;top:-4px;right:-4px;border-radius:10px;background:#be2637;color:#fff;font:700 10px/16px system-ui,sans-serif;padding:0 4px;min-width:16px;text-align:center;letter-spacing:0;pointer-events:none}
-#bnav [data-bn="menuBtn"][data-unread]::after{top:2px;right:calc(50% - 22px)}
-body:has(#bnav:not(.hidden)) #menuBtn[data-unread]::after{content:none}
-}
+/* Phones narrower than 340 px: a slimmer bell so the bar keeps one line. */
+@media(max-width:340px){#notifyBtn.nc-bell{min-width:0;width:22px;padding-left:0;padding-right:0}}
+/* Phones: while the bar says SAVING, CONNECTING or OFFLINE the bell steps aside so the bar stays one line (Refined puts that line under the bar). */
+@media(max-width:899px){html:not(.ops-refined) .bar:has(#sync.on) #notifyBtn.nc-bell{display:none}}

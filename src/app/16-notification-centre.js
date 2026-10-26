@@ -36,14 +36,11 @@
     }
   }
   function ncUnread() { return NC.items.filter(function (x) { return !x.read_at && !x.resolved; }).length; }
-  // Phones have no room for a bell in the top bar (Operations would go to two
-  // lines), so below 900 px the count sits on Menu instead; notifications.css.
   function notificationBadge() {
     var b = $('notifyBadge'), button = $('notifyBtn'); if (!b || !button) return;
     var n = ncUnread(), t = n ? (n > 99 ? '99+' : String(n)) : '';
     b.textContent = t;
     button.setAttribute('aria-label', 'Notifications' + (n ? ', ' + n + ' unread' : ''));
-    [$('menuBtn'), document.querySelector('#bnav [data-bn="menuBtn"]')].forEach(function (m) { if (!m) return; if (t) m.setAttribute('data-unread', t); else m.removeAttribute('data-unread'); });
   }
   function ncWhen(at) { return at ? dayShort(at) + ' ' + hhmm(at) : ''; }
   function ncItem(id) { return NC.items.filter(function (n) { return n.id === id || n.event_key === id; })[0]; }
