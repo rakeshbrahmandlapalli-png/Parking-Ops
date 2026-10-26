@@ -211,29 +211,64 @@
   function callGone(id) { POP.calls = POP.calls.filter(function (x) { return x.id !== id; }); callPopDraw(); }
   window.addEventListener("takeoff:call", function (e) { callEvent(e.detail); });
   function callRow(k) { return k.booking_id ? (S.rows || []).find(function (r) { return r.id === k.booking_id; }) : null; }
+  // 26 Oct redesign (the user's mock-up): status chip, reg and customer, number masked, return / status /
+  // location / key tag from the car, cars due out before it, Claim call and Open booking. Only what the
+  // car really holds is shown; no lane or position (that needs the Yard planner) and no invented queue.
+  function callMask(p) {
+    var d = String(dialable(p) || "").replace(/\D/g, "");
+    return d.length >= 8 ? (d.slice(0, 2) === "44" ? "+44 " : d.slice(0, 2)) + "••• •••" + d.slice(-3) : "";
+  }
+  function callStatus(r) {
+    if (r.kind === "picks") return r.intake === "Collected" ? "Parked in yard" : "Not taken in yet";
+    return r.cleared_at ? "Handed back" : r.sent_at ? "On its way" : r.called_at ? "Called" : r.flight_status === "landed" ? "Landed" : r.flight ? "Flight " + r.flight : "Waiting";
+  }
+  function callAhead(r) {
+    if (!r || r.kind !== "drops" || r.sent_at || r.cleared_at || r.removed_at || !r.return_at) return 0;
+    return (S.rows || []).filter(function (x) { return x !== r && x.kind === "drops" && waiting(x) && !x.removed_at && x.return_at && x.return_at < r.return_at; }).length;
+  }
+  function callPopCss() {
+    if ($("callPopCss")) return;
+    var st = document.createElement("style"); st.id = "callPopCss";
+    st.textContent = ".callpop{background:#fff;color:#16181D;border:1px solid #D9DDE3;border-top:4px solid var(--brand,#F9A01B);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:15px;overflow:hidden}" +
+      ".callpop.bad{border-top-color:#C62828}.callpop .cp-h,.callpop .cp-b,.callpop .cp-f{padding:10px 14px}.callpop .cp-h{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #E6E9EE;font-weight:600}" +
+      ".callpop .cp-chip{font-size:13px;font-weight:700;color:#B26A00}.callpop .cp-chip.ok{color:#1B7F3B}" +
+      ".callpop .cp-reg{font-size:22px;font-weight:800;letter-spacing:.5px}.callpop .cp-kind{font-size:13px;font-weight:700;color:#1B7F3B;background:#E7F5EC;border-radius:6px;padding:4px 8px;white-space:nowrap}" +
+      ".callpop .cp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.callpop .cp-sub{color:#5B6370;font-size:14px;margin-top:2px}" +
+      ".callpop .cp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;padding-top:10px;border-top:1px solid #E6E9EE}.callpop .cp-grid span{display:block;color:#5B6370;font-size:12px}.callpop .cp-grid b{font-size:15px}" +
+      ".callpop .cp-warn{margin-top:10px;background:#FFF3DC;color:#7A4A00;border-radius:8px;padding:8px 10px;font-size:14px}.callpop .cp-act{display:grid;gap:6px;margin-top:10px}.callpop .cp-act .btn{width:100%;justify-content:center;text-align:center}" +
+      ".callpop .cp-f{color:#5B6370;font-size:13px;background:#F5F6F8;border-top:1px solid #E6E9EE}";
+    document.head.appendChild(st);
+  }
   function callPopDraw() {
     var el = $("callPop");
     if (!POP.calls.length) { if (el) el.remove(); return; }
+    callPopCss();
     if (!el) {
       el = document.createElement("div"); el.id = "callPop"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
-      el.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:60;max-width:520px;margin:0 auto;display:grid;gap:6px";
+      el.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:60;max-width:430px;margin:0 auto;display:grid;gap:8px;max-height:calc(100vh - 16px);overflow:auto";
       document.body.appendChild(el);
     }
     el.innerHTML = POP.calls.map(function (k) {
-      var r = callRow(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed";
-      var who = k.booking_id ? "<b>" + esc(k.reg || "NO REG") + "</b> · " + esc(nice(k.name) || "Customer") + " · " + (k.kind === "picks" ? "PICKS, dropping off" : "DROPS, flying back" + (r && r.flight ? " · " + esc(r.flight) + (r.est_time ? " " + esc(r.est_time) : "") : ""))
-        : "<b>Not on today's cars</b>";
-      return '<div class="callpop" data-callid="' + k.id + '" style="background:#fff;color:#16181D;border:2px solid ' + (bad ? "#C62828" : "#1B7F3B") + ';border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:15px">' +
-        '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + (bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k)) + " · " + esc(phoneLabel(k.from_number) || "Number hidden") + "</span>" +
-        '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:20px;line-height:1;color:inherit">&times;</button></div>' +
-        '<div style="margin-top:4px">' + who + "</div>" + (callMarked(k) ? '<div style="margin-top:4px;color:#1B7F3B">' + esc(callMarked(k)) + "</div>" : "") +
-        (k.handled_name ? '<div style="margin-top:4px">' + esc(k.handled_name) + " has it</div>" : "") +
-        '<div class="row-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
-          (r && !done && !r.removed_at ? '<button type="button" class="btn brand small" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint">CALLED ✓</span>' : "") +
-          (r ? '<button type="button" class="btn ghost small" data-callopen="' + k.id + '">Open car</button>' : "") +
-          (!k.handled_name ? '<button type="button" class="btn ghost small" data-calltake="' + k.id + '">' + (bad ? "I'll call back" : "I've got it") + "</button>" : "") +
-          (bad && k.from_number ? '<a class="btn ghost small" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") +
-        "</div></div>";
+      var r = callRow(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed", hit = !!k.booking_id;
+      var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
+      var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
+      var mask = callMask(k.from_number) || "Number hidden";
+      var body = hit
+        ? '<div class="cp-top"><div><div class="cp-reg">' + esc(k.reg || "NO REG") + '</div><div style="font-weight:600;margin-top:2px">' + esc(nice(k.name) || "Customer") + '</div></div><span class="cp-kind">' + (k.kind === "picks" ? "PICKS" : "DROPS") + "</span></div>" +
+          '<div class="cp-sub">' + esc(mask) + " · Number matched</div>"
+        : '<div class="cp-reg" style="font-size:18px">Not on today\'s cars</div><div class="cp-sub">' + esc(mask) + " · Number not matched</div>";
+      var grid = hit && r ? '<div class="cp-grid"><div><span>Return due</span><b>' + esc(dayShort(r.return_at) + " · " + hhmm(r.return_at)) + "</b></div><div><span>Vehicle status</span><b>" + esc(callStatus(r)) + "</b></div>" +
+          "<div><span>Vehicle location</span><b>" + esc(r.yard ? YARD_LABEL[r.yard] || r.yard : "Not set") + "</b></div><div><span>Key tag</span><b>" + (r.num ? esc(r.num) : "—") + "</b></div></div>" : "";
+      var ahead = callAhead(r), warn = ahead ? '<div class="cp-warn"><b>' + ahead + (ahead === 1 ? " car" : " cars") + " due out before this one</b> · Check retrieval before confirming a time.</div>" : "";
+      var acts = '<div class="cp-act">' +
+        (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
+        (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
+        (r && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
+      return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
+        '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
+        '<div class="cp-b">' + body + grid + warn + (callMarked(k) ? '<div style="margin-top:8px;color:#1B7F3B">' + esc(callMarked(k)) + "</div>" : "") + acts + "</div>" +
+        '<div class="cp-f">' + (k.handled_name ? esc(k.handled_name) + " has it" : "No staff member assigned") + " · from the company phone " + esc(hhmm(k.at)) + "</div></div>";
     }).join("");
   }
   async function callTake(id, btn) {

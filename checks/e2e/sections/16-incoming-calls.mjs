@@ -20,7 +20,7 @@ for (const theme of ["", "pro", "cards", "premium", "board", "stdplus", "ops", "
   await open(page);
   await ring(page, { id: 9, company_id: "c1", at: ago(0), from_number: "07868 615571", booking_id: "b2", kind: "drops", reg: "CF75VLN", name: "KHAIRA MS", status: "ringing", marked: "", handled_name: "" }); await sleep(200);
   const pop = await page.innerText("#callPop");
-  check("Calls (" + look + "): a call pops up with the caller's car", /Incoming call/.test(pop) && /CF75VLN/.test(pop) && /DROPS/.test(pop) && await page.isVisible('[data-callmark="9"]'), pop);
+  check("Calls (" + look + "): a call pops up with the caller's car", /Incoming call/.test(pop) && /CF75VLN/.test(pop) && /DROPS/.test(pop) && /07••• •••571 · Number matched/.test(pop) && /Return due/.test(pop) && /Key tag/.test(pop) && /Unclaimed/.test(pop) && /Claim call/.test(pop) && /Open booking/.test(pop) && await page.isVisible('[data-callmark="9"]'), pop);
   const fits = await page.locator("#callPop").evaluate((e) => e.getBoundingClientRect().right <= window.innerWidth + 1);
   check("Calls (" + look + "): the pop-up fits the phone", fits);
   await page.click('[data-callmark="9"]'); await sleep(300);
