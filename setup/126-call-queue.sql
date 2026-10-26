@@ -1,5 +1,5 @@
 -- Part 126: call queue workflow (callback claim, outcomes, shared history). Apply after part 125.
--- From the 26 Oct call queue handoff. No DELETE or DROP: safe for the Supabase MCP.
+-- From the 26 Oct call queue handoff. Safe to apply with the Supabase MCP.
 -- Rollback: setup/rollback/126-call-queue-rollback.sql (SQL editor).
 begin;
 alter table public.customer_calls

@@ -199,7 +199,7 @@
   var POP = { calls: [], timers: {}, cars: {}, open: false, selected: '', tab: 'active', busy: false, seq: 0, ready: false, loading: false, error: '', timer: null, version: 0 };
   function callNeeds(k) { return k.status === 'missed' && !k.callback_resolved_at && k.callback_state !== 'legacy'; }
   // A call still ringing after 10 minutes never got its end from the phone (as the server reads it).
-  function callActive(k) { return k.status === 'ringing' && Date.now() - Date.parse(k.at) < 600000 || callNeeds(k); }
+  function callActive(k) { return k.status === 'ringing' && !(Date.now() - Date.parse(k.at) >= 600000) || callNeeds(k); }
   function callFind(id) { return POP.calls.find(function (k) { return String(k.id) === String(id); }); }
   function resetCallQueue() {
     POP.seq++; clearInterval(POP.timer); Object.keys(POP.timers).forEach(function (id) { clearTimeout(POP.timers[id]); });
