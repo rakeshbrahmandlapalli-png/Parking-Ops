@@ -325,6 +325,21 @@ function rpc(db, fn, a) {
     case "phone_pairing": { const h = db.phoneHealth || (db.phoneHealth = {}); if (a.p_action === "approve" && h.pending) Object.assign(h, { paired: true, online: false, paired_as: h.pending.name, paired_as_owner: false, pending: null }); else if (a.p_action === "refuse") h.pending = null; else if (a.p_action === "unpair") Object.assign(h, { paired: false, online: false, paired_as: null }); return h; }
     case "phone_text_review": { const t=(db.texts || []).find(x => +x.id===+a.p_id); if(t) t.reviewed_at=now(); return !!t; }
     case "set_calls": { if (db.me.role !== "owner") throw new Error("Only an owner can change calls."); db.company.calls = a.p; return a.p; }
+    case 'call_queue_feed': return structuredClone(db.callsLog || []);
+    case 'call_claim': {
+      const k=(db.callsLog || []).find(x=>x.id===a.p_call); if(!k) throw Error('Call not found.');
+      if(k.handled_by && k.handled_by!==db.me.id) throw Error('Already claimed by '+k.handled_name);
+      if(k.callback_resolved_at) throw Error('Call already resolved.');
+      Object.assign(k,{handled_by:db.me.id,handled_name:db.me.name,callback_state:'claimed'});return k;
+    }
+    case 'call_callback': {
+      const k=(db.callsLog || []).find(x=>x.id===a.p_call);if(!k || k.handled_by!==db.me.id)throw Error('Claim this call first.');
+      k.callback_state=a.p_outcome==='release'?'':a.p_outcome==='attempt'?'claimed':a.p_outcome;
+      if(a.p_outcome==='release'){k.handled_by=null;k.handled_name='';}
+      if(a.p_outcome==='retry')k.callback_due_at=new Date(Date.now()+900000).toISOString();
+      if(a.p_outcome==='resolved'){k.callback_resolved_at=now();k.callback_resolved_name=db.me.name;}
+      return k;
+    }
     case "call_take": { const k = (db.callsLog || []).find((x) => x.id === a.p_call); k.handled_by = db.me.id; k.handled_name = db.me.name || "RAKESH"; return k; }
     case "set_texts": { if (db.me.role !== "owner") throw new Error("Only an owner can change customer texts."); db.company.texts = a.p; return a.p; }
     case "set_exit_fee": db.company.exit_fee = a.p_fee; db.company.exit_free = a.p_free.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, "")); return { exit_fee: a.p_fee, exit_free: db.company.exit_free };

@@ -196,32 +196,70 @@
   function callWhat(k) { return k.status === "answered" ? "Answered" + (k.seconds ? " · " + callSecs(k.seconds) : "") : CALL_STATE[k.status] || k.status; }
   function callMarked(k) { return k.marked === "CALLED" ? (k.kind === "picks" ? "Pressed 2: on the way, marked CALLED" : "Pressed 1: landed, marked CALLED") : ""; }
   // ── the pop-up ──
-  var POP = { calls: [], timers: {} };
-  function callEvent(k) {
-    if (!k || !callsOn() || !can("callpop") || k.company_id && S.company && k.company_id !== S.company.id) return;
-    var i = POP.calls.findIndex(function (x) { return x.id === k.id; });
-    if (i >= 0) POP.calls[i] = Object.assign({}, POP.calls[i], k);
-    else if (k.status === "ringing") POP.calls.unshift(k); else return;
-    POP.calls = POP.calls.slice(0, 3);
-    // Answered calls disappear after a short while; missed calls stay until closed.
-    if (k.status === "answered") { clearTimeout(POP.timers[k.id]); POP.timers[k.id] = setTimeout(function () { callGone(k.id); }, 15000); }
-    if (S.view === "calls") S.callsList = null;
-    callPopDraw();
-    callLoadCar(POP.calls.find(function (x) { return x.id === k.id; }) || k);
+  var POP = { calls: [], timers: {}, cars: {}, open: false, selected: '', tab: 'active', busy: false, seq: 0, ready: false, loading: false, error: '', timer: null, version: 0 };
+  function callNeeds(k) { return k.status === 'missed' && !k.callback_resolved_at && k.callback_state !== 'legacy'; }
+  // A call still ringing after 10 minutes never got its end from the phone (as the server reads it).
+  function callActive(k) { return k.status === 'ringing' && !(Date.now() - Date.parse(k.at) >= 600000) || callNeeds(k); }
+  function callFind(id) { return POP.calls.find(function (k) { return String(k.id) === String(id); }); }
+  function resetCallQueue() {
+    POP.seq++; clearInterval(POP.timer); Object.keys(POP.timers).forEach(function (id) { clearTimeout(POP.timers[id]); });
+    POP.calls = []; POP.cars = {}; POP.timers = {}; POP.open = POP.busy = POP.ready = POP.loading = false; POP.error = ''; POP.selected = ''; POP.timer = null;
+    var el = $('callQueue'); if (el) el.remove(); document.body.classList.remove('has-call-dock', 'has-call-queue');
   }
-  function callGone(id) { POP.calls = POP.calls.filter(function (x) { return x.id !== id; }); callPopDraw(); }
+  function startCallQueue() {
+    clearInterval(POP.timer); if (!callsOn() || !can('callpop')) return;
+    loadCallQueue(); POP.timer = setInterval(function () { if (S.me && document.visibilityState === 'visible') loadCallQueue(); }, 45000);
+  }
+  async function loadCallQueue() {
+    if (!S.me || !callsOn() || !can('callpop') || POP.loading || POP.busy) return;
+    var seq = POP.seq, company = S.me.company_id, uid = S.me.id, version = POP.version;
+    POP.loading = true;
+    try {
+      var q = await sb.rpc('call_queue_feed');
+      if (seq !== POP.seq || !S.me || S.me.id !== uid || S.me.company_id !== company) return;
+      if (q.error) throw q.error;
+      if (!Array.isArray(q.data)) throw new Error('Could not load call queue.');
+      POP.ready = true; POP.error = '';
+      // Do not overwrite a newer Realtime event with a feed started before it.
+      if (version === POP.version) POP.calls = q.data;
+      callPopDraw();
+    } catch (e) {
+      if (seq === POP.seq) { POP.error = /PGRST202|42883/.test(String(e.code)) ? 'Call workflow needs its database update. Booking actions still work.' : 'Call queue could not refresh. Retry when connected.'; callPopDraw(); }
+    } finally { if (seq === POP.seq) POP.loading = false; }
+  }
+  function callEvent(k) {
+    if (!k || k.id == null || !S.me || !callsOn() || !can('callpop') || k.company_id && k.company_id !== S.me.company_id) return;
+    var old = callFind(k.id), i = POP.calls.indexOf(old); POP.version++;
+    var next = Object.assign({}, old || {}, k);
+    if (i >= 0) POP.calls[i] = next; else POP.calls.unshift(next);
+    if (!old && callActive(next)) { POP.open = true; POP.tab = 'active'; POP.selected = String(k.id); }
+    if (old && !callActive(next) && POP.selected === String(k.id)) POP.tab = 'history';
+    if (k.status === 'answered') { clearTimeout(POP.timers[k.id]); POP.timers[k.id] = setTimeout(function () { if (POP.selected === String(k.id)) callGone(k.id); }, 15000); }
+    if (Array.isArray(S.callsList)) { var ci = S.callsList.findIndex(function (x) { return String(x.id) === String(k.id); }); if (ci >= 0) S.callsList[ci] = next; else S.callsList.unshift(next); }
+    if (S.view === 'calls') render();
+    callPopDraw(); callLoadCar(next);
+  }
+  // Dismissal only collapses this screen. It never loses or resolves a missed call.
+  function callGone(id) { POP.open = false; var head = $('colHead'); if (head) head.scrollLeft = 0; callPopDraw(); var b = $('callQueueToggle'); if (b) b.focus(); }
+  function callShow(id) { POP.selected = String(id || POP.selected); POP.open = true; var k = callFind(POP.selected); POP.tab = k && !callActive(k) ? 'history' : 'active'; callPopDraw(); if (k) callLoadCar(k); var h = $('callQueueHeading'); if (h) h.focus(); }
+  document.addEventListener('scroll', function (e) { if (e.target && e.target.id === 'main' && POP.open && $('colHead')) $('colHead').scrollLeft = e.target.scrollLeft; }, true);
   window.addEventListener("takeoff:call", function (e) { callEvent(e.detail); });
   function callRow(k) { return k.booking_id ? (S.rows || []).find(function (r) { return r.id === k.booking_id; }) : null; }
   // The car's details when it is on another sheet than the one on screen: read once, shown, never edited from here.
-  POP.cars = {};
   function callCar(k) { return callRow(k) || (k.booking_id && POP.cars[k.booking_id]) || null; }
   async function callLoadCar(k) {
     if (!k.booking_id || callRow(k) || POP.cars[k.booking_id] !== undefined) return;
     POP.cars[k.booking_id] = null;
-    var q = await sb.from("bookings").select("*").eq("id", k.booking_id).maybeSingle();
-    if (q.data) { POP.cars[k.booking_id] = q.data; callPopDraw(); }
+    var seq = POP.seq;
+    try {
+      var q = await sb.from("bookings").select("*").eq("id", k.booking_id).maybeSingle();
+      if (seq !== POP.seq) return;
+      if (q.data) { POP.cars[k.booking_id] = q.data; callPopDraw(); }
+      else delete POP.cars[k.booking_id];
+    } catch (e) { if (seq === POP.seq) delete POP.cars[k.booking_id]; }
   }
   async function callOpenCar(k) {
+    POP.open = false; callPopDraw();
     var r = callRow(k); if (r) return openPanel(r);
     var b = callCar(k); if (!b) return;
     await openArchived(b.sheet_id, b.reg);
@@ -230,37 +268,36 @@
   }
   // 26 Oct redesign (the user's mock-up): status chip, reg and customer, number masked, return / status /
   // location / key tag from the car, cars due out before it, Claim call and Open booking. Only what the
-  // car really holds is shown; no lane or position (that needs the Yard planner) and no invented queue.
+  // car really holds is shown; no lane or position (that needs the Yard planner) and no inferred yard order.
   function callMask(p) {
     var d = String(dialable(p) || "").replace(/\D/g, "");
     return d.length >= 8 ? (d.slice(0, 2) === "44" ? "+44 " : d.slice(0, 2)) + "••• •••" + d.slice(-3) : "";
   }
   function callStatus(r) {
     if (r.kind === "picks") return r.intake === "Collected" ? "Parked in yard" : "Not taken in yet";
-    return r.cleared_at ? "Handed back" : r.sent_at ? "On its way" : r.called_at ? "Called" : r.flight_status === "landed" ? "Landed" : r.flight ? "Flight " + r.flight : "Waiting";
+    return r.cleared_at ? "Handed back" : r.sent_at ? "On its way" : r.called_word === "Overstay" ? "Overstay" : r.called_at ? "Called" : r.flight_status === "landed" ? "Landed" : r.flight ? "Flight " + r.flight : "Waiting";
   }
   // The car's own mark: a PICKS car marked NEW BOOKING says so, it was never called (26 Oct, LN13ELV showed CALLED ✓).
   function callMarkOn(r) {
     if (!r) return "";
-    if (r.kind === "drops") return r.called_at ? "CALLED" : "";
+    if (r.kind === "drops") return r.called_word === "Overstay" ? "OVERSTAY" : r.called_at ? "CALLED" : "";
     return r.pick_called === "New Booking" ? "NEW BOOKING" : r.pick_called ? "CALLED" : "";
   }
   function callAhead(r) {
     if (!r || r.kind !== "drops" || r.sent_at || r.cleared_at || r.removed_at || !r.return_at) return 0;
     return (S.rows || []).filter(function (x) { return x !== r && x.kind === "drops" && waiting(x) && !x.removed_at && x.return_at && x.return_at < r.return_at; }).length;
   }
-  function callPopCss() {
-    if ($("callPopCss")) return;
-    var st = document.createElement("style"); st.id = "callPopCss";
-    st.textContent = ".callpop{background:#fff;color:#16181D;border:1px solid #D9DDE3;border-top:4px solid var(--brand,#F9A01B);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:15px;overflow:hidden}" +
-      ".callpop.bad{border-top-color:#C62828}.callpop .cp-h,.callpop .cp-b,.callpop .cp-f{padding:10px 14px}.callpop .cp-h{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #E6E9EE;font-weight:600}" +
-      ".callpop .cp-chip{font-size:13px;font-weight:700;color:#B26A00}.callpop .cp-chip.ok{color:#1B7F3B}" +
-      ".callpop .cp-reg{font-size:22px;font-weight:800;letter-spacing:.5px}.callpop .cp-kind{font-size:13px;font-weight:700;color:#1B7F3B;background:#E7F5EC;border-radius:6px;padding:4px 8px;white-space:nowrap}" +
-      ".callpop .cp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.callpop .cp-sub{color:#5B6370;font-size:14px;margin-top:2px}" +
-      ".callpop .cp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;padding-top:10px;border-top:1px solid #E6E9EE}.callpop .cp-grid span{display:block;color:#5B6370;font-size:12px}.callpop .cp-grid b{font-size:15px}" +
-      ".callpop .cp-warn{margin-top:10px;background:#FFF3DC;color:#7A4A00;border-radius:8px;padding:8px 10px;font-size:14px}.callpop .cp-act{display:grid;gap:6px;margin-top:10px}.callpop .cp-act .btn{width:100%;justify-content:center;text-align:center}" +
-      ".callpop .cp-f{color:#5B6370;font-size:13px;background:#F5F6F8;border-top:1px solid #E6E9EE}";
-    document.head.appendChild(st);
+  function callAge(at) {
+    var minutes = Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 60000));
+    return !Number.isFinite(minutes) ? '' : minutes < 1 ? 'Just now' : minutes < 60 ? minutes + ' min ago' : minutes < 1440 ? Math.floor(minutes / 60) + ' h ago' : dayShort(at) + ' ' + hhmm(at);
+  }
+  function callOwner(k) { return !!(S.me && k.handled_by === S.me.id); }
+  function callWorkflow(k) {
+    if (k.callback_resolved_at) return 'Resolved by ' + (k.callback_resolved_name || k.handled_name || 'staff');
+    if (k.callback_state === 'legacy') return k.handled_name ? 'Previously handled · outcome not recorded' : 'Before the call queue · not called back';
+    if (k.callback_state === 'retry') return (Date.parse(k.callback_due_at) <= Date.now() ? 'Retry due ' : 'Retry ') + hhmm(k.callback_due_at) + ' · ' + (k.handled_name || 'Unclaimed');
+    if (k.callback_state === 'no_answer') return 'No answer · ' + (k.handled_name || 'Unclaimed');
+    return k.handled_name ? 'Claimed by ' + k.handled_name : callNeeds(k) && Date.now() - Date.parse(k.at) >= 300000 ? 'Callback overdue · Unclaimed' : 'Unclaimed';
   }
   // The marks the pop-up offers, on the car whichever sheet it is on (the card holds the booking row itself).
   function callMarkBtns(k, r) {
@@ -269,9 +306,11 @@
     if (r.kind === "drops") {
       if (r.cleared_at) return '<span class="hint" style="text-align:center">Handed back</span>';
       // Already SENT: it is on its way, but the customer rang, so CALLED can still be recorded (not AT DESK).
-      if (r.sent_at) return (r.called_at ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : can("called") ? b("called", "CALLED") : "") + '<span class="hint" style="text-align:center">On its way</span>';
+      // An OVERSTAY car says OVERSTAY, never CALLED, and gets no AT DESK (as on the board).
+      var on = '<span class="hint" style="text-align:center">' + callMarkOn(r) + " ✓</span>";
+      if (r.sent_at) return (r.called_at ? on : can("called") ? b("called", "CALLED") : "") + '<span class="hint" style="text-align:center">On its way</span>';
       var o = "";
-      if (!r.called_at) { if (can("called")) o += b("called", "CALLED"); } else o += '<span class="hint" style="text-align:center">CALLED ✓</span>';
+      if (!r.called_at) { if (can("called")) o += b("called", "CALLED"); } else o += on;
       if (can("desk") && r.called_word !== "Overstay" && !atDesk(r)) o += b("desk", "AT DESK");
       else if (atDesk(r)) o += '<span class="hint" style="text-align:center">AT DESK ✓</span>';
       return o;
@@ -279,44 +318,59 @@
     if (callMarkOn(r)) return '<span class="hint" style="text-align:center">' + callMarkOn(r) + " ✓</span>";
     return can("intake") ? b("called", "CALLED") : "";
   }
-  function callPopDraw() {
-    var el = $("callPop");
-    if (!POP.calls.length) { if (el) el.remove(); return; }
-    callPopCss();
-    if (!el) {
-      el = document.createElement("div"); el.id = "callPop"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
-      el.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:60;max-width:430px;margin:0 auto;display:grid;gap:8px;max-height:calc(100vh - 16px);overflow:auto";
-      document.body.appendChild(el);
+  function callDetail(k) {
+    var live = callRow(k), r = callCar(k), bad = k.status === 'missed', hit = !!k.booking_id;
+    var head = bad ? 'Missed call' : k.status === 'ringing' ? 'Incoming call' : callWhat(k);
+    var actions = '', disabled = POP.busy || !navigator.onLine || !POP.ready ? ' disabled' : '';
+    if (callActive(k) && !k.handled_by) actions += '<button type="button" class="btn cp-primary" data-calltake="' + k.id + '"' + disabled + '>' + (bad ? 'Claim callback' : 'Claim call') + '</button>';
+    if (r) actions += '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>';
+    if (bad && callOwner(k) && !k.callback_resolved_at && k.callback_state !== 'legacy') {
+      if (dialable(k.from_number)) actions += '<a class="btn cp-primary" data-calldial="' + k.id + '" href="tel:' + esc(dialable(k.from_number)) + '">Call customer</a>';
+      actions += '<p class="cp-note">After your callback, record what happened.</p><div class="cp-outcomes">' + [['no_answer','No answer'],['retry','Try in 15 min'],['resolved','Resolved']].map(function (x) { return '<button type="button" class="btn ghost" data-calloutcome="' + k.id + '" data-callresult="' + x[0] + '"' + disabled + '>' + x[1] + '</button>'; }).join('') + '</div>';
     }
-    el.innerHTML = POP.calls.map(function (k) {
-      var live = callRow(k), r = live || callCar(k), mark = callMarkOn(r), bad = k.status === "missed", hit = !!k.booking_id;
-      var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
-      var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
-      var mask = callMask(k.from_number) || "Number hidden";
-      var body = hit
-        ? '<div class="cp-top"><div><div class="cp-reg">' + esc(k.reg || "NO REG") + '</div><div style="font-weight:600;margin-top:2px">' + esc(nice(k.name) || "Customer") + '</div></div><span class="cp-kind">' + (k.kind === "picks" ? "PICKS" : "DROPS") + "</span></div>" +
-          '<div class="cp-sub">' + esc(mask) + " · Number matched</div>"
-        : '<div class="cp-reg" style="font-size:18px">Not on today\'s cars</div><div class="cp-sub">' + esc(mask) + " · Number not matched</div>";
-      var grid = hit && r ? '<div class="cp-grid"><div><span>Return due</span><b>' + esc(dayShort(r.return_at) + " · " + hhmm(r.return_at)) + "</b></div><div><span>Vehicle status</span><b>" + esc(callStatus(r)) + "</b></div>" +
-          "<div><span>Vehicle location</span><b>" + esc(r.yard ? YARD_LABEL[r.yard] || r.yard : "Not set") + "</b></div><div><span>Key tag</span><b>" + (r.num ? esc(r.num) : "—") + "</b></div></div>" : "";
-      var ahead = live ? callAhead(live) : 0, warn = ahead ? '<div class="cp-warn"><b>' + ahead + (ahead === 1 ? " car" : " cars") + " due out before this one</b> · Check retrieval before confirming a time.</div>" : "";
-      var acts = '<div class="cp-act">' +
-        (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
-        (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        callMarkBtns(k, r) +
-        (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
-      return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
-        '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
-        '<div class="cp-b">' + body + grid + warn + (callMarked(k) ? '<div style="margin-top:8px;color:#1B7F3B">' + esc(callMarked(k)) + "</div>" : "") + acts + "</div>" +
-        '<div class="cp-f">' + (k.handled_name ? esc(k.handled_name) + " has it" : "No staff member assigned") + " · from the company phone " + esc(hhmm(k.at)) + "</div></div>";
-    }).join("");
+    if (callActive(k) && k.handled_by && (callOwner(k) || S.me.role === 'owner' || S.me.role === 'manager')) actions += '<button type="button" class="btn ghost" data-calloutcome="' + k.id + '" data-callresult="release"' + disabled + '>Release claim</button>';
+    var ahead = live ? callAhead(live) : 0;
+    var same = dialable(k.from_number), repeats = same ? POP.calls.filter(function (x) { return dialable(x.from_number) === same; }).length : 0;
+    return '<article class="callpop' + (bad ? ' bad' : '') + '" data-callid="' + k.id + '"><div class="cp-h"><b>' + head + '</b><time>' + esc(callAge(k.at)) + '</time></div><div class="cp-b"><div class="cp-top"><div><div class="cp-reg">' + esc(k.reg || (hit ? 'NO REG' : 'Unknown caller')) + '</div><div class="cp-name">' + esc(nice(k.name) || (hit ? 'Customer' : "Not on today's cars")) + '</div></div>' + (hit ? '<span class="cp-kind">' + (k.kind === 'picks' ? 'PICKS' : 'DROPS') + '</span>' : '') + '</div><div class="cp-sub">' + esc(callMask(k.from_number) || 'Number hidden') + (hit ? ' · Number matched' : ' · Number not matched') + '</div>' + (repeats > 1 ? '<p class="cp-note">' + repeats + ' calls from this number</p>' : '') + '<p class="cp-chip">' + esc(callWorkflow(k)) + '</p>' +
+      (r ? '<dl class="cp-grid"><div><dt>Return due</dt><dd>' + esc(r.return_at ? dayShort(r.return_at) + ' · ' + hhmm(r.return_at) : 'Not recorded') + '</dd></div><div><dt>Vehicle status</dt><dd>' + esc(callStatus(r)) + '</dd></div><div><dt>Vehicle location</dt><dd>' + esc(r.yard ? YARD_LABEL[r.yard] || r.yard : 'Not set') + '</dd></div><div><dt>Key tag</dt><dd>' + esc(r.num == null ? '—' : String(r.num)) + '</dd></div></dl>' : hit ? '<p class="cp-note">Booking details unavailable. Refresh to retry.</p>' : '') +
+      (ahead ? '<p class="cp-warn">' + ahead + ' cars due out before this one. Check retrieval before confirming a time.</p>' : '') +
+      (callMarked(k) ? '<p class="cp-note">' + esc(callMarked(k)) + '</p>' : '') + '<div class="cp-act">' + actions + '</div>' +
+      (r ? '<div class="cp-booking"><span>Booking actions</span>' + callMarkBtns(k, r) + '</div>' : '') +
+      (k.callback_resolved_at ? '<p class="cp-note">Completed ' + esc(dayShort(k.callback_resolved_at) + ' ' + hhmm(k.callback_resolved_at)) + '</p>' : bad && !k.handled_by ? '<p class="cp-note">Claim this callback so the team knows who is handling it.</p>' : '') + '</div></article>';
   }
-  async function callTake(id, btn) {
-    if (btn) btn.disabled = true;
-    var r = await sb.rpc("call_take", { p_call: +id });
-    if (r.error) { if (btn) btn.disabled = false; return toast(r.error.message, true); }
-    callEvent(r.data); if (S.view === "calls") loadCalls();
+  function callPopDraw() {
+    var el = $('callQueue');
+    if (!S.me || !callsOn() || !can('callpop') || (!POP.calls.length && !POP.error)) { if (el) el.remove(); document.body.classList.remove('has-call-dock', 'has-call-queue'); return; }
+    var active = POP.calls.filter(callActive), list = POP.tab === 'history' ? POP.calls.filter(function (k) { return !callActive(k); }) : active;
+    var selected = list.find(function (k) { return String(k.id) === POP.selected; }) || list[0];
+    if (selected) POP.selected = String(selected.id);
+    if (!el) { el = document.createElement('section'); el.id = 'callQueue'; el.setAttribute('aria-label', 'Company call queue'); document.body.appendChild(el); }
+    var focus = document.activeElement, focusKey = focus && el.contains(focus) ? ['calltake','calloutcome','callselect','callbrowse','calltab','calltoggle','callclose','calldial','callopen'].filter(function (key) { return focus.dataset[key] !== undefined; }).map(function (key) { return [key,focus.dataset[key],focus.dataset.callresult]; })[0] : null;
+    document.body.classList.toggle('has-call-dock', POP.open); document.body.classList.toggle('has-call-queue', !POP.open);
+    el.innerHTML = '<button type="button" id="callQueueToggle" class="cp-toggle" data-calltoggle aria-controls="callPop" aria-expanded="' + POP.open + '"><span>Calls <b class="cp-count">' + active.length + '</b></span><span>' + (active.length ? 'Needs attention' : 'Call history') + '</span></button>' +
+      (POP.open ? '<aside id="callPop" aria-labelledby="callQueueHeading"><header class="cp-panel-head"><div><h2 id="callQueueHeading" tabindex="-1">Calls <span class="cp-count">' + active.length + '</span></h2><p>' + active.length + ' outstanding</p></div><button type="button" data-callclose="' + (selected ? selected.id : 'queue') + '" aria-label="Minimise call queue">×</button></header><div class="cp-tabs"><button type="button" data-calltab="active" aria-pressed="' + (POP.tab === 'active') + '">Needs attention (' + active.length + ')</button><button type="button" data-calltab="history" aria-pressed="' + (POP.tab === 'history') + '">History</button></div>' +
+      (POP.error ? '<p class="cp-error" role="status">' + esc(POP.error) + ' <button type="button" data-callrefresh>Refresh</button></p>' : '') +
+      (selected && list.length > 1 ? '<nav class="cp-pager" aria-label="Browse calls"><button type="button" aria-label="Previous call" data-callbrowse="' + list[(list.indexOf(selected) + list.length - 1) % list.length].id + '">‹</button><span>Call ' + (list.indexOf(selected) + 1) + ' of ' + list.length + '</span><button type="button" aria-label="Next call" data-callbrowse="' + list[(list.indexOf(selected) + 1) % list.length].id + '">›</button></nav>' : '') + '<div class="cp-scroll">' + (selected ? callDetail(selected) : '<p class="cp-empty">No calls in this queue.</p>') + '<div class="cp-list">' + list.filter(function (k) { return k !== selected; }).map(function (k) { return '<button type="button" data-callselect="' + k.id + '"><span><b>' + esc(k.reg || 'Unknown caller') + '</b><small>' + esc(callWorkflow(k)) + '</small></span><time>' + esc(callAge(k.at)) + '</time></button>'; }).join('') + '</div></div><footer class="cp-footer">Company phone · Claims are shared with your team</footer></aside>' : '');
+    if (focusKey) { var target = el.querySelector('[data-' + focusKey[0] + '="' + focusKey[1] + '"]' + (focusKey[2] ? '[data-callresult="' + focusKey[2] + '"]' : '')); if (target) target.focus({preventScroll:true}); }
   }
+  async function callAct(id, result, btn) {
+    if (POP.busy || !S.me) return;
+    if (!navigator.onLine) return toast('Connect before changing a shared call.', true);
+    if (!POP.ready) return toast('Apply the call workflow database update first.', true);
+    var seq = POP.seq, uid = S.me.id;
+    POP.busy = true; if (btn) btn.disabled = true;
+    try {
+      var q = await sb.rpc(result === 'claim' ? 'call_claim' : 'call_callback', result === 'claim' ? {p_call:+id} : {p_call:+id,p_outcome:result});
+      if (seq !== POP.seq || !S.me || S.me.id !== uid) return;
+      if (q.error) throw q.error;
+      if (!q.data || q.data.id == null) throw new Error('The call was not saved. Refresh and try again.');
+      callEvent(q.data); toast(result === 'claim' ? 'Call claimed' : result === 'resolved' ? 'Callback resolved' : result === 'release' ? 'Claim released' : result === 'retry' ? 'Retry in 15 minutes' : result === 'attempt' ? 'Dialler opened; confirm the outcome afterwards' : 'No answer recorded');
+      loadNotificationCentre();
+    } catch (e) { if (seq === POP.seq) toast(e.message || 'Could not update this call.', true); }
+    finally { if (seq === POP.seq) { POP.busy = false; callPopDraw(); if (S.view === 'calls') loadCalls(); } }
+  }
+  async function callTake(id, btn) { return callAct(id, 'claim', btn); }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && POP.open && !document.querySelector('dialog[open]')) { e.preventDefault(); callGone(POP.selected); } });
   async function callMark(id, what) {
     var k = POP.calls.find(function (x) { return String(x.id) === String(id); }), r = k && callCar(k); if (!r) return;
     var live = callRow(k);
@@ -336,7 +390,7 @@
   // ── on the car: its calls, with the texts ──
   async function carCalls(r) {
     var el = $("carCalls"); if (!el) return;
-    var q = await sb.from("customer_calls").select("id, at, from_number, status, seconds, marked, kind, handled_name").eq("booking_id", r.id).order("at", { ascending: false }).limit(20);
+    var q = await sb.from("customer_calls").select("*").eq("booking_id", r.id).order("at", { ascending: false }).limit(20);
     el = $("carCalls"); if (!el || panelRow !== r) return;
     var list = q.error ? null : q.data || [];
     el.innerHTML = (isOps() ? '<div class="hint" style="margin-top:8px">Calls</div>' : "<label>CALLS</label>") + (list === null ? '<p class="hint">Couldn\'t load the calls.</p>' : !list.length ? '<p class="hint">No calls from this customer yet.</p>' :
@@ -348,26 +402,26 @@
   // ── Menu → Calls: today's calls, missed first ──
   async function loadCalls() {
     var since = new Date(Date.now() - 24 * 3600000).toISOString();
-    var q = await sb.from("customer_calls").select("*").gte("at", since).order("at", { ascending: false }).limit(300);
+    var q = can('callpop') && POP.ready ? await sb.rpc('call_queue_feed') : await sb.from("customer_calls").select("*").gte("at", since).order("at", { ascending: false }).limit(300);
     S.callsList = q.error ? false : q.data || [];
     if (S.view === "calls") render();
   }
   function renderCalls() {
-    if (!callsAddon() || !can("called")) return '<div class="msg">Calls aren\'t switched on.</div>';
+    if (!callsAddon() || !(can("called") || can("callpop"))) return '<div class="msg">Calls aren\'t switched on.</div>';
     if (S.callsList === undefined || S.callsList === null) { S.callsList = 0; loadCalls(); }
     var head = (isOps() ? '<div class="ops-head"><h1>Calls</h1></div>' : "<h2>Calls</h2>") + (callsOn() ? "" : '<p class="note">Calls are off. An owner switches them on in Settings → Calls.</p>');
     if (!S.callsList) return head + '<p class="hint">' + (S.callsList === false ? "Couldn't load the calls." : "Loading…") + "</p>";
-    var f = S.callsFilter || "all", L0 = S.callsList, missed = L0.filter(function (k) { return k.status === "missed" && !k.handled_name; });
+    var f = S.callsFilter || "all", L0 = S.callsList, missed = L0.filter(function (k) { return callNeeds(k); });
     var list = f === "missed" ? missed : f === "unknown" ? L0.filter(function (k) { return !k.booking_id; }) : missed.concat(L0.filter(function (k) { return missed.indexOf(k) < 0; }));
     var tab = function (k, t, n) { return '<button type="button" data-callsf="' + k + '" class="' + (f === k ? "on" : "") + '"' + ' aria-pressed="' + (f === k) + '">' + t + (n !== undefined ? " (" + n + ")" : "") + "</button>"; };
     return head + '<div class="pseg" style="margin:10px 0">' + tab("all", "All", L0.length) + tab("missed", "To call back", missed.length) + tab("unknown", "Not on a booking", L0.filter(function (k) { return !k.booking_id; }).length) + "</div>" +
-      (!list.length ? '<p class="hint">No calls in the last 24 hours.</p>' : '<div class="box hist calls" style="max-height:none;overflow:visible">' + list.map(function (k) {
-        var bad = k.status === "missed" && !k.handled_name;
+      (!list.length ? '<p class="hint">No calls to show. Recent history covers the last 24 hours.</p>' : '<div class="box hist calls" style="max-height:none;overflow:visible">' + list.map(function (k) {
+        var bad = callNeeds(k);
         return '<div style="padding:8px 10px;border-bottom:1px solid rgba(0,0,0,.08)"><span class="hw num">' + esc(hhmm(k.at)) + '</span><span class="hb"><b class="' + (bad ? "bad" : "") + '">' + esc(callWhat(k)) + "</b> · " +
           esc(phoneLabel(k.from_number) || "Number hidden") + " · " + (k.booking_id ? "<b>" + esc(k.reg || "NO REG") + "</b> " + esc(nice(k.name)) + " (" + (k.kind === "picks" ? "PICKS" : "DROPS") + ")" : "not on a booking") +
-          (callMarked(k) ? '<span class="hv">' + esc(callMarked(k)) + "</span>" : "") + (k.handled_name ? '<span class="hv">' + esc(k.handled_name) + (k.status === "missed" ? " called back" : " took it") + "</span>" : "") +
-          '<span class="row-actions" style="display:flex;gap:6px;margin-top:6px">' + (k.from_number ? '<a class="btn ghost small" href="tel:' + esc(dialable(k.from_number)) + '">Call</a>' : "") +
-          (bad ? '<button type="button" class="btn small" data-calltake="' + k.id + '">Called back</button>' : "") + "</span></span></div>";
+          (callMarked(k) ? '<span class="hv">' + esc(callMarked(k)) + "</span>" : "") + (k.handled_name || k.callback_resolved_at || k.callback_state === "legacy" ? '<span class="hv">' + esc(callWorkflow(k)) + "</span>" : "") +
+          '<span class="row-actions" style="display:flex;gap:6px;margin-top:6px">' + (!bad && k.from_number ? '<a class="btn ghost small" href="tel:' + esc(dialable(k.from_number)) + '">Call</a>' : "") +
+          (bad ? '<button type="button" class="btn small" data-callreview="' + k.id + '">Review callback</button>' : "") + "</span></span></div>";
       }).join("") + "</div>");
   }
   // ── Settings → Calls (owners) ──
