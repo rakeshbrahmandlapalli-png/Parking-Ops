@@ -239,6 +239,12 @@
     if (r.kind === "picks") return r.intake === "Collected" ? "Parked in yard" : "Not taken in yet";
     return r.cleared_at ? "Handed back" : r.sent_at ? "On its way" : r.called_at ? "Called" : r.flight_status === "landed" ? "Landed" : r.flight ? "Flight " + r.flight : "Waiting";
   }
+  // The car's own mark: a PICKS car marked NEW BOOKING says so, it was never called (26 Oct, LN13ELV showed CALLED ✓).
+  function callMarkOn(r) {
+    if (!r) return "";
+    if (r.kind === "drops") return r.called_at ? "CALLED" : "";
+    return r.pick_called === "New Booking" ? "NEW BOOKING" : r.pick_called ? "CALLED" : "";
+  }
   function callAhead(r) {
     if (!r || r.kind !== "drops" || r.sent_at || r.cleared_at || r.removed_at || !r.return_at) return 0;
     return (S.rows || []).filter(function (x) { return x !== r && x.kind === "drops" && waiting(x) && !x.removed_at && x.return_at && x.return_at < r.return_at; }).length;
@@ -266,7 +272,7 @@
       document.body.appendChild(el);
     }
     el.innerHTML = POP.calls.map(function (k) {
-      var live = callRow(k), r = live || callCar(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed", hit = !!k.booking_id;
+      var live = callRow(k), r = live || callCar(k), mark = callMarkOn(r), bad = k.status === "missed", hit = !!k.booking_id;
       var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
       var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
       var mask = callMask(k.from_number) || "Number hidden";
@@ -280,7 +286,7 @@
       var acts = '<div class="cp-act">' +
         (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
         (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        (live && can("called") && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        (live && can("called") && !mark && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : mark ? '<span class="hint" style="text-align:center">' + mark + " ✓</span>" : "") +
         (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
       return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
         '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
