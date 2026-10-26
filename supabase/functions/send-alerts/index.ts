@@ -13,6 +13,8 @@
 //       Nothing in the message is trusted except which booking to look at:
 //       the booking is re-read here, an alert only goes if it is really due
 //       and recent, and alert_log makes sure each one goes out once.
+//   { type: "call", id }  by the customer_calls trigger (setup/123-call-popups.sql): a new ringing call is pushed
+//       once to the people in call_alert_staff() (the Call pop-ups permission, their own switch on), not to Discord.
 //   { type: "test", discord? }  by the "Send a test" buttons, with a sign-in.
 //       Sends to the caller's own phones; Discord only for owner/manager.
 //   { type: "longwait" }  by the 5-minute timer (setup/88-long-wait-alert.sql),
@@ -155,6 +157,23 @@ async function onBooking(id: string) {
   return { sent };
 }
 
+// An incoming call (setup 123): once per call, to everyone allowed call pop-ups with their switch on.
+async function onCall(id: number) {
+  const { data: k } = await db.from("customer_calls").select("*").eq("id", id).maybeSingle();
+  if (!k || k.status !== "ringing" || Date.now() - new Date(k.at).getTime() > 3 * 60000) return { sent: 0 };
+  if (!(await once(`call:${k.id}`))) return { sent: 0 };
+  const { data: b } = k.booking_id ? await db.from("bookings").select("kind, reg, name, yard, num, return_at, drop_at").eq("id", k.booking_id).maybeSingle() : { data: null };
+  const { data: ids } = await db.rpc("call_alert_staff", { p_company: k.company_id });
+  const d = String(k.from_number || "").replace(/\D/g, "");
+  const mask = d.length >= 8 ? (d.startsWith("44") ? "+44 " : d.slice(0, 2)) + "••• •••" + d.slice(-3) : "number hidden";
+  const title = b ? `📞 Incoming call: ${b.reg || "no reg"} — ${b.name || "Customer"}` : "📞 Incoming call: not on today's cars";
+  const bits = b
+    ? [b.kind === "picks" ? "PICKS" : "DROPS", b.return_at ? "return " + new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(b.return_at)) : "", b.yard ? "yard " + b.yard : "", b.num ? "key " + b.num : "", mask]
+    : [mask];
+  const sent = await pushTo((ids ?? []) as string[], null, { title, body: bits.filter(Boolean).join(" · "), url: "/", tag: `call-${k.id}` });
+  return { sent };
+}
+
 async function fromTimer(req: Request) {
   const { data: ok } = await db.rpc("timer_secret_ok", { p_secret: req.headers.get("x-timer") ?? "" });
   return ok === true;
@@ -273,6 +292,7 @@ Deno.serve(async (req) => {
   try { msg = await req.json(); } catch { return reply(400, { error: "Bad request." }); }
   try {
     if (msg.type === "booking" && /^[0-9a-f-]{36}$/i.test(String(msg.id))) return reply(200, await onBooking(String(msg.id)));
+    if (msg.type === "call" && Number.isInteger(msg.id)) return reply(200, await onCall(Number(msg.id)));
     if (msg.type === "test") return await onTest(req, msg);
     if (msg.type === "longwait") return await onLongWait(req);
     if (msg.type === "usage") return await onUsage(req);

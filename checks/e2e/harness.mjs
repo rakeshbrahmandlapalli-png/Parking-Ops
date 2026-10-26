@@ -238,7 +238,7 @@ function rpc(db, fn, a) {
     case "my_permissions": {
       const extra = db.me.extra || [];
       const collections = db.company.slug !== "platform" && db.company.brand?.collections !== false && !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
-      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake"].map((k) => [k, true]))) };
+      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake", "callpop"].map((k) => [k, true]))) };
     }
     case "set_staff_access": {
       if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");

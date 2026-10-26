@@ -198,7 +198,7 @@
   // ── the pop-up ──
   var POP = { calls: [], timers: {} };
   function callEvent(k) {
-    if (!k || !callsOn() || !can("called") || k.company_id && S.company && k.company_id !== S.company.id) return;
+    if (!k || !callsOn() || !can("callpop") || k.company_id && S.company && k.company_id !== S.company.id) return;
     var i = POP.calls.findIndex(function (x) { return x.id === k.id; });
     if (i >= 0) POP.calls[i] = Object.assign({}, POP.calls[i], k);
     else if (k.status === "ringing") POP.calls.unshift(k); else return;
@@ -280,7 +280,7 @@
       var acts = '<div class="cp-act">' +
         (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
         (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        (live && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        (live && can("called") && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
         (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
       return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
         '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +

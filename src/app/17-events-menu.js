@@ -349,7 +349,7 @@
     if (t.dataset.file) { if(S.imp.saving||S.imp.checking||S.imp.stage==="reading")return; var f = t.files && t.files[0]; if (!f) return; S.imp[t.dataset.file + "File"] = f; if(t.dataset.file==="excel"){var fs1=Array.from(t.files);if(S.imp.stage==="pick"&&S.imp.bookingFiles)fs1=S.imp.bookingFiles.concat(fs1).filter(function(x,i,a){return a.findIndex(function(y){return y.name===x.name&&y.size===x.size&&y.lastModified===x.lastModified;})===i;});else S.imp.pdfFile=null;S.imp.bookingFiles=fs1;}S.imp.error="";S.imp.stage="pick";S.imp.plan=null;S.imp.fileInfo=null;S.imp.pending=null;render();return; }
     if (t.dataset.alertpref !== undefined) {
       var P = Object.assign({ drops: true, picks: true, flights: true }, S.notify.prefs); P[t.dataset.alertpref] = t.checked;
-      var pr = await sb.rpc("set_alert_prefs", { p_drops: P.drops !== false, p_picks: P.picks !== false, p_flights: P.flights !== false });
+      var pr = t.dataset.alertpref === "calls" ? await sb.rpc("set_call_alerts", { p_on: t.checked }) : await sb.rpc("set_alert_prefs", { p_drops: P.drops !== false, p_picks: P.picks !== false, p_flights: P.flights !== false });
       if (pr.error) { t.checked = !t.checked; toast(pr.error.message, true); } else S.notify.prefs = pr.data;
       return;
     }

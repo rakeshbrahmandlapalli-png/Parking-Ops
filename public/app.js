@@ -5649,13 +5649,13 @@
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
   var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
-    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"] };
+    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"], callpop: ["office", "manager"] };
   var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
-    ["collections", "View board collections"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+    ["collections", "View board collections"], ["callpop", "Call pop-ups and call alerts"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
-  function permShown(x) { return x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
+  function permShown(x) { return x[0] === "callpop" ? !!(S.company && S.company.brand && S.company.brand.calls === true) : x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
@@ -6261,7 +6261,7 @@
   // Home Screen (iOS 16.4+). This public key pairs with VAPID_PRIVATE_KEY, a
   // secret held only by the send-alerts Edge Function.
   var VAPID_PUBLIC_KEY = "BIUvnDQXjj4nWd2EIx7kLAGTTWamJ0oM1V806Ubh7HeiUJfaZWRxwvlUrP7pZTVULpFOYBbWrKtmSC1AmdNtnWw";
-  var ALERT_KINDS = [["drops", "DROPS: CALLED, AT DESK, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"]];
+  var ALERT_KINDS = [["drops", "DROPS: CALLED, AT DESK, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"], ["calls", "Incoming calls"]];
   function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
   function iosOutsideHomeScreen() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(navigator.standalone === true || matchMedia("(display-mode: standalone)").matches); }
   function keyBytes(k) { var raw = atob((k + "=".repeat((4 - k.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
@@ -6288,7 +6288,7 @@
     else if (N.on) text = "On for this phone.";
     else { text = "Off for this phone."; canOn = true; }
     return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Phone notifications</strong><p class="note" style="margin:4px 0 10px">' + esc(text) + "</p>" +
-      (N.on ? ALERT_KINDS.map(function (k) {
+      (N.on ? ALERT_KINDS.filter(function (k) { return k[0] !== "calls" || (callsAddon() && can("callpop")); }).map(function (k) {
         return '<label class="check"><input type="checkbox" data-alertpref="' + k[0] + '"' + (N.prefs[k[0]] === false ? "" : " checked") + "> " + esc(k[1]) + "</label>";
       }).join("") : "") +
       '<div class="row-actions">' + (canOn ? '<button type="button" class="btn brand" data-notifyon>Turn on notifications</button>' : "") +
@@ -6746,7 +6746,7 @@
   // ── the pop-up ──
   var POP = { calls: [], timers: {} };
   function callEvent(k) {
-    if (!k || !callsOn() || !can("called") || k.company_id && S.company && k.company_id !== S.company.id) return;
+    if (!k || !callsOn() || !can("callpop") || k.company_id && S.company && k.company_id !== S.company.id) return;
     var i = POP.calls.findIndex(function (x) { return x.id === k.id; });
     if (i >= 0) POP.calls[i] = Object.assign({}, POP.calls[i], k);
     else if (k.status === "ringing") POP.calls.unshift(k); else return;
@@ -6828,7 +6828,7 @@
       var acts = '<div class="cp-act">' +
         (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
         (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        (live && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        (live && can("called") && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
         (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
       return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
         '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
@@ -7281,7 +7281,7 @@
     if (t.dataset.file) { if(S.imp.saving||S.imp.checking||S.imp.stage==="reading")return; var f = t.files && t.files[0]; if (!f) return; S.imp[t.dataset.file + "File"] = f; if(t.dataset.file==="excel"){var fs1=Array.from(t.files);if(S.imp.stage==="pick"&&S.imp.bookingFiles)fs1=S.imp.bookingFiles.concat(fs1).filter(function(x,i,a){return a.findIndex(function(y){return y.name===x.name&&y.size===x.size&&y.lastModified===x.lastModified;})===i;});else S.imp.pdfFile=null;S.imp.bookingFiles=fs1;}S.imp.error="";S.imp.stage="pick";S.imp.plan=null;S.imp.fileInfo=null;S.imp.pending=null;render();return; }
     if (t.dataset.alertpref !== undefined) {
       var P = Object.assign({ drops: true, picks: true, flights: true }, S.notify.prefs); P[t.dataset.alertpref] = t.checked;
-      var pr = await sb.rpc("set_alert_prefs", { p_drops: P.drops !== false, p_picks: P.picks !== false, p_flights: P.flights !== false });
+      var pr = t.dataset.alertpref === "calls" ? await sb.rpc("set_call_alerts", { p_on: t.checked }) : await sb.rpc("set_alert_prefs", { p_drops: P.drops !== false, p_picks: P.picks !== false, p_flights: P.flights !== false });
       if (pr.error) { t.checked = !t.checked; toast(pr.error.message, true); } else S.notify.prefs = pr.data;
       return;
     }
