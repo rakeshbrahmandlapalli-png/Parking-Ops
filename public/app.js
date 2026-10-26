@@ -6755,10 +6755,27 @@
     if (k.status === "answered") { clearTimeout(POP.timers[k.id]); POP.timers[k.id] = setTimeout(function () { callGone(k.id); }, 15000); }
     if (S.view === "calls") S.callsList = null;
     callPopDraw();
+    callLoadCar(POP.calls.find(function (x) { return x.id === k.id; }) || k);
   }
   function callGone(id) { POP.calls = POP.calls.filter(function (x) { return x.id !== id; }); callPopDraw(); }
   window.addEventListener("takeoff:call", function (e) { callEvent(e.detail); });
   function callRow(k) { return k.booking_id ? (S.rows || []).find(function (r) { return r.id === k.booking_id; }) : null; }
+  // The car's details when it is on another sheet than the one on screen: read once, shown, never edited from here.
+  POP.cars = {};
+  function callCar(k) { return callRow(k) || (k.booking_id && POP.cars[k.booking_id]) || null; }
+  async function callLoadCar(k) {
+    if (!k.booking_id || callRow(k) || POP.cars[k.booking_id] !== undefined) return;
+    POP.cars[k.booking_id] = null;
+    var q = await sb.from("bookings").select("*").eq("id", k.booking_id).maybeSingle();
+    if (q.data) { POP.cars[k.booking_id] = q.data; callPopDraw(); }
+  }
+  async function callOpenCar(k) {
+    var r = callRow(k); if (r) return openPanel(r);
+    var b = callCar(k); if (!b) return;
+    await openArchived(b.sheet_id, b.reg);
+    var row = (S.rows || []).filter(function (x) { return x.id === b.id; })[0];
+    if (row) openPanel(row);
+  }
   // 26 Oct redesign (the user's mock-up): status chip, reg and customer, number masked, return / status /
   // location / key tag from the car, cars due out before it, Claim call and Open booking. Only what the
   // car really holds is shown; no lane or position (that needs the Yard planner) and no invented queue.
@@ -6797,7 +6814,7 @@
       document.body.appendChild(el);
     }
     el.innerHTML = POP.calls.map(function (k) {
-      var r = callRow(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed", hit = !!k.booking_id;
+      var live = callRow(k), r = live || callCar(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed", hit = !!k.booking_id;
       var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
       var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
       var mask = callMask(k.from_number) || "Number hidden";
@@ -6807,11 +6824,11 @@
         : '<div class="cp-reg" style="font-size:18px">Not on today\'s cars</div><div class="cp-sub">' + esc(mask) + " · Number not matched</div>";
       var grid = hit && r ? '<div class="cp-grid"><div><span>Return due</span><b>' + esc(dayShort(r.return_at) + " · " + hhmm(r.return_at)) + "</b></div><div><span>Vehicle status</span><b>" + esc(callStatus(r)) + "</b></div>" +
           "<div><span>Vehicle location</span><b>" + esc(r.yard ? YARD_LABEL[r.yard] || r.yard : "Not set") + "</b></div><div><span>Key tag</span><b>" + (r.num ? esc(r.num) : "—") + "</b></div></div>" : "";
-      var ahead = callAhead(r), warn = ahead ? '<div class="cp-warn"><b>' + ahead + (ahead === 1 ? " car" : " cars") + " due out before this one</b> · Check retrieval before confirming a time.</div>" : "";
+      var ahead = live ? callAhead(live) : 0, warn = ahead ? '<div class="cp-warn"><b>' + ahead + (ahead === 1 ? " car" : " cars") + " due out before this one</b> · Check retrieval before confirming a time.</div>" : "";
       var acts = '<div class="cp-act">' +
         (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
         (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        (r && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        (live && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
         (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
       return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
         '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
@@ -7012,7 +7029,7 @@
     if (t.dataset.callmark) return callMark(t.dataset.callmark);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
     if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
-    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }), cr = ck && callRow(ck); if (cr) openPanel(cr); return; }
+    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }); if (ck) callOpenCar(ck); return; }
     if (t.dataset.txtest !== undefined) return testText(t);
     if (t.dataset.txpick) return pickText(t.dataset.txpick);
     if (t.dataset.txsend) return sendTextNow(t);

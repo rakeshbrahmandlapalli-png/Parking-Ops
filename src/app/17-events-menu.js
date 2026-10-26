@@ -97,7 +97,7 @@
     if (t.dataset.callmark) return callMark(t.dataset.callmark);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
     if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
-    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }), cr = ck && callRow(ck); if (cr) openPanel(cr); return; }
+    if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }); if (ck) callOpenCar(ck); return; }
     if (t.dataset.txtest !== undefined) return testText(t);
     if (t.dataset.txpick) return pickText(t.dataset.txpick);
     if (t.dataset.txsend) return sendTextNow(t);
