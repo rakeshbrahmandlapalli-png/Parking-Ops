@@ -54,6 +54,28 @@ await scenario(async () => {
   await page.context().close();
 }, "calls");
 
+// A PICKS car marked NEW BOOKING was never called (26 Oct, LN13ELV): the card says NEW BOOKING ✓, not CALLED ✓,
+// and keeps the mark (no CALLED button to write over it). A PICKS car with no mark still gets CALLED.
+await scenario(async () => {
+  const db = callsDb("stdplus");
+  db.bookings.find((b) => b.id === "p2").pick_called = "New Booking";
+  db.bookings.find((b) => b.id === "p2").pick_called_at = ago(3);
+  const page = await phone(browser, db);
+  await open(page);
+  await page.selectOption("#sheetPick", "p0"); await page.waitForSelector('.row[data-id="p1"]');
+  await ring(page, { id: 21, company_id: "c1", at: ago(0), from_number: "07700 900222", booking_id: "p2", kind: "picks", reg: "AF63WWH", name: "MASON", status: "ringing", marked: "", handled_name: "" }); await sleep(250);
+  let pop = await page.innerText("#callPop");
+  check("Calls: a NEW BOOKING car says NEW BOOKING ✓, not CALLED ✓", /NEW BOOKING ✓/.test(pop) && !/CALLED ✓/.test(pop) && !(await page.$('[data-callmark="21"]')), pop);
+  await page.click('[data-callclose="21"]'); await sleep(100);
+  await ring(page, { id: 22, company_id: "c1", at: ago(0), from_number: "07700 900333", booking_id: "p3", kind: "picks", reg: "SF15LUA", name: "KOLE", status: "ringing", marked: "", handled_name: "" }); await sleep(250);
+  check("Calls: a PICKS car with no mark still gets CALLED", await page.isVisible('[data-callmark="22"]'), await page.innerText("#callPop"));
+  await page.click('[data-callmark="22"]'); await sleep(300);
+  const c = db.calls.filter((x) => x.fn === "tap_pick").pop();
+  check("Calls: CALLED on a PICKS car marks it Called", c && c.args.p_booking === "p3" && c.args.p_value === "Called" && /CALLED ✓/.test(await page.innerText("#callPop")), c);
+  check("Calls (NEW BOOKING): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "calls");
+
 // A caller not on today's cars: no CALLED button; Menu → Calls lists missed calls first, Called back marks it.
 await scenario(async () => {
   const db = callsDb("stdplus");
