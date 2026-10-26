@@ -6804,6 +6804,22 @@
       ".callpop .cp-f{color:#5B6370;font-size:13px;background:#F5F6F8;border-top:1px solid #E6E9EE}";
     document.head.appendChild(st);
   }
+  function callIsCalled(r) { return r.kind === "drops" ? !!r.called_at : !!r.pick_called; }
+  // The marks the pop-up offers, on the car whichever sheet it is on (the card holds the booking row itself).
+  function callMarkBtns(k, r) {
+    if (!r || r.removed_at) return "";
+    var b = function (what, label) { return '<button type="button" class="btn ghost" data-callmark="' + k.id + '" data-callwhat="' + what + '">' + label + "</button>"; };
+    if (r.kind === "drops") {
+      if (r.sent_at || r.cleared_at) return '<span class="hint" style="text-align:center">' + (r.cleared_at ? "Handed back" : "On its way") + "</span>";
+      var o = "";
+      if (!r.called_at) { if (can("called")) o += b("called", "CALLED"); } else o += '<span class="hint" style="text-align:center">CALLED ✓</span>';
+      if (can("desk") && r.called_word !== "Overstay" && !atDesk(r)) o += b("desk", "AT DESK");
+      else if (atDesk(r)) o += '<span class="hint" style="text-align:center">AT DESK ✓</span>';
+      return o;
+    }
+    if (r.pick_called) return '<span class="hint" style="text-align:center">CALLED ✓</span>';
+    return can("intake") ? b("called", "CALLED") : "";
+  }
   function callPopDraw() {
     var el = $("callPop");
     if (!POP.calls.length) { if (el) el.remove(); return; }
@@ -6814,7 +6830,7 @@
       document.body.appendChild(el);
     }
     el.innerHTML = POP.calls.map(function (k) {
-      var live = callRow(k), r = live || callCar(k), done = r && (r.kind === "drops" ? !!r.called_at : !!r.pick_called), bad = k.status === "missed", hit = !!k.booking_id;
+      var live = callRow(k), r = live || callCar(k), done = r && callIsCalled(r), bad = k.status === "missed", hit = !!k.booking_id;
       var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
       var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
       var mask = callMask(k.from_number) || "Number hidden";
@@ -6828,7 +6844,7 @@
       var acts = '<div class="cp-act">' +
         (!k.handled_name ? '<button type="button" class="btn brand" data-calltake="' + k.id + '">' + (bad ? "I\'ll call back" : "Claim call") + "</button>" : "") +
         (r ? '<button type="button" class="btn ghost" data-callopen="' + k.id + '">Open booking</button>' : "") +
-        (live && can("called") && !done && !r.removed_at ? '<button type="button" class="btn ghost" data-callmark="' + k.id + '">CALLED</button>' : done ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : "") +
+        callMarkBtns(k, r) +
         (bad && k.from_number ? '<a class="btn ghost" href="tel:' + esc(dialable(k.from_number)) + '">Call back</a>' : "") + "</div>";
       return '<div class="callpop' + (bad ? " bad" : "") + '" data-callid="' + k.id + '"><div class="cp-h"><span>' + head + "</span>" + chip +
         '<button type="button" data-callclose="' + k.id + '" aria-label="Close" style="background:none;border:0;font-size:22px;line-height:1;color:inherit;margin-left:4px">&times;</button></div>' +
@@ -6842,9 +6858,20 @@
     if (r.error) { if (btn) btn.disabled = false; return toast(r.error.message, true); }
     callEvent(r.data); if (S.view === "calls") loadCalls();
   }
-  function callMark(id) {
-    var k = POP.calls.find(function (x) { return String(x.id) === String(id); }), r = k && callRow(k); if (!r) return;
-    if (r.kind === "drops") { if (!r.called_at) tapDrop(r, "called"); } else if (!r.pick_called) tapPick(r, "called", "Called");
+  async function callMark(id, what) {
+    var k = POP.calls.find(function (x) { return String(x.id) === String(id); }), r = k && callCar(k); if (!r) return;
+    var live = callRow(k);
+    if (live) {
+      if (live.kind === "drops") { if (what === "desk") { if (!atDesk(live)) tapDrop(live, "desk"); } else if (!live.called_at) tapDrop(live, "called"); }
+      else if (!live.pick_called) tapPick(live, "called", "Called");
+      return callPopDraw();
+    }
+    // On another sheet: the same change straight to the server, then the card shows the car as it now is.
+    var q = r.kind === "drops"
+      ? await sb.rpc("tap_drop", { p_booking: r.id, p_action: what === "desk" ? "desk" : "called", p_on: true, p_word: what === "desk" ? "" : "Called" })
+      : await sb.rpc("tap_pick", { p_booking: r.id, p_key: "called", p_value: "Called" });
+    if (q.error) return toast(q.error.message, true);
+    if (q.data) POP.cars[r.id] = Object.assign({}, r, q.data);
     callPopDraw();
   }
   // ── on the car: its calls, with the texts ──
@@ -7026,7 +7053,7 @@
     if (t.dataset.savevoice !== undefined) return saveVoiceMenu(t);
     if (t.dataset.savecalls !== undefined) return saveCalls(t);
     if (t.dataset.callclose) return callGone(+t.dataset.callclose);
-    if (t.dataset.callmark) return callMark(t.dataset.callmark);
+    if (t.dataset.callmark) return callMark(t.dataset.callmark, t.dataset.callwhat);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
     if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
     if (t.dataset.callopen) { var ck = POP.calls.find(function (x) { return String(x.id) === t.dataset.callopen; }); if (ck) callOpenCar(ck); return; }
