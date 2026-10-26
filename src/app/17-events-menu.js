@@ -93,7 +93,14 @@
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
     if (t.dataset.savevoice !== undefined) return saveVoiceMenu(t);
     if (t.dataset.savecalls !== undefined) return saveCalls(t);
-    if (t.dataset.callclose) return callGone(+t.dataset.callclose);
+    if (t.dataset.calltoggle !== undefined) { if (POP.open) callGone(POP.selected); else callShow(POP.selected); return; }
+    if (t.dataset.callselect || t.dataset.callbrowse) return callShow(t.dataset.callselect || t.dataset.callbrowse);
+    if (t.dataset.calltab) { POP.tab = t.dataset.calltab; POP.selected = ''; return callPopDraw(); }
+    if (t.dataset.callrefresh !== undefined) { POP.cars = {}; await loadCallQueue(); var selectedCall = callFind(POP.selected); if (selectedCall) callLoadCar(selectedCall); return; }
+    if (t.dataset.calloutcome) return callAct(t.dataset.calloutcome, t.dataset.callresult, t);
+    if (t.dataset.calldial) { var dialCall = callFind(t.dataset.calldial); if (!dialCall || !callOwner(dialCall) || !navigator.onLine || POP.busy) { e.preventDefault(); return; } callAct(t.dataset.calldial, 'attempt'); return; }
+    if (t.dataset.callreview) { var review = (S.callsList || []).find(function (x) { return String(x.id) === t.dataset.callreview; }); if (review && !callFind(review.id)) POP.calls.push(review); return callShow(t.dataset.callreview); }
+    if (t.dataset.callclose) return callGone(t.dataset.callclose);
     if (t.dataset.callmark) return callMark(t.dataset.callmark, t.dataset.callwhat);
     if (t.dataset.calltake) return callTake(t.dataset.calltake, t);
     if (t.dataset.callsf) { S.callsFilter = t.dataset.callsf; return render(); }
@@ -390,7 +397,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && can("called")], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && (can("called") || can("callpop"))], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +

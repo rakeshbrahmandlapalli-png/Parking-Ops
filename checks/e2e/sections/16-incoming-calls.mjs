@@ -27,7 +27,7 @@ for (const theme of ["", "pro", "cards", "premium", "board", "stdplus", "ops", "
   const c = db.calls.filter((x) => x.fn === "tap_drop").pop();
   check("Calls (" + look + "): CALLED on the pop-up marks the car CALLED", c && c.args.p_booking === "b2" && c.args.p_action === "called" && /CALLED ✓/.test(await page.innerText("#callPop")), c);
   await ring(page, { id: 9, status: "missed" }); await sleep(150);
-  check("Calls (" + look + "): not answered, it says Missed call and offers Call back", /Missed call/.test(await page.innerText("#callPop")) && await page.locator('#callPop a[href^="tel:"]').count() === 1);
+  check("Calls (" + look + "): not answered, it says Missed call and offers Claim callback", /Missed call/.test(await page.innerText("#callPop")) && await page.locator('#callPop [data-calltake="9"]').count() === 1);
   await page.click('[data-calltake="9"]').catch(() => {}); await sleep(100);
   await page.click('[data-callclose="9"]'); await sleep(150);
   check("Calls (" + look + "): × closes it", !(await page.$("#callPop")));
@@ -97,8 +97,8 @@ await scenario(async () => {
   await page.click('[data-callsf="unknown"]'); await sleep(200);
   check("Calls: Not on a booking shows only those", /\+44 7911 123456/.test(await page.innerText("#main")) && !/EK14JPV/.test(await page.innerText("#main")));
   await page.click('[data-callsf="missed"]'); await sleep(200);
-  await page.click('[data-calltake="3"]'); await sleep(400);
-  check("Calls: Called back is saved", db.calls.some((x) => x.fn === "call_take" && x.args.p_call === 3));
+  await page.click('[data-callreview="3"]'); await sleep(100); await page.click('[data-calltake="3"]'); await sleep(400);
+  check("Calls: claim is saved without resolving", db.calls.some((x) => x.fn === "call_claim" && x.args.p_call === 3));
   check("Calls: no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
 }, "calls");

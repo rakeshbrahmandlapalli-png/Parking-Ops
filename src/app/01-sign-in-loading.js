@@ -139,7 +139,7 @@
     flush();
     ptResume();
     loadLastDownload();
-    startNotificationCentre();
+    startNotificationCentre(); startCallQueue();
   }
   var PICKER_DAYS = 90;
   async function loadSheets() {
@@ -289,6 +289,7 @@
         var was = S.live; S.live = status === "SUBSCRIBED"; renderSync();
         // Back after the live link dropped: changes made meanwhile were missed.
         // A short drop (weak signal) fetches just those; a long one, the sheet.
+        if (S.live) loadCallQueue();
         if (S.live && liveLost) {
           if (keyAllowed()) loadKeys(S.sheetId);
           var gone = liveLostAt; liveLost = false;
@@ -298,7 +299,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetCallQueue(); resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the

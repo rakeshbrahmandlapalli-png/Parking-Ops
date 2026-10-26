@@ -1,0 +1,127 @@
+/* Shared call surface only; existing board themes retain their own styles. */
+#callQueue{--cp-ink:#172838;--cp-line:#dfe3e8;position:fixed;z-index:60;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:min(350px,calc(100vw - 24px));color:var(--cp-ink);font:14px/1.4 system-ui,sans-serif}
+#callQueue *{box-sizing:border-box}
+#callQueue button,#callQueue a{font:inherit;touch-action:manipulation}
+#callQueue button:focus-visible,#callQueue a:focus-visible{outline:3px solid #147ab5;outline-offset:2px}
+#callQueue button:disabled{opacity:.5;cursor:wait}
+.cp-toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:48px;padding:10px 14px;background:#172838;color:white;border:1px solid #172838;border-radius:8px;box-shadow:0 3px 14px #0002;text-align:left;cursor:pointer}
+.cp-toggle>span:last-child{font-size:12px}
+.cp-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:1px 6px;margin-left:5px;border-radius:12px;background:#bd3526;color:white;font-size:12px}
+#callPop{margin-top:6px;background:#fff;border:1px solid var(--cp-line);border-radius:10px;box-shadow:0 5px 22px #0002;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100dvh - 165px)}
+.cp-panel-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--cp-line);background:#fff}
+.cp-panel-head h2{font-size:19px;margin:0;line-height:1.3}
+.cp-panel-head p{font-size:12px;color:#5d6875;margin:3px 0 0}
+.cp-panel-head>button{width:44px;height:44px;border:0;background:transparent;color:var(--cp-ink);font-size:28px!important;cursor:pointer}
+.cp-tabs{display:flex;gap:5px;padding:0 10px;border-bottom:1px solid var(--cp-line)}
+.cp-tabs button{border:0;border-bottom:3px solid transparent;background:transparent;min-height:45px;color:#536170;padding:9px 5px;cursor:pointer;font-size:13px!important}
+.cp-tabs button[aria-pressed=true]{border-bottom-color:var(--brand,#ee9a16);color:#172838;font-weight:700!important}
+.cp-scroll{overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:10px;min-height:0}
+#callQueue .callpop{color:#172838;border:1px solid var(--cp-line);border-radius:7px;background:#fff;overflow:hidden;overflow-wrap:anywhere}
+#callQueue .cp-h{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:9px 12px;background:#f7f8fa;border-bottom:1px solid var(--cp-line)}
+#callQueue .bad .cp-h{background:#fff5f3;color:#b62f23}
+#callQueue time{font-size:12px;white-space:nowrap}
+#callQueue .cp-b{padding:12px}
+#callQueue .cp-top{display:flex;justify-content:space-between;align-items:start;gap:8px}
+#callQueue .cp-reg{font-size:24px;line-height:1.2;font-weight:800;letter-spacing:.2px}
+#callQueue .cp-name{margin:3px 0 5px;font-size:14px;font-weight:600}
+#callQueue .cp-kind{background:#eaf5ee;color:#23633a;border-radius:4px;padding:4px 6px;font-size:11px;font-weight:700}
+#callQueue .cp-sub{color:#586575;font-size:13px}
+#callQueue .cp-chip{display:inline-block;padding:4px 7px;border:1px solid #ecd4a1;background:#fff8e8;color:#76500c;border-radius:5px;font-size:12px;font-weight:600;margin:10px 0 0}
+#callQueue .cp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 8px;margin:12px 0;padding:12px 0;border-top:1px solid var(--cp-line);border-bottom:1px solid var(--cp-line)}
+#callQueue .cp-grid dt{color:#647080;font-size:11px;margin-bottom:3px}
+#callQueue .cp-grid dd{font-size:13px;font-weight:650;margin:0}
+#callQueue .cp-act{display:grid;gap:7px;margin-top:12px}
+#callQueue .btn{display:flex;align-items:center;justify-content:center;min-height:44px;width:100%;padding:9px 8px;text-align:center;text-decoration:none;border:1px solid #bdc6d0;border-radius:5px;background:#fff;color:#172838;white-space:normal;cursor:pointer}
+#callQueue .cp-primary{background:#172838;border-color:#172838;color:#fff;font-weight:650}
+#callQueue .cp-note{color:#5b6775;font-size:12px;margin:5px 0;line-height:1.45}
+#callQueue .cp-outcomes{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#callQueue .cp-outcomes button:last-child{grid-column:1/-1;border-color:#548363;color:#27623d}
+#callQueue .cp-booking{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding-top:10px;margin-top:12px;border-top:1px solid var(--cp-line)}
+#callQueue .cp-booking>span:first-child{flex-basis:100%;color:#647080;font-size:11px}
+#callQueue .cp-booking .btn{flex:1;width:auto;min-width:75px;font-size:12px}
+#callQueue .cp-warn,#callQueue .cp-error{padding:10px;background:#fff5df;color:#73500d;font-size:12px;margin:8px 0}
+#callQueue .cp-error{margin:0;border-bottom:1px solid var(--cp-line)}
+#callQueue .cp-error button{background:none;text-decoration:underline;border:0;color:inherit;min-height:44px}
+.cp-empty{padding:20px 8px;color:#5b6775}
+.cp-list>button{display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px;text-align:left;background:white;border:1px solid var(--cp-line);border-radius:6px;margin-top:8px;padding:11px;min-height:60px;color:#172838;cursor:pointer}
+.cp-list small{display:block;color:#637080;font-size:12px;margin-top:4px}
+.cp-footer{padding:9px 12px;border-top:1px solid var(--cp-line);background:#fafbfc;color:#647080;font-size:11px}
+@media(min-width:900px){
+ #callQueue{top:110px;bottom:auto;right:12px;width:328px}
+ #callPop{max-height:calc(100dvh - 178px)}
+ body.has-call-dock #app{margin-right:352px;min-width:0}
+ body.has-call-dock #main{max-width:100%;overflow-x:auto}
+}
+@media(max-width:899px){
+ #callQueue:has(#callPop){left:0;right:0;bottom:0;width:100%;padding-bottom:env(safe-area-inset-bottom,0px);background:#fff;border-radius:14px 14px 0 0;box-shadow:0 -6px 25px #0002}
+ #callQueue:has(#callPop)>.cp-toggle{display:none}
+ #callPop{max-height:78dvh;margin:0;border:0;border-radius:14px 14px 0 0;box-shadow:none}
+ #callPop:before{content:'';height:4px;width:38px;background:#bec6ce;border-radius:3px;margin:7px auto 0;flex-shrink:0}
+ #callQueue .cp-panel-head{padding:6px 14px}
+ #callQueue .cp-scroll{padding:10px 14px}
+ #callQueue .cp-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-height:500px){#callPop{max-height:85dvh}#callQueue{top:auto;bottom:8px}}
+
+#callQueue .cp-pager{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-bottom:1px solid var(--cp-line);font-size:12px;color:#5b6775}
+#callQueue .cp-pager button{min-width:44px;min-height:44px;border:1px solid var(--cp-line);border-radius:4px;background:#fff;color:#172838;cursor:pointer}
+#callQueue .cp-pager span{padding:0 8px}
+/* Auto content visibility contains each row's overflowing columns, so the docked
+   board gets real widths. 900–1199 px: the board's own narrow rows scroll sideways
+   (headings follow). 1200–1379 px: the board takes those narrow rows (customer
+   under the car) so every button stays in view. 1380 px and up: the wide row with
+   tighter columns. Operations and Operations Refined only; other looks reflow. */
+@media(min-width:900px) and (max-width:1199px){
+ /* The top bar and tabs sit above the dock, so they keep the full width. */
+ body.has-call-dock #app{margin-right:0}
+ body.has-call-dock :is(#boardHead,#viewHead,#main){margin-right:352px}
+ body.has-call-dock #main>.drow{min-width:778px}
+ body.has-call-dock.picks #main>.drow{min-width:806px}
+ /* The buttons stay in view at the right; the middle columns scroll under them. */
+ :where(body.has-call-dock #main>.drow){background-color:#fff}
+ body.has-call-dock #main>.drow>.acts{position:sticky;right:0;z-index:1;background:inherit;box-shadow:-6px 0 8px -6px #0003}
+ body.has-call-dock #colHead.dhead>span:last-child{position:sticky;right:0;z-index:1;background:inherit;box-shadow:-6px 0 8px -6px #0003}
+}
+@media(min-width:1200px) and (max-width:1379px){
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock.picks{--dcols:74px minmax(150px,1.3fr) 120px 100px minmax(110px,1fr) 250px;--dareas:"t r b f s a" "t c b f s a" "t n n n n a";}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock.picks #colHead.dhead span:nth-child(3){display:none;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock.picks #colHead.dhead span:nth-child(5){white-space:normal;line-height:1.2;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock{--dw:100%;--dg:16px;--dcols:68px minmax(160px,1.3fr) 96px 80px minmax(150px,1.7fr) 222px;--dareas:"t r f y s a" "t c f y s a" "t n n n n a";}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock:not(.picks) #colHead.dhead span:nth-child(4){display:none;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock #colHead.dhead span:nth-child(2)::after{content:" · customer";}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-r{padding-bottom:0;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-c{display:flex;gap:8px;padding-top:2px;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-c .l1,:is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-c .sub{margin:0;font-size:12.5px;font-weight:500;color:var(--op-mut);}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-c .l1{flex:none;max-width:55%;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-c .sub{flex:1 1 auto;min-width:0;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock #colHead.dhead span{padding:10px 8px;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .dc-t b{font-size:17px;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .acts{gap:4px;padding:8px;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .acts button{font-size:10.5px;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock #boardHead .qwrap{flex-basis:260px;}
+ body.has-call-dock #main>.drow{min-width:778px}
+ body.has-call-dock.picks #main>.drow{min-width:806px}
+}
+@media(min-width:1380px){
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock{--dcols:76px minmax(130px,1.05fr) minmax(84px,.55fr) minmax(130px,1.1fr) 84px minmax(150px,1.7fr) 276px;}
+ :is(html.ops,html.ops-refined) body.ops-desk.has-call-dock.picks{--dcols:76px minmax(130px,1fr) minmax(130px,1.1fr) 112px 112px minmax(130px,1fr) 290px;}
+ :is(html.ops,html.ops-refined) body.has-call-dock .drow .acts{gap:5px;}
+}
+@media(min-width:900px){
+ body.has-call-dock #colHead{overflow-x:auto;scrollbar-width:none}
+ /* Open: the panel's own heading names it, so the bar above it goes. */
+ body.has-call-dock #callQueue>.cp-toggle{display:none}
+ body.has-call-dock #callPop{margin-top:0;max-height:calc(100dvh - 124px)}
+ /* Fixed things on the right move clear of the dock. */
+ body.has-call-dock #bnav{right:352px}
+ body.has-call-dock .deskbtn{right:368px}
+}
+@media(max-width:899px){
+ /* Minimised bar: sits on the bottom bar (or the screen's foot), and the board and
+    "+ New booking" make room for it so nothing is hidden behind it. */
+ #callQueue{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+ body:has(#bnav:not(.hidden)) #callQueue:not(:has(#callPop)){bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+ body.has-call-queue #main::after{content:"";display:block;height:64px}
+ body.has-call-queue .deskbtn{bottom:calc(76px + env(safe-area-inset-bottom))}
+ body.has-call-queue:has(#bnav:not(.hidden)) .deskbtn{bottom:calc(136px + env(safe-area-inset-bottom))}
+}
