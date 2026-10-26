@@ -128,6 +128,9 @@
     // Swipe instead of buttons: the buttons live here, to undo or fix a swipe.
     var steps = drops && swipeOnly() ? '<label>' + L("STEPS") + NOW + '</label>' + dropButtons(r, r.called_word === "Overstay", r.clear_word === "COMPLAINT", " pacts") : "";
     var parking = canReg || canReturn(r) || (drops ? can("yard") : picksYard() && can("intake")) || (drops ? can("flights") : canPickFlight());
+    // The customer's number: the office adds, changes or clears it; whoever takes cars in can fill in a missing one (part 124).
+    var canPhone = !r.removed_at && (can("import") || (can("intake") && !r.phone));
+    var phoneF = canPhone ? fld('<label for="phoneText">' + L("PHONE") + '</label><input id="phoneText" type="tel" value="' + esc(r.phone) + '" autocomplete="off" maxlength="30" placeholder="Type the number">', true) : "";
     var regF = canReg ? fld('<label for="regText">' + L("REG") + '</label><input id="regText" value="' + esc(r.reg) + '" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="Type the reg">', true) : "";
     // A customer rang to come back another day: the office changes it here too.
     // The first booked return is kept (WAS tag, charge), and the new day's file
@@ -182,12 +185,12 @@
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
     var photos = '<div id="ptPhotos"></div>', texts = carTextsHtml(r);
     var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
-    var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canReturn(r);
+    var saves = can("note") || can("flights") || (!drops && canPickFlight()) || canReg || canPhone || canReturn(r);
     var hist = can("log") ? '<div id="carHist"></div>' : "";
-    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
+    if (rf) h = refinedCar(r, h.slice(0, headEnd), { det: det, tel: tel, phoneF: phoneF, steps: steps, regF: regF, dropF: dropF, retF: retF, yardF: yardF, flightF: flightF, flightNo: flightNo, flightTime: flightTime, pickFlightF: pickFlightF,
       docs: docs, noteF: noteF, markF: markF, pay: pay, exitP: exitP, early: early, photos: photos, texts: texts, rm: rm, saves: saves, hist: hist, desk: desk, detList: detList });
     else {
-      h += tel + opsSec("Customer & vehicle") + detList(det);
+      h += tel + opsSec("Customer & vehicle") + detList(det) + phoneF;
       if (steps) { if (desk) R += opsSec("Status") + steps; else h += steps; }
       if (parking) h += opsSec(drops ? "Return & parking" : "Parking");
       h += regF + dropF + retF + yardF + flightF + pickFlightF;
@@ -237,7 +240,7 @@
     var cv = '<div class="rf-cv"><div><small>Customer</small><b>' + (esc(nice(r.name)) || "—") + "</b>" + (P.tel ? '<span class="rf-tel">' + P.tel + "</span>" : "") + "</div>" +
       "<div><small>Vehicle</small><b>" + (esc(car) || "—") + '</b><span class="num">' + (esc(r.ref) || "No reference") + "</span></div></div>";
     // A wide screen: the booking and its return on the left; status, notes, payments and photos on the right.
-    var A = sec("rf-cust", "Customer & vehicle", cv) +
+    var A = sec("rf-cust", "Customer & vehicle", cv + P.phoneF) +
       sec("rf-park", r.kind === "drops" ? "Return & parking" : "Drop-off & parking", P.regF.replace('class="ops-f wide"', 'class="ops-f"') + P.flightNo + P.pickFlightF + P.dropF + P.retF + was + P.flightTime + kv(park) + P.yardF + (P.early ? '<div class="rf-early">' + P.early + "</div>" : ""));
     var stampList = stat.filter(function (x) { return CAR_STAMP[x[0]] || r.kind !== "drops"; });
     var B = sec("rf-notes", "Notes & status", stamps(stampList) + P.steps + P.noteF + P.markF) +
@@ -251,7 +254,7 @@
       (P.hist ? '<section class="rf-sec rf-hist">' + P.hist + "</section>" : "") + foot;
   }
   // What's typed in the car's boxes and not saved yet (Operations Refined).
-  var CAR_FIELDS = ["regText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
+  var CAR_FIELDS = ["regText", "phoneText", "dropD", "dropT", "retD", "retT", "flightText", "collectText", "schedText", "pickFlightText", "noteText"], carInit = {};
   function carFieldVals() { var v = {}; CAR_FIELDS.forEach(function (id) { var el = $(id); if (el) v[id] = el.value; }); return v; }
   function carDraft() { var v = carFieldVals(), d = {}; Object.keys(v).forEach(function (k) { if (v[k] !== carInit[k]) d[k] = v[k]; }); return d; }
   function carState(msg) {
@@ -272,7 +275,7 @@
   // other looks get exactly what they had.
   var OPS_LABEL = { NAME: "Customer name", CAR: "Car", REF: "Booking reference", "EXIT FEE": "Exit fee", MEET: "Meet", BACK: "Back", FLIGHT: "Flight", ARRIVAL: "Arrival", SENT: "Sent", CALLED: "Called", "AT DESK": "At desk", OVERSTAY: "Overstay", CLEAR: "Clear", COMPLAINT: "Complaint",
     "DROP-OFF": "Drop-off", REG: "Registration", "BACK DATE AND TIME": "Return date and time", "DROP-OFF DATE AND TIME": "Drop-off date and time", YARD: "Yard", LOCATION: "Location", "FLIGHT NUMBER": "Flight number", "RETURN FLIGHT": "Return flight", "COLLECTION TIME": "Collection time",
-    "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
+    "SCHEDULED LANDING": "Scheduled landing", "COMING BACK": "Coming back", PHONE: "Phone number", NOTE: "Note", "MARK AS": "Mark as", STEPS: "Steps" };
   function L(t) { return isOps() && OPS_LABEL[t] || t; }
   function opsSec(t) { return isOps() ? '<div class="ops-psec">' + esc(t) + "</div>" : ""; }
   function fld(html, wide) { return isOps() ? '<div class="ops-f' + (wide ? " wide" : "") + '">' + html + "</div>" : html; }
@@ -340,6 +343,12 @@
         g = $("regText").value.trim().toUpperCase().replace(/\s+/g, " ");
         if (g !== r.reg && !/^[A-Z0-9 ]{0,12}$/.test(g)) return saveErr("Check the reg: letters and numbers only.");
       }
+      var ph = null;
+      if ($("phoneText")) {
+        ph = $("phoneText").value.trim().replace(/\s+/g, " ");
+        var phd = ph.replace(/\D/g, "").length;
+        if (ph !== (r.phone || "") && ph && (!/^\+?[0-9 ()-]*$/.test(ph) || phd < 7 || phd > 15)) return saveErr("Check the phone number: digits only, like 07700 900123.");
+      }
       var rl = null;
       if ($("retD")) {
         var rt = readTime("retT"), old = r.return_at ? londonParts(new Date(r.return_at)) : { key: "", time: "" };
@@ -365,6 +374,7 @@
         if (ct === null || st === null) return saveErr("Type the time like 13:20 (or 1320).");
       }
       if (pf !== null && pf !== r.flight) { run("set_pick_flight", { p_booking: r.id, p_flight: pf }, r, function (x) { x.flight = pf; }); saved = true; }
+      if (ph !== null && ph !== (r.phone || "")) { run("set_phone", { p_booking: r.id, p_phone: ph }, r, function (x) { x.phone = ph; }); saved = true; }
       if (g !== null && g !== r.reg) { run("set_reg", { p_booking: r.id, p_reg: g }, r, function (x) { x.reg = g; }); saved = true; }
       if (dl) {
         run("move_pick", { p_booking: r.id, p_drop_local: dl }, r, function (x) { x.drop_at = londonIso(dl); });

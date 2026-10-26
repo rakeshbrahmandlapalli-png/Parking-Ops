@@ -336,6 +336,7 @@ function rpc(db, fn, a) {
     case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString();
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) b.sheet_id = to.id; return b; }
     case "set_reg": { const b = row(a.p_booking); b.reg = a.p_reg; return b; }
+    case "set_phone": { const b = row(a.p_booking); b.phone = a.p_phone; return b; }
     case "set_yard": { const b = row(a.p_booking); b.yard = a.p_yard; return b; }
     case "set_flight": { const b = row(a.p_booking); if (b.flight !== a.p_flight) Object.assign(b, { sched_at: null, sched_time: "", est_at: null, est_time: "", flight_status: a.p_flight === "NO FLIGHT" ? "noflight" : "", flight_note: "" }); b.flight = a.p_flight; return b; }
     case "set_pick_flight": { const b = row(a.p_booking); b.flight = a.p_flight; return b; }
@@ -539,6 +540,7 @@ async function scenario(fn, tag) {
   if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   if (process.env.TEXTS_ONLY && tag !== 'texts') return;
   if (process.env.CALLS_ONLY && tag !== 'calls') return;
+  if (process.env.PHONE_ONLY && tag !== 'phone') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
