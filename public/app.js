@@ -6787,6 +6787,12 @@
     if (r.kind === "picks") return r.intake === "Collected" ? "Parked in yard" : "Not taken in yet";
     return r.cleared_at ? "Handed back" : r.sent_at ? "On its way" : r.called_at ? "Called" : r.flight_status === "landed" ? "Landed" : r.flight ? "Flight " + r.flight : "Waiting";
   }
+  // The car's own mark: a PICKS car marked NEW BOOKING says so, it was never called (26 Oct, LN13ELV showed CALLED ✓).
+  function callMarkOn(r) {
+    if (!r) return "";
+    if (r.kind === "drops") return r.called_at ? "CALLED" : "";
+    return r.pick_called === "New Booking" ? "NEW BOOKING" : r.pick_called ? "CALLED" : "";
+  }
   function callAhead(r) {
     if (!r || r.kind !== "drops" || r.sent_at || r.cleared_at || r.removed_at || !r.return_at) return 0;
     return (S.rows || []).filter(function (x) { return x !== r && x.kind === "drops" && waiting(x) && !x.removed_at && x.return_at && x.return_at < r.return_at; }).length;
@@ -6804,7 +6810,6 @@
       ".callpop .cp-f{color:#5B6370;font-size:13px;background:#F5F6F8;border-top:1px solid #E6E9EE}";
     document.head.appendChild(st);
   }
-  function callIsCalled(r) { return r.kind === "drops" ? !!r.called_at : !!r.pick_called; }
   // The marks the pop-up offers, on the car whichever sheet it is on (the card holds the booking row itself).
   function callMarkBtns(k, r) {
     if (!r || r.removed_at) return "";
@@ -6817,7 +6822,7 @@
       else if (atDesk(r)) o += '<span class="hint" style="text-align:center">AT DESK ✓</span>';
       return o;
     }
-    if (r.pick_called) return '<span class="hint" style="text-align:center">CALLED ✓</span>';
+    if (callMarkOn(r)) return '<span class="hint" style="text-align:center">' + callMarkOn(r) + " ✓</span>";
     return can("intake") ? b("called", "CALLED") : "";
   }
   function callPopDraw() {
@@ -6830,7 +6835,7 @@
       document.body.appendChild(el);
     }
     el.innerHTML = POP.calls.map(function (k) {
-      var live = callRow(k), r = live || callCar(k), done = r && callIsCalled(r), bad = k.status === "missed", hit = !!k.booking_id;
+      var live = callRow(k), r = live || callCar(k), mark = callMarkOn(r), bad = k.status === "missed", hit = !!k.booking_id;
       var head = bad ? "Missed call" : k.status === "ringing" ? "Incoming call" : callWhat(k);
       var chip = k.handled_name ? '<span class="cp-chip ok">Claimed by ' + esc(k.handled_name) + "</span>" : '<span class="cp-chip">Unclaimed</span>';
       var mask = callMask(k.from_number) || "Number hidden";
