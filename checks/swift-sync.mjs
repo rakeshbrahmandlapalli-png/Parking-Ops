@@ -226,6 +226,12 @@ ok("no operational field (yard, driver, called, sent, paid, exit fee, photos) ca
 { const e = new Map([["drops|T1", ex({ return_local: "2026-10-14 10:00", drop_local: "2026-10-12 08:00", sheet_day: "2026-10-14" })]]);
   const p = P([row("Booked", "T1", "A One", "AB12 CDE", "2026-10-12 08:00", "2026-10-15 10:00")], e, { window: { from: "2026-10-12", to: "2026-10-16" } });
   ok("an extended DROPS return is allowed through (the app moves it, as for a hand import)", p.batches.some((b) => b.kind === "drops" && b.day === "2026-10-15") && p.reviews.length === 0, p); }
+{ // JLZ646, 26 Oct: return changed by hand to the 31st while the 31st wasn't in; the 31st's import must move it, not hold it
+  const e = new Map([["drops|T1", ex({ return_local: "2026-10-15 10:00", drop_local: "2026-10-12 08:00", sheet_day: "2026-10-14" })]]);
+  const p = P([row("Booked", "T1", "A One", "AB12 CDE", "2026-10-12 08:00", "2026-10-15 10:00")], e, { window: { from: "2026-10-12", to: "2026-10-16" } });
+  ok("a DROPS return already changed by hand to the site's day moves the car there (no review)", p.batches.some((b) => b.kind === "drops" && b.day === "2026-10-15") && p.reviews.length === 0, p);
+  const q = P([row("Booked", "T1", "A One", "AB12 CDE", "2026-10-12 08:00", "2026-10-13 10:00")], new Map([["drops|T1", ex({ return_local: "2026-10-13 10:00", drop_local: "2026-10-12 08:00", sheet_day: "2026-10-14" })]]), { window: { from: "2026-10-12", to: "2026-10-16" } });
+  ok("the same return on a car already on a later night is still held", q.reviews.some((r) => r.kind === "conflict" && /moved from sheet/.test(r.detail.why)) && !q.batches.some((b) => b.kind === "drops"), q); }
 { const p = P([row("Booked", "D1", "Dup A", "AB12 CDE", "2026-10-12 08:00", "2026-10-14 10:00"), row("Booked", "D1", "Dup B", "ZZ99 ZZZ", "2026-10-12 08:00", "2026-10-14 10:00"), row("Booked", "", "No Ref", "AB12 CDF", "2026-10-12 08:00", "2026-10-14 10:00"), row("Booked", "D2", "No Date", "AB12 CDG", "", "")]);
   ok("ambiguous duplicates, missing reference and missing dates are reported invalid and not imported", p.counts.invalid >= 4 && p.batches.length === 0 && p.invalid.some((i) => /ambiguous/.test(i.reason)) && p.invalid.some((i) => /no booking reference/.test(i.reason)) && p.invalid.some((i) => /date/.test(i.reason)), p.invalid);
   ok("the screen cannot apply a plan with invalid records", previewView(p, "h").can_apply === false); }

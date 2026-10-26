@@ -339,7 +339,8 @@ export function plan({ drops = [], picks = [], existing, window: win, cutoff = "
         if (typed || ex.sent && critical) { review("conflict", row.ref, { kind, why: typed ? "the office has edited these details; open the booking to confirm the change" : "car is with a driver; check before changing its details", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         if (done && (critical || dayMoved)) { review("conflict", row.ref, { kind, why: "already handed back or removed, but the booking site now shows different details", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         if (dayMoved) {
-          const laterReturn = kind === "drops" && row.return_local && ex.return_local && row.return_local > ex.return_local && !ex.early;
+          // later on the site, or already changed by hand to this day (car still on an earlier night, as staying longer)
+          const laterReturn = kind === "drops" && row.return_local && ex.return_local && !ex.early && (row.return_local > ex.return_local || same(row.return_local, ex.return_local) && ex.sheet_day < g.day);
           if (!laterReturn) { review("conflict", row.ref, { kind, why: "moved from sheet " + ex.sheet_day + " to " + g.day + "; the app can't move it safely", changes }); out.items.push({ ...item, status: "review", changes }); return; }
         }
         if (!changes.length && !dayMoved) { out.counts.unchanged++; out.items.push({ ...item, status: "unchanged" }); return; }
