@@ -44,7 +44,7 @@ try{
  for(const theme of ['','pro','cards','premium','board','stdplus','ops','ops-refined']){
   const {page}=await setup(theme);
   check(`${theme||'standard'}: board and notification bell fit 390px`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  check(`${theme||'standard'}: phone top bar has no bell, the count is on Menu`,!await page.isVisible('#notifyBtn')&&await page.getAttribute(await menuSel(page),'data-unread')==='2');
+  check(`${theme||'standard'}: phone top bar shows the bell with the count, nothing sideways`,await page.isVisible('#notifyBtn')&&(await page.textContent('#notifyBadge'))==='2'&&await page.evaluate(()=>document.querySelector('.bar').scrollWidth<=document.querySelector('.bar').clientWidth+1));
   await centre(page);await page.waitForSelector('.nc-row');
   check(`${theme||'standard'}: active alerts visible`,await page.locator('.nc-row').count()===4);
   check(`${theme||'standard'}: centre fits phone`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
