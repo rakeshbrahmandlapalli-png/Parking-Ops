@@ -267,7 +267,9 @@
     if (!r || r.removed_at) return "";
     var b = function (what, label) { return '<button type="button" class="btn ghost" data-callmark="' + k.id + '" data-callwhat="' + what + '">' + label + "</button>"; };
     if (r.kind === "drops") {
-      if (r.sent_at || r.cleared_at) return '<span class="hint" style="text-align:center">' + (r.cleared_at ? "Handed back" : "On its way") + "</span>";
+      if (r.cleared_at) return '<span class="hint" style="text-align:center">Handed back</span>';
+      // Already SENT: it is on its way, but the customer rang, so CALLED can still be recorded (not AT DESK).
+      if (r.sent_at) return (r.called_at ? '<span class="hint" style="text-align:center">CALLED ✓</span>' : can("called") ? b("called", "CALLED") : "") + '<span class="hint" style="text-align:center">On its way</span>';
       var o = "";
       if (!r.called_at) { if (can("called")) o += b("called", "CALLED"); } else o += '<span class="hint" style="text-align:center">CALLED ✓</span>';
       if (can("desk") && r.called_word !== "Overstay" && !atDesk(r)) o += b("desk", "AT DESK");
