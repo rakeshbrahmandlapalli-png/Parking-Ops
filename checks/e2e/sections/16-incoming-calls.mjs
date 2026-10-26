@@ -163,3 +163,19 @@ await scenario(async () => {
   check("Calls (picks, other sheet): no errors", page.__errors.length === 0, page.__errors);
   await page.context().close();
 }, "calls");
+
+// A car already SENT still offers CALLED on the card (no AT DESK); once called it says CALLED ✓ and On its way.
+await scenario(async () => {
+  const db = callsDb("stdplus");
+  const b = db.bookings.find((x) => x.id === "b2"); b.sent_at = ago(3); b.called_at = null; b.called_word = "";
+  const page = await phone(browser, db);
+  await open(page);
+  await ring(page, { id: 31, company_id: "c1", at: ago(0), from_number: "07868 615571", booking_id: "b2", kind: "drops", reg: "CF75VLN", name: "KHAIRA MS", status: "ringing", marked: "", handled_name: "" }); await sleep(500);
+  const pop = await page.innerText("#callPop");
+  check("Calls: a SENT car still offers CALLED, not AT DESK, and says On its way", !!(await page.$('[data-callmark="31"][data-callwhat="called"]')) && !(await page.$('[data-callmark="31"][data-callwhat="desk"]')) && /On its way/.test(pop), pop);
+  await page.click('[data-callmark="31"]'); await sleep(500);
+  const c = db.calls.filter((x) => x.fn === "tap_drop").pop();
+  check("Calls: CALLED on a SENT car reaches the car", c && c.args.p_booking === "b2" && c.args.p_action === "called", c);
+  check("Calls (sent car): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "calls");
