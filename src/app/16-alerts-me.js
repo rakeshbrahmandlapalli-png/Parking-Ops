@@ -3,7 +3,7 @@
   // Home Screen (iOS 16.4+). This public key pairs with VAPID_PRIVATE_KEY, a
   // secret held only by the send-alerts Edge Function.
   var VAPID_PUBLIC_KEY = "BIUvnDQXjj4nWd2EIx7kLAGTTWamJ0oM1V806Ubh7HeiUJfaZWRxwvlUrP7pZTVULpFOYBbWrKtmSC1AmdNtnWw";
-  var ALERT_KINDS = [["drops", "DROPS: CALLED, AT DESK, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"]];
+  var ALERT_KINDS = [["drops", "DROPS: CALLED, AT DESK, OVERSTAY, 20 min waits and COMPLAINT"], ["picks", "PICKS: RTC"], ["flights", "Flight cancelled"], ["calls", "Incoming calls"]];
   function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
   function iosOutsideHomeScreen() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(navigator.standalone === true || matchMedia("(display-mode: standalone)").matches); }
   function keyBytes(k) { var raw = atob((k + "=".repeat((4 - k.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
@@ -30,7 +30,7 @@
     else if (N.on) text = "On for this phone.";
     else { text = "Off for this phone."; canOn = true; }
     return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Phone notifications</strong><p class="note" style="margin:4px 0 10px">' + esc(text) + "</p>" +
-      (N.on ? ALERT_KINDS.map(function (k) {
+      (N.on ? ALERT_KINDS.filter(function (k) { return k[0] !== "calls" || (callsAddon() && can("callpop")); }).map(function (k) {
         return '<label class="check"><input type="checkbox" data-alertpref="' + k[0] + '"' + (N.prefs[k[0]] === false ? "" : " checked") + "> " + esc(k[1]) + "</label>";
       }).join("") : "") +
       '<div class="row-actions">' + (canOn ? '<button type="button" class="btn brand" data-notifyon>Turn on notifications</button>' : "") +

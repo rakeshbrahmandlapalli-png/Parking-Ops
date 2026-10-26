@@ -90,6 +90,17 @@ await scenario(async () => {
   await ring(p2, { id: 9, company_id: "c1", from_number: "07868615571", booking_id: "b2", kind: "drops", reg: "CF75VLN", status: "ringing" }); await sleep(150);
   check("Calls: a driver's phone doesn't pop up", !(await p2.$("#callPop")));
   await p2.context().close();
+  // CALLED without Call pop-ups: no pop-up. Call pop-ups without CALLED: pop-up.
+  const d3 = callsDb("stdplus"); d3.perms = { sent: true, called: true, clear: true, yard: true, intake: true, note: true, callpop: false };
+  const p3 = await phone(browser, d3); await open(p3);
+  await ring(p3, { id: 9, company_id: "c1", from_number: "07868615571", booking_id: "b2", kind: "drops", reg: "CF75VLN", status: "ringing" }); await sleep(150);
+  check("Calls: CALLED alone doesn't give the pop-up (own permission)", !(await p3.$("#callPop")));
+  await p3.context().close();
+  const d4 = callsDb("stdplus"); d4.perms = { sent: true, called: false, clear: true, yard: true, intake: true, note: true, callpop: true };
+  const p4 = await phone(browser, d4); await open(p4);
+  await ring(p4, { id: 9, company_id: "c1", from_number: "07868615571", booking_id: "b2", kind: "drops", reg: "CF75VLN", status: "ringing" }); await sleep(250);
+  check("Calls: Call pop-ups without CALLED still pops up, with no CALLED button", !!(await p4.$("#callPop")) && !(await p4.$('[data-callmark="9"]')));
+  await p4.context().close();
 }, "calls");
 
 // Settings → Calls (owners): saved as set.
