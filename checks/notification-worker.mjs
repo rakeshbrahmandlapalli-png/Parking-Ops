@@ -1,0 +1,14 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const events={},shown=[],opened=[],messages=[];let focused=0,list=[];
+const self={location:{hostname:'test.invalid',origin:'https://test.invalid'},addEventListener:(name,fn)=>events[name]=fn,registration:{showNotification:async(title,options)=>shown.push({title,options})},clients:{matchAll:async()=>list,openWindow:async u=>opened.push(u)}};
+vm.runInNewContext(fs.readFileSync(new URL('../public/sw.js',import.meta.url),'utf8'),{self,URL,setTimeout});
+let work;await events.push({data:{json:()=>({title:'Sample',body:'Sample data',tag:'same',silent:true,url:'/?notice=abc'})},waitUntil:p=>work=p});await work;
+assert.equal(shown[0].options.silent,true);assert.equal(shown[0].options.renotify,false);
+const click=async url=>{events.notificationclick({notification:{data:{url},close(){}},waitUntil:p=>work=p});await work;};
+await click('https://malicious.invalid/?notice=abc');assert.equal(opened[0],'https://test.invalid/');
+list=[{url:'https://test.invalid/#t=PRIVATE',postMessage:m=>messages.push(m),focus:async()=>focused++}];
+await click('/?notice=abc');assert.equal(focused,1);assert.equal(opened.length,1);assert.equal(messages[0].url,'https://test.invalid/?notice=abc');
+await click('javascript:alert(1)');assert.equal(messages[1].url,'https://test.invalid/');
+let rotated;self.registration.pushManager={subscribe:async options=>rotated=options};const opts={applicationServerKey:'sample-public',userVisibleOnly:true};
+events.pushsubscriptionchange({oldSubscription:{options:opts},waitUntil:p=>work=p});await work;assert.equal(rotated,opts);assert.equal(messages.at(-1).type,'PUSH_SUBSCRIPTION_CHANGED');
+console.log('9 service worker checks passed');

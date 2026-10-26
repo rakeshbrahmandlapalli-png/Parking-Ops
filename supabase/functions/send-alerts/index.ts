@@ -59,7 +59,7 @@ const FRESH_MIN = 30;   // a tap older than this is history, not news
 const LONG_WAIT_MIN = 20;   // CALLED this long with no driver SENT
 
 type Kind = "drops" | "picks" | "flights";
-type Note = { title: string; body: string; url: string; tag: string };
+type Note = { title: string; body: string; url: string; tag: string; eventKey?: string; bookingId?: string; category?: string; urgency?: "urgent" | "routine"; persist?: boolean; inboxStaff?: string[]; deliveryKey?: string };
 
 async function once(key: string) {
   const { error } = await db.from("alert_log").insert({ key });
@@ -69,17 +69,36 @@ async function once(key: string) {
 }
 
 // kind null: an account warning, sent whatever the person's alert choices.
-async function pushTo(staffIds: string[], kind: Kind | null, note: Note) {
+async function pushTo(staffIds: string[], kind: Kind | null, note: Note, endpoint?: string) {
   if (!staffIds.length) return 0;
   const { data: prefs } = kind ? await db.from("alert_prefs").select("*").in("staff_id", staffIds) : { data: [] };
   const off = new Set((prefs ?? []).filter((p) => kind && p[kind] === false).map((p) => p.staff_id));
-  const wanted = staffIds.filter((id) => !off.has(id));
+  let wanted = staffIds.filter((id) => !off.has(id));
   if (!wanted.length) return 0;
-  const { data: subs } = await db.from("push_subscriptions").select("id, company_id, endpoint, p256dh, auth").in("staff_id", wanted);
+  // An inbox entry does not depend on having a push subscription. Optional
+  // schema compatibility: existing alerts keep working before the new part lands.
+  if (note.persist !== false) {
+    const key = note.eventKey || `${note.tag}:${new Date().toISOString().slice(0, 10)}`;
+    const { error } = await db.rpc("record_ops_notification", { p_staff: note.inboxStaff || wanted, p_key: key, p_kind: note.category || kind || "usage", p_title: note.title, p_body: note.body, p_booking: note.bookingId || null, p_urgency: note.urgency || "routine" });
+    if (error) console.error("notification inbox unavailable", error.code);
+    else { note.eventKey = key; note.url = "/?notice=" + encodeURIComponent(key); }
+  }
+  const { data: options } = await db.rpc("ops_notification_delivery", { p_staff: wanted });
+  const choices = Array.isArray(options) ? options : [];
+  if (note.tag !== "test" && note.category !== "health" && note.category !== "usage") wanted = wanted.filter(id => !choices.some(o => o.staff_id === id && o.paused));
+  const deliveryKey = note.tag === "test" ? "test:" + crypto.randomUUID() : note.deliveryKey || note.eventKey || note.tag + ":" + new Date().toISOString().slice(0,10);
+  const category = note.tag === "test" ? "test" : kind || note.category || "usage";
+  const payload = { title: note.title.slice(0,160), body: note.body.slice(0,600), url: note.url, tag: note.tag, eventKey: note.eventKey };
+  const ttl = category === "calls" ? 180 : category === "test" ? 60 : note.urgency === "urgent" ? 600 : category === "health" || category === "usage" ? 7200 : 1800;
+  const queued = await db.rpc("ops_push_enqueue", { p_staff: wanted, p_key: deliveryKey, p_kind: category, p_payload: payload, p_ttl: ttl, p_urgency: note.urgency === "urgent" ? "high" : "normal", p_endpoint: endpoint || null });
+  if (!queued.error && queued.data === true) return sendQueuedPushes(deliveryKey);
+  if (queued.error) console.error("push queue unavailable; using legacy delivery", queued.error.code);
+  // Compatible fallback while the reviewed database part is being installed.
+  const { data: subs } = await db.from("push_subscriptions").select("id, staff_id, company_id, endpoint, p256dh, auth").in("staff_id", wanted);
   let sent = 0;
-  await Promise.all((subs ?? []).map(async (s) => {
+  await Promise.all((subs ?? []).filter(s => !endpoint || s.endpoint === endpoint).map(async (s) => {
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(note), { TTL: 2 * 3600, urgency: "high" });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify({ ...payload, silent: note.urgency !== "urgent" && choices.some(o => o.staff_id === s.staff_id && o.routine_silent) }), { TTL: ttl, urgency: note.urgency === "urgent" ? "high" : "normal", topic: await pushTopic(note.tag), timeout: 15000 });
       sent++;
     } catch (e) {
       const code = (e as { statusCode?: number }).statusCode;
@@ -90,6 +109,35 @@ async function pushTo(staffIds: string[], kind: Kind | null, note: Note) {
         await db.rpc("note_push_failure", { p_company: s.company_id, p_code: code ?? null, p_detail: detail });
       }
     }
+  }));
+  return sent;
+}
+
+// The provider can keep only the newest update for a booking while a phone
+// is offline. This supplements the visible notification tag on the device.
+async function pushTopic(tag: string) {
+  const digest = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(tag));
+  return Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("").slice(0,32);
+}
+
+// A lease is per device and attempt. Provider acceptance is never described as
+// proof that a lock-screen notification was displayed. Stale/disabled devices
+// and operationally resolved events are discarded by the claim RPC.
+async function sendQueuedPushes(key: string | null = null) {
+  const { data, error } = await db.rpc("ops_push_claim", { p_key: key });
+  if (error) { console.error("push queue claim failed", error.code); return 0; }
+  const jobs = Array.isArray(data) ? data : []; let sent = 0;
+  for (let i = 0; i < jobs.length; i += 10) await Promise.all(jobs.slice(i,i+10).map(async job => {
+    let success = false, code: number | null = null;
+    try {
+      await webpush.sendNotification({ endpoint: job.endpoint, keys: { p256dh: job.p256dh, auth: job.auth } }, JSON.stringify(job.payload), { TTL: job.ttl, urgency: job.urgency, topic: await pushTopic(job.payload.tag || job.id), timeout: 15000 });
+      success = true; sent++;
+    } catch (e) {
+      code = (e as {statusCode?: number}).statusCode ?? null;
+      if (code !== 404 && code !== 410) await db.rpc("note_push_failure", { p_company: job.company_id, p_code: code, p_detail: "Push request failed; bounded retry queued when appropriate." });
+    }
+    const { error: saved } = await db.rpc("ops_push_result", {p_id:job.id,p_lease:job.lease,p_success:success,p_code:code});
+    if (saved) console.error("push queue result unavailable", saved.code);
   }));
   return sent;
 }
@@ -151,7 +199,9 @@ async function onBooking(id: string) {
     const body = a.kind === "flights"
       ? `${b.flight} has been cancelled by the airline. The customer may not be coming back as booked.`
       : `${a.label.replace(/^[^A-Z]+ /, "")} at ${time(a.at)}${byName ? " by " + byName : ""} · ${a.kind === "picks" ? "drop-off " + time(b.drop_at) : flightLine}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
-    sent += await pushTo(everyoneBut(a.by), a.kind, { title, body, url: "/", tag: `${a.kind}-${b.id}` });
+    // OVERSTAY is not a customer waiting: its own routine entry, never escalated (as it never gets the WAITING push).
+    const task = a.kind === "drops" && !a.key.startsWith("complaint:") && !a.key.startsWith("overstay:");
+    sent += await pushTo(everyoneBut(a.by), a.kind, { title, body, url: "/?booking=" + b.id, tag: `${a.kind}-${b.id}`, bookingId: b.id, deliveryKey: a.key, inboxStaff: (people ?? []).map(p => p.id), eventKey: task ? `collection:${b.id}:${b.called_at || a.at}` : a.key, category: a.key.startsWith("complaint:") ? "complaint" : a.kind, urgency: a.kind === "flights" || a.key.startsWith("overstay:") ? "routine" : "urgent" });
     await discord(b.company_id, a.channel, title, body);
   }
   return { sent };
@@ -170,7 +220,7 @@ async function onCall(id: number) {
   const bits = b
     ? [b.kind === "picks" ? "PICKS" : "DROPS", b.return_at ? "return " + new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(b.return_at)) : "", b.yard ? "yard " + b.yard : "", b.num ? "key " + b.num : "", mask]
     : [mask];
-  const sent = await pushTo((ids ?? []) as string[], null, { title, body: bits.filter(Boolean).join(" · "), url: "/", tag: `call-${k.id}` });
+  const sent = await pushTo((ids ?? []) as string[], null, { title, body: bits.filter(Boolean).join(" · "), url: "/", tag: `call-${k.id}`, eventKey: `call:${k.id}`, category: "calls", urgency: "urgent" });
   return { sent };
 }
 
@@ -206,10 +256,33 @@ async function onLongWait(req: Request) {
     const title = `⏱ WAITING ${mins} MIN: ${car} — ${b.name || "Customer"}`;
     const due = b.flight ? `${b.flight} · due ${b.est_time && b.est_time !== "DELAY" ? b.est_time : b.sched_time || time(b.return_at)}` : `back ${time(b.return_at)}`;
     const body = `CALLED at ${time(b.called_at)}${byName ? " by " + byName : ""}, no driver SENT yet · ${due}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
-    sent += await pushTo(people.map((p) => p.id), "drops", { title, body, url: "/", tag: `drops-${b.id}` });
+    sent += await pushTo(people.map((p) => p.id), "drops", { title, body, url: "/?booking=" + b.id, tag: `drops-${b.id}`, bookingId: b.id, eventKey: `collection:${b.id}:${b.called_at}`, deliveryKey: `wait:${b.id}:${b.called_at}`, category: "drops", urgency: "urgent" });
     await discord(b.company_id, "drops", title, body);
   }
+  sent += await centreTimer();
   return reply(200, { waiting: waiting.length, sent });
+}
+
+// Shared five-minute timer: real missing-key / physical-lane candidates and
+// supervisor escalation. No new cron or additional customer messaging.
+async function centreTimer() {
+  let sent = await sendQueuedPushes();
+  const { data: candidates, error } = await db.rpc("ops_notification_candidates");
+  if (error) console.error("notification candidates unavailable", error.code);
+  for (const n of Array.isArray(candidates) ? candidates : []) {
+    if (!n.staff?.length || !(await once("centre:" + n.event_key))) continue;
+    sent += await pushTo(n.staff, null, { title: n.title, body: n.body, url: "/?booking=" + n.booking_id, tag: n.event_key, eventKey: n.event_key, bookingId: n.booking_id, category: n.kind, urgency: "urgent" });
+  }
+  const { data: escalations, error: escalationError } = await db.rpc("ops_notification_escalations");
+  if (escalationError) console.error("notification escalation unavailable", escalationError.code);
+  for (const n of Array.isArray(escalations) ? escalations : []) {
+    sent += await pushTo(n.staff, null, { title: n.title, body: n.body, url: "/?notice=" + n.id, tag: n.key, category: "escalation", urgency: "urgent", persist: false });
+  }
+  if (await once("centre-trim:" + new Date().toISOString().slice(0,10))) {
+    const { error } = await db.rpc("ops_notification_trim");
+    if (error) console.error("notification retention unavailable", error.code);
+  }
+  return sent;
 }
 
 // A scheduled booking import that was held or did not run: owners, managers and the office are told, once per saved
@@ -222,7 +295,7 @@ async function onImportHeld(req: Request, msg: Record<string, unknown>) {
   if (!(await once(`importheld:${company}:${slot}`))) return reply(200, { sent: 0, note: "already sent" });
   const { data: people } = await db.from("staff").select("id").eq("company_id", company).eq("active", true).in("role", ["owner", "manager", "office"]);
   const { data: co } = await db.from("companies").select("name").eq("id", company).maybeSingle();
-  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title: `${co?.name ?? "Parking Ops"}: bookings need a decision`, body: text, url: "/", tag: "import-held" });
+  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title: `${co?.name ?? "Parking Ops"}: bookings need a decision`, body: text, url: "/", tag: "import-held", eventKey: `importheld:${company}:${slot}`, category: "import", urgency: "urgent" });
   return reply(200, { sent });
 }
 
@@ -238,7 +311,7 @@ async function onUsage(req: Request) {
   const { data: people } = ids.length ? await db.from("staff").select("id").in("company_id", ids).eq("active", true).in("role", ["owner", "manager"]) : { data: [] };
   const title = "⚠️ Parking Ops: plan check";
   const body = warnings.join(" ") + " Tell whoever looks after the app.";
-  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title, body, url: "/", tag: "usage" });
+  const sent = await pushTo((people ?? []).map((p) => p.id), null, { title, body, url: "/", tag: "usage", category: "usage" });
   for (const c of cos ?? []) await discord(c.id, "drops", title, body);
   return reply(200, { warnings: warnings.length, sent });
 }
@@ -256,7 +329,7 @@ async function onHealth(req: Request) {
   if (!fresh.length) return reply(200, { warnings: (h?.warnings ?? []).length, sent: 0 });
   const title = "⚠️ Parking Ops: needs a look";
   const body = fresh.join(" ") + " Details: Clients → Health.";
-  const sent = await pushTo((h?.to ?? []) as string[], null, { title, body, url: "/", tag: "health" });
+  const sent = await pushTo((h?.to ?? []) as string[], null, { title, body, url: "/", tag: "health", category: "health" });
   const hook = String(h?.discord ?? "");
   if (/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(hook)) {
     try { await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: `**${title}**\n${body}`, allowed_mentions: { parse: [] } }) }); }
@@ -271,7 +344,7 @@ async function onTest(req: Request, body: Record<string, unknown>) {
   });
   const { data: me } = await asCaller.rpc("me");
   if (!me?.id) return reply(401, { error: "Sign in again." });
-  const sent = await pushTo([me.id], "drops", { title: "Test notification", body: `Notifications work on this phone, ${me.name}.`, url: "/", tag: "test" });
+  const sent = await pushTo([me.id], null, { title: "Test notification", body: `Test alert for ${me.name}.`, url: "/", tag: "test", persist: false }, typeof body.endpoint === "string" ? body.endpoint : undefined);
   const result: Record<string, unknown> = { sent };
   if (body.discord) {
     const { data: allowed } = await asCaller.rpc("can", { p_action: "settings" });

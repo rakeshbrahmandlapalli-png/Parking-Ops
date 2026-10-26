@@ -1,7 +1,7 @@
 // TakeOff: keeps the app's own files on the phone so it opens with no signal.
 // Bookings are never cached here; they come from Supabase every time.
-const CACHE = "takeoff-ops-v13";
-const FILES = ["/", "/index.html", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/ops-refined.css", "/lanes.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
+const CACHE = "takeoff-ops-v14";
+const FILES = ["/", "/index.html", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/ops-refined.css", "/lanes.css", "/notifications.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", e => {
@@ -30,15 +30,35 @@ self.addEventListener("push", e => {
   let note = {};
   try { note = e.data ? e.data.json() : {}; } catch (err) { note = { body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(note.title || (TAKEOFF ? "TakeOff" : "Parking Ops"), {
-    body: note.body || "", tag: note.tag || undefined, renotify: !!note.tag,
+    body: note.body || "", tag: note.tag || undefined, renotify: false, silent: note.silent === true,
     icon: NOTE_ICON, badge: NOTE_BADGE, data: { url: note.url || "/" }
   }));
 });
 self.addEventListener("notificationclick", e => {
   e.notification.close();
-  const target = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin).href;
+  let target;
+  try {
+    target = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin);
+    if (target.origin !== self.location.origin || target.pathname !== "/") target = new URL("/", self.location.origin);
+  } catch (_) { target = new URL("/", self.location.origin); }
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
-    const open = list.find(c => c.url.split("#")[0] === target);
-    return open ? open.focus() : self.clients.openWindow(target);
+    const open = list.find(c => new URL(c.url).origin === self.location.origin && new URL(c.url).pathname === "/");
+    if (!open) return self.clients.openWindow(target.href);
+    // Do not navigate an existing app: it may contain an unsaved booking edit.
+    // Its authenticated handler opens the destination and preserves its PIN link.
+    open.postMessage({ type: "OPEN_NOTIFICATION", url: target.href });
+    return open.focus();
   }));
+});
+
+// Browsers may rotate a push subscription. Resubscribe using the existing key;
+// only the signed-in app can save it to the server. No credentials live here.
+self.addEventListener("pushsubscriptionchange", e => {
+  e.waitUntil((async () => {
+    try {
+      if (e.oldSubscription && e.oldSubscription.options) await self.registration.pushManager.subscribe(e.oldSubscription.options);
+    } catch (_) { /* The signed-in screen explains a blocked/unsupported device. */ }
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" }));
+  })());
 });

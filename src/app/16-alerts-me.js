@@ -14,10 +14,17 @@
   }
   // S.notify: null until loaded; {ready:false} when part 4 hasn't been run yet.
   async function loadNotify() {
+    if (!S.me) return;
+    var uid=S.me.id;
     var prefs = await sb.from("alert_prefs").select("*").maybeSingle();
     var sub = null; try { sub = await currentSubscription(); } catch (e) {}
-    S.notify = { ready: !prefs.error, prefs: prefs.data || {}, on: !!sub && pushSupported() && Notification.permission === "granted" };
-    if (S.view === "me") render();
+    var saved = null;
+    if (sub) { try { saved = await sb.from("push_subscriptions").select("endpoint").eq("staff_id", uid).eq("endpoint", sub.endpoint).maybeSingle(); } catch (e) {} }
+    var device = null;
+    if (sub && saved && saved.data) { try { var ds=await sb.rpc("ops_push_device_status",{p_endpoint:sub.endpoint}); if (!ds.error) device=ds.data; } catch (e) {} }
+    if (!S.me || S.me.id!==uid) return;
+    S.notify = { ready: !prefs.error, prefs: prefs.data || {}, device: device, on: !!sub && !!(saved && !saved.error && saved.data) && pushSupported() && Notification.permission === "granted" };
+    if (S.view === "me" || (S.view === "notifications" && NC.selected === "settings")) render();
   }
   function notifyHtml() {
     var N = S.notify;
@@ -27,9 +34,10 @@
     if (iosOutsideHomeScreen()) text = "On iPhone, add " + brandName() + " to your Home Screen (Share, then Add to Home Screen) and open it from there to get notifications.";
     else if (!pushSupported()) text = "This browser can't show notifications. On Android use Chrome; on iPhone open " + brandName() + " from your Home Screen.";
     else if (Notification.permission === "denied") text = "Notifications are blocked for " + brandName() + ". Allow them in your phone's settings, then come back here.";
-    else if (N.on) text = "On for this phone.";
+    else if (N.on) text = "Registered on this device. Send a test to check that alerts appear.";
     else { text = "Off for this phone."; canOn = true; }
     return '<div class="box" style="padding:14px;margin-top:14px;max-width:560px"><strong>Phone notifications</strong><p class="note" style="margin:4px 0 10px">' + esc(text) + "</p>" +
+      (N.device ? '<p class="note">This device: ' + (N.device.queued || 0) + ' queued · ' + (N.device.failed_24h || 0) + ' failed in 24 hours' + (N.device.last_accepted ? ' · Last accepted by push service ' + esc(hhmm(N.device.last_accepted)) : '') + '. Acceptance does not confirm display.</p>' : '') +
       (N.on ? ALERT_KINDS.filter(function (k) { return k[0] !== "calls" || (callsAddon() && can("callpop")); }).map(function (k) {
         return '<label class="check"><input type="checkbox" data-alertpref="' + k[0] + '"' + (N.prefs[k[0]] === false ? "" : " checked") + "> " + esc(k[1]) + "</label>";
       }).join("") : "") +
@@ -52,6 +60,16 @@
     } catch (err) { toast(err.message || String(err), true); }
     S.notify = null; render();
   }
+  async function syncCurrentPushSubscription() {
+    if (!S.me || !pushSupported() || Notification.permission!=="granted") return;
+    var uid=S.me.id;
+    try {
+      var sub=await currentSubscription(); if (!sub || !S.me || S.me.id!==uid) return;
+      var j=sub.toJSON();
+      var r=await sb.rpc("save_push_subscription",{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth});
+      if (!r.error && S.me && S.me.id===uid) { S.notify=null; if(S.view==="me" || S.view==="notifications" && NC.selected==="settings") render(); }
+    } catch(e) { /* Offline: existing subscription and server ownership stay put. */ }
+  }
   // Also runs quietly on sign-out, so a shared phone stops getting the last person's alerts.
   async function turnOffNotifications(quiet) {
     try {
@@ -64,9 +82,11 @@
   async function sendTest(btn, discord) {
     btn.disabled = true;
     try {
-      var r = await callFunction("send-alerts", { type: "test", discord: !!discord }, true);
+      var sub = discord ? null : await currentSubscription();
+      if (!discord && !sub) throw new Error("Re-enable notifications on this device before sending a test.");
+      var r = await callFunction("send-alerts", { type: "test", discord: !!discord, endpoint: sub ? sub.endpoint : undefined }, true);
       if (discord) toast("Discord: DROPS " + (r.drops ? "sent" : "not set or failed") + " · PICKS " + (r.picks ? "sent" : "not set or failed"), !(r.drops || r.picks));
-      else toast(r.sent ? "Test sent. It should arrive in a few seconds." : "Nothing sent: notifications aren't on for this phone.", !r.sent);
+      else toast(r.sent ? "Push service accepted the test. Check this device; delivery is not confirmed." : "No test accepted. Re-enable notifications on this device and try again.", !r.sent);
     } catch (err) { toast(err.message, true); }
     finally { btn.disabled = false; }
   }
