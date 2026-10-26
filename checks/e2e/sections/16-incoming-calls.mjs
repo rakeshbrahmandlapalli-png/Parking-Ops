@@ -38,6 +38,22 @@ for (const theme of ["", "pro", "cards", "premium", "board", "stdplus", "ops", "
   await page.context().close();
 }, "calls");
 
+// A call about a car on another sheet than the one on screen (26 Oct): the card still shows the car's details
+// and Open booking opens that sheet and the car; CALLED is left to the car itself.
+await scenario(async () => {
+  const db = callsDb("stdplus");
+  const page = await phone(browser, db);
+  await open(page);
+  await ring(page, { id: 11, company_id: "c1", at: ago(0), from_number: "07700 900123", booking_id: "b4", kind: "drops", reg: "DY16MYO", name: "ATANASOV MX", status: "ringing", marked: "", handled_name: "" }); await sleep(500);
+  const pop = await page.innerText("#callPop");
+  check("Calls: a car on another sheet still shows its details", /DY16MYO/.test(pop) && /Return due/.test(pop) && /Vehicle status/.test(pop) && /Key tag/.test(pop) && /Open booking/.test(pop), pop);
+  check("Calls: no CALLED button for a car not on the sheet in view", !(await page.$('[data-callmark="11"]')));
+  await page.click('[data-callopen="11"]'); await page.waitForSelector("#panel[open]", { timeout: 4000 }).catch(() => {}); await sleep(600);
+  check("Calls: Open booking opens that car's sheet and panel", /DY16MYO/.test(await page.innerText("#panel")), await page.innerText("#panel").catch(() => ""));
+  check("Calls (other sheet): no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, "calls");
+
 // A caller not on today's cars: no CALLED button; Menu → Calls lists missed calls first, Called back marks it.
 await scenario(async () => {
   const db = callsDb("stdplus");
