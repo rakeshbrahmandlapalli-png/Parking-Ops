@@ -398,7 +398,7 @@
       host.innerHTML = '<h3>Caller keypad menu</h3><p class="note">Not set up. This optional service answers calls, takes 1 for landed or 2 for dropping off, then rings this TakeOff app. A voice service and cost approval are required.</p>';
       return;
     }
-    var v = r.data, ready = v.approved && v.app_ready;
+    var v = r.data, ready = v.approved && v.app_ready; voiceSaved = v;
     host.innerHTML = '<h3>Caller keypad menu</h3><p class="note">' + (v.approved ? (v.app_ready ? 'Company phone ready for calls in TakeOff.' : 'Open Voice calls on the company phone to register it.') : 'Waiting for service cost approval.') + '</p>' +
       '<label class="field">Caller menu<select id="vmOn"><option value="false"' + (!v.on ? ' selected' : '') + '>Off</option><option value="true"' + (v.on ? ' selected' : '') + (!ready && !v.on ? ' disabled' : '') + '>On</option></select></label>' +
       '<label class="field">Text the caller the instructions<select id="vmText"><option value="demo"' + (v.menu_text === "demo" || !v.menu_text ? ' selected' : '') + '>Demo: write it on the call, don\'t send</option><option value="on"' + (v.menu_text === "on" ? ' selected' : '') + '>On: send from the company phone</option><option value="off"' + (v.menu_text === "off" ? ' selected' : '') + '>Off</option></select></label>' +
@@ -406,11 +406,19 @@
       '<p class="note">Leave the greeting blank for the standard welcome. TakeOff then reads: 1 if you have landed, 2 if you are dropping off, or 0 for the office. A single matching booking is marked CALLED. Calls ring inside TakeOff; internet is required.</p>' +
       '<button type="button" class="btn brand" data-savevoice>Save caller menu</button>';
   }
+  // Two writes (menu and greeting, then the text), so say which one landed: an error after the first
+  // says it was saved, and the boxes are drawn again from what the database holds.
+  var voiceSaved = null;
   async function saveVoiceMenu(btn) {
     btn.disabled = true;
-    var r = await sb.rpc("set_voice_menu", { p_on: $("vmOn").value === "true", p_greeting: $("vmGreeting").value });
-    if (!r.error && $("vmText")) r = await sb.rpc("set_voice_menu_text", { p_mode: $("vmText").value });
+    var v = voiceSaved || {}, on = $("vmOn").value === "true", greet = $("vmGreeting").value, mode = $("vmText") ? $("vmText").value : null;
+    var menuSame = !!v.on === on && (v.greeting || "") === greet, textSame = mode === null || mode === (v.menu_text || "demo");
+    var r = menuSame ? {} : await sb.rpc("set_voice_menu", { p_on: on, p_greeting: greet }), menuDone = !menuSame && !r.error;
+    if (!r.error && !textSame) r = await sb.rpc("set_voice_menu_text", { p_mode: mode });
     btn.disabled = false;
-    if (r.error) return toast(r.error.message, true);
+    if (r.error) {
+      toast((menuDone ? "Menu and greeting saved, but the text setting was not: " : "Not saved: ") + r.error.message, true);
+      return loadVoiceMenu();
+    }
     savedSec(btn); toast("Caller menu saved"); loadVoiceMenu();
   }

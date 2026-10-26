@@ -7,10 +7,22 @@
     // A car from another sheet (an old dialog, a late tap) never acts under this one.
     if (S.switching || (row && row.sheet_id && S.sheetId && row.sheet_id !== S.sheetId)) { toast("Loading another sheet. Try again in a moment.", true); return; }
     if (row && mutate) mutate(row);
-    S.queue.push({ fn: fn, args: args, rowId: row ? row.id : null });
+    var op = { fn: fn, args: args, rowId: row ? row.id : null };
+    if (curBatch) { op.batch = curBatch.id; curBatch.left++; curBatch.n++; }
+    S.queue.push(op);
     if (row) S.pending[row.id] = (S.pending[row.id] || 0) + 1;
     saveQueue(); render(); flush();
   }
+  // Writes sent together (Save changes): "Saved" shows when the last one is confirmed, an error says how many failed.
+  var batches = {}, batchSeq = 0, curBatch = null;
+  function beginBatch() { curBatch = { id: "b" + (++batchSeq), left: 0, n: 0, bad: 0, sealed: false }; batches[curBatch.id] = curBatch; return curBatch; }
+  function endBatch(b) { if (curBatch === b) curBatch = null; b.sealed = true; if (!b.n) delete batches[b.id]; else batchReport(b); }
+  function batchReport(b) {
+    if (!b.sealed || b.left > 0) return;
+    delete batches[b.id];
+    if (!b.bad) toast("Saved"); else toast(b.bad + " of " + b.n + " changes did not save. Open the car and check.", true);
+  }
+  function batchDone(op, ok) { var b = op.batch && batches[op.batch]; if (!b) return; b.left--; if (!ok) b.bad++; batchReport(b); }
   var retryTimer = null;
   async function flush() {
     if (S.flushing || !S.queue.length || !S.me) { renderSync(); return; }
@@ -31,7 +43,7 @@
       try { var ref = await sb.auth.refreshSession(); if (!ref.error) { clearTimeout(retryTimer); retryTimer = setTimeout(flush, 1000); } } catch (e) {}
       return;
     }
-    S.queue.shift(); saveQueue();
+    S.queue.shift(); saveQueue(); batchDone(op, !r.error);
     if (op.rowId) { S.pending[op.rowId] = Math.max(0, (S.pending[op.rowId] || 1) - 1); if (!S.pending[op.rowId]) delete S.pending[op.rowId]; }
     if (r.error) {
       toast(r.error.message, true);
