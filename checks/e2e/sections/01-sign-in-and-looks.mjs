@@ -669,9 +669,13 @@ await scenario(async () => {
   check("Ops wide Menu: sections side by side in three columns", mn.g >= 4 && mn.cols === 3, mn);
   // Dashboard
   await go("dashboard");
-  const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, a = r(".od-attn"), p = r(".od-parked"), w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
-    return { attnFull: a && a.width > innerWidth - 80, three: p && w && q && Math.abs(p.top - w.top) < 2 && Math.abs(w.top - q.top) < 2 && p.right <= w.left && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
-  check("Ops wide Dashboard: Needs attention across, Parked / Upcoming / Live queues in one row", dsh.attnFull && dsh.three, dsh);
+  const dsh0 = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, sd = r(".od-side"), a = r(".od-desk"), m = r(".od-dmain"), p = r(".od-dside");
+    return sd && a && m && p && sd.right <= a.left && a.width > innerWidth - 360 && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1; });
+  await page.click('[data-dashsec="workload"]'); await sleep(300);
+  const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
+    return { attnFull: true, three: w && q && Math.abs(w.top - q.top) < 2 && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
+  check("Ops wide Dashboard: side list on the left, What needs doing beside it with Site status beside Priority work", dsh0);
+  check("Ops wide Dashboard: Workload, Upcoming and Live queues in one row", dsh.three, dsh);
   check("Ops wide Dashboard: Refresh and the period buttons visible and clickable", dsh.tools, dsh);
   check("Ops wide Dashboard: no sideways scrolling", await noSide());
   // Settings

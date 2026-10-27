@@ -241,6 +241,7 @@ export async function shots(dir) {
       const db = makeDb(); db.company.brand = who === "takeoff" ? { colour: "#F9A01B", ink: "#1A1A1A", short: "TakeOff", theme: "ops" } : { colour: "#1560BD", ink: "#FFFFFF", soft: "#E8F0FB", text: "#0E3F7E", short: "Parking Bay", theme: "ops", chrome: "#0E3F7E", mark: "P" };
       if (who === "parkingbay") { db.company.name = "Airport Parking Bay"; db.company.yards = ["GS", "MY", "T"]; }
       db.company.overstay_rate = 30; db.company.capacity = 40; db.dash = dashData(); dashSheets(db);
+      db.bookings.find((b) => b.id === "q1").desk_at = new Date(Date.now() - 300000).toISOString();
       if (who === "parkingbay") { db.company.exit_fee = 10; db.dash.exit = dashExit(); db.dash.parked.yards[1].yard = "MY"; }
       for (const [width, height, name] of [[390, 844, "phone"], [1440, 1000, "desktop"]]) {
         const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
@@ -249,6 +250,11 @@ export async function shots(dir) {
         await page.click('#menuBody [data-view="dashboard"]'); await sleep(900);
         await page.setViewportSize({ width, height: await page.evaluate(() => document.documentElement.scrollHeight) }); await sleep(300);
         await page.screenshot({ path: path.join(dir, who + "-" + name + ".png") });
+        for (const sec of ["workload", "payments", "yards", "activity"]) {
+          await page.setViewportSize({ width, height }); await page.click('[data-dashsec="' + sec + '"]'); await sleep(400);
+          await page.setViewportSize({ width, height: await page.evaluate(() => document.documentElement.scrollHeight) }); await sleep(300);
+          await page.screenshot({ path: path.join(dir, who + "-" + name + "-" + sec + ".png") });
+        }
         await page.context().close();
       }
     }

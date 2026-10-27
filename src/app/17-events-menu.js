@@ -251,7 +251,10 @@
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
     if (t.dataset.create !== undefined) return createSheet();
     if (t.dataset.reloadlog !== undefined) { S.activity = null; render(); return; }
+    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sb = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sb) sb.focus({ preventScroll: true }); return; }
     if (t.dataset.dashjump) {
+      var want = DASH_SEC_OF[t.dataset.dashjump];
+      if (want && want !== (S.dashSec || "overview")) { S.dashSec = want; render(); }
       var target = document.getElementById('dash-' + t.dataset.dashjump);
       if (target) {
         if (target.tagName === 'DETAILS') target.open = true;
@@ -270,6 +273,8 @@
     if (t.dataset.dashreload !== undefined) { S.dash = null; S.dashLive = undefined; render(); return; }
     if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", queue: t.dataset.dashqueue || "", force: true });
     if (t.dataset.savehandover !== undefined) return saveHandover(t);
+    if (t.dataset.handoveredit !== undefined) { S.handoverEdit = true; render(); var ta = $("handoverText"); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } return; }
+    if (t.dataset.handovercancel !== undefined) { S.handoverEdit = false; S.handoverDraft = null; render(); return; }
     if (t.dataset.queueclear !== undefined) { S.boardQueue = ""; render(); return; }
     if (t.dataset.reset) {
       var p = S.staff[t.dataset.reset];
