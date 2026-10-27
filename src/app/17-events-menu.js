@@ -141,7 +141,10 @@
     if (t.dataset.ncrefresh !== undefined) return loadNotificationCentre();
     if (t.dataset.ncsettings !== undefined) { NC.selected='settings'; render(); return; }
     if (t.dataset.ncback !== undefined) { NC.selected=''; render(); return; }
-    if (t.dataset.nctab) { NC.tab=t.dataset.nctab; NC.selected=''; render(); return; }
+    if (t.dataset.nctab) { NC.tab=t.dataset.nctab; NC.selected=''; NC.confirm=''; render(); return; }
+    if (t.dataset.ncclear !== undefined) { NC.confirm=NC.tab; render(); return; }
+    if (t.dataset.ncclearno !== undefined) { NC.confirm=''; render(); return; }
+    if (t.dataset.ncclearok !== undefined) return ncClear();
     if (t.dataset.ncopen) { NC.selected=t.dataset.ncopen; render(); return ncAct(t.dataset.ncopen,'read'); }
     if (t.dataset.ncaccept) return ncAct(t.dataset.ncaccept,'accept');
     if (t.dataset.ncrelease) return ncAct(t.dataset.ncrelease,'release');

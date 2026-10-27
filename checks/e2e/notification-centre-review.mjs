@@ -34,6 +34,7 @@ async function setup(theme,width=390,pushReady=false){
  let error='',gate;
  await page.context().route('**/rest/v1/rpc/ops_notification_feed',async r=>{if(gate)await gate;if(error)return r.fulfill({status:400,json:{code:error,message:'Database update needed'}});return r.fulfill({json:state});});
  await page.context().route('**/rest/v1/rpc/ops_notification_action',r=>{const a=r.request().postDataJSON();calls.push(a);const n=state.items.find(n=>n.id===a.p_id);if(a.p_action==='read')n.read_at=ago(0);if(a.p_action==='accept'){n.claimed_by='s1';n.claimed_name='RAKESH';n.activity.push({at:ago(0),action:'accept',staff_name:'RAKESH'});}if(a.p_action==='release')n.claimed_by=null;if(a.p_action==='assign'){n.claimed_by=a.p_staff;n.claimed_name='SUGU';}return r.fulfill({json:null});});
+ await page.context().route('**/rest/v1/rpc/ops_notification_clear',r=>{const a=r.request().postDataJSON();calls.push(a);let n=0;state.items.forEach(x=>{if(a.p_ids.includes(x.id)&&!x.cleared_at){x.cleared_at=ago(0);n++;}});return r.fulfill({json:n});});
  await page.context().route('**/rest/v1/rpc/set_ops_notification_options',r=>{calls.push(r.request().postDataJSON());state.options.routine_silent=r.request().postDataJSON().p_routine_silent;return r.fulfill({json:null});});
  await open(page);await page.waitForFunction(()=>document.querySelector('#notifyBadge')?.textContent==='2');
  return {page,state,calls,db,setError:x=>error=x,setGate:x=>gate=x};
@@ -50,11 +51,32 @@ try{
   check(`${theme||'standard'}: centre fits phone`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.click('[data-nctab=urgent]');check(`${theme||'standard'}: urgent filter`,await page.locator('.nc-row').count()===3);
   await page.click('[data-nctab=mine]');check(`${theme||'standard'}: mine filter`,await page.locator('.nc-row').count()===1);
+  check(`${theme||'standard'}: Mine has no Clear all (my accepted task stays)`,!await page.isVisible('[data-ncclear]'));
   await page.click('[data-nctab=history]');check(`${theme||'standard'}: resolved history`,await page.locator('.nc-row').count()===1);
+  check(`${theme||'standard'}: Resolved has no Clear all`,!await page.isVisible('[data-ncclear]'));
+  await page.click('[data-nctab=all]');check(`${theme||'standard'}: All offers Clear all 3 (not my accepted task)`,(await page.innerText('[data-ncclear]')).trim()==='Clear all 3');
+  await page.click('[data-ncclear]');check(`${theme||'standard'}: Clear all asks first and fits`,await page.isVisible('[data-ncclearok]')&&await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   check(`${theme||'standard'}: no browser errors`,page.__errors.length===0);
   await page.context().close();
  }
+ // Clear all (part 129): confirm, only this tab's rows, my accepted task kept, cancel does nothing.
  let t=await setup('ops');let {page,state,calls}=t;
+ await centre(page);await page.waitForSelector('.nc-row');
+ await page.click('[data-nctab=urgent]');await page.click('[data-ncclear]');
+ check('confirm names the count and says it is only your list',/Clear 3 notifications from your list\?/.test(await page.innerText('.nc-confirm'))&&/Only your list/.test(await page.innerText('.nc-confirm')));
+ await page.click('[data-ncclearno]');check('Cancel clears nothing',!await page.isVisible('.nc-confirm')&&!calls.some(x=>x.p_ids));
+ await page.click('[data-ncclear]');await page.click('[data-nctab=all]');check('switching tab drops the confirm',!await page.isVisible('.nc-confirm'));
+ await page.click('[data-nctab=urgent]');await page.click('[data-ncclear]');await page.click('[data-ncclearok]');
+ await page.waitForFunction(()=>!document.querySelector('[data-ncclear]')&&document.querySelectorAll('.nc-row').length===0);
+ const sentIds=calls.find(x=>x.p_ids).p_ids;
+ check('Urgent tab clears only its own rows (not the routine task I accepted)',sentIds.length===3&&['n1','n2','n3'].every(x=>sentIds.includes(x))&&!sentIds.includes('n4'));
+ await page.click('[data-nctab=all]');check('my accepted task is still on All, with no Clear all',await page.locator('.nc-row').count()===1&&!await page.isVisible('[data-ncclear]'));
+ check('badge counts only what is left',(await page.innerText('#notifyBadge'))==='');
+ await page.click('[data-nctab=history]');check('cleared alerts move to Resolved, marked Cleared',await page.locator('.nc-row').count()===4&&(await page.locator('.nc-row .nc-meta span',{hasText:'Cleared'}).count())===3);
+ await page.click('[data-ncopen=n1]');check('detail says it was cleared from your list',/Cleared from your list/.test(await page.innerText('.nc-detail')));
+ check('no browser errors while clearing',page.__errors.length===0);
+ await page.context().close();
+ t=await setup('ops');({page,state,calls}=t);
  await centre(page);await page.click('[data-ncopen=n1]');await page.waitForFunction(()=>document.querySelector('#notifyBadge').textContent==='1');
  check('opening detail marks only that alert read',calls.some(x=>x.p_action==='read'&&x.p_id==='n1'));
  await page.click('[data-ncaccept=n1]');await page.waitForSelector('[data-ncrelease=n1]');

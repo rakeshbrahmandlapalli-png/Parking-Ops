@@ -5,7 +5,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "check:notifications": "node notification-centre.mjs && node notification-push-queue.mjs && node --experimental-strip-types --no-warnings notification-delivery.mjs && node notification-worker.mjs",
+    "check:notifications": "node notification-centre.mjs && node notification-clear.mjs && node notification-push-queue.mjs && node --experimental-strip-types --no-warnings notification-delivery.mjs && node notification-worker.mjs",
     "check:notification-browser": "node e2e/notification-centre-review.mjs",
     "check:calls": "node call-workflow.mjs",
     "check:call-browser": "node e2e/call-queue-review.mjs"
