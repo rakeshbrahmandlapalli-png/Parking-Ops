@@ -3290,6 +3290,12 @@
         rl = $("retD").value + " " + rt;
       }
     }
+    // A car staying longer whose night's sheet is in: Save puts it there (part 127).
+    if (rl === null && r.kind === "drops" && r.overstay && !r.early && !r.cleared_at && r.return_at && can("import") && carSheetDay(r) && returnDay(r) > carSheetDay(r) &&
+      S.sheets.some(function (x) { return x.kind === "drops" && x.day === returnDay(r); })) {
+      var rp = londonParts(new Date(r.return_at));
+      rl = rp.key + " " + rp.time;
+    }
     var dl = null;
     if ($("dropD") && (touched(["dropD", "dropT"]) || ($("dropD").value && carSheetDay(r) && $("dropD").value !== carSheetDay(r)))) {
       var dt = readTime("dropT"), od = r.drop_at ? londonParts(new Date(r.drop_at)) : { key: "", time: "" };
