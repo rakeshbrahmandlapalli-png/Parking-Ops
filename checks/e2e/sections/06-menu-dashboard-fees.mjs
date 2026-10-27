@@ -60,10 +60,14 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     const txt = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
     check("Dashboard: fits a phone", await noSideScroll(page));
     check("Dashboard: plain heading, update time, the three periods", await page.locator(".od-head h1").innerText() === "Dashboard" && /^Updated \d{2}:\d{2}$/.test(await txt(".od-updated")) && await page.locator(".od [data-dashp]").count() === 3);
-    const attn = await page.locator(".od-attn-item").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-    check("Dashboard: Needs attention lists overdue cars, money left unpaid and exit fees to check", attn.length === 3 && /^2 cars past their return Open cars/.test(attn[0]) && /^£\d+ left unpaid · 1 car Review/.test(attn[1]) && /^3 exit fees to check Review/.test(attn[2]), attn);
-    const parked = await txt(".od-parked");
-    check("Dashboard: Parked now on the navy card, with returns today and tomorrow", /^Parked now 30 2 past their return Returning today 8 Tomorrow 0$/.test(parked) && await page.locator(".od-parked").evaluate((e) => getComputedStyle(e).backgroundColor === "rgb(15, 28, 46)") && await page.locator(".od-bar").count() === 0, parked);
+    check("Dashboard: What needs doing?, today's date and the role", /^What needs doing\? \w+day \d+ \w+ · Owner$/.test(await txt(".od-dhead")), await txt(".od-dhead"));
+    const tasks = await page.locator(".od-task").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+    check("Dashboard: Priority work, numbered, most urgent first, each with its button", tasks.length === 5 && /^01 Check 2 overdue cars Past their return .* Open →$/.test(tasks[0]) && /^02 Assign 12 cars to a yard Parked with no yard set\. Assign →$/.test(tasks[1]) && /^03 Review 1 unpaid return £\d+ owed, .* Review →$/.test(tasks[2]) && /^04 Check 3 exit fees .* Review →$/.test(tasks[3]) && /^05 Photograph 1 docket .* Open →$/.test(tasks[4]) && /5 open tasks/.test(await txt(".od-dmain .od-sechead")), tasks);
+    check("Dashboard: the first task is marked", await page.locator(".od-task.first").count() === 1 && await page.locator(".od-task").first().evaluate((e) => e.classList.contains("first")));
+    const cup = await page.locator(".od-cuprow").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+    check("Dashboard: Coming up, tonight's DROPS still to go out by hour", cup.length >= 1 && cup.every((c) => /^\d\d:00 – \d\d:00 \d+ arrivals? · \d+ returns?$/.test(c)) && cup.reduce((n, c) => n + +c.match(/(\d+) returns?$/)[1], 0) === 2, cup);
+    const site = await txt(".od-site");
+    check("Dashboard: Site status, parked and (no capacity set) past their return, returns today and tomorrow", /^Site status 30 parked 2 past their return Returning today 8 Tomorrow 0$/.test(site) && await page.locator(".od-site .od-bar").count() === 0, site);
     const work = await page.locator(".od-work .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Upcoming workload, today and tomorrow, returns and arrivals", work.length === 2 && work[0] === "Today 6 returning · 4 arriving 10" && work[1] === "Tomorrow 7 returning · 5 arriving 12", work);
     const pay = await page.locator(".od-pay .od-tr:not(.od-th)").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
@@ -75,10 +79,15 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: Live queues from tonight's DROPS", queues.length === 3 && /^Called, not sent 1 Open queue/.test(queues[0]) && /^Sent, not handed back 1 Open queue/.test(queues[1]) && /^Due in the next 2 hours, not sent 2 Open queue/.test(queues[2]), queues);
     const checks = await page.locator(".od-checks .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Checks, cars with no yard, PT photos not taken, the shift summary", /^Parked with no yard 12 Yards/.test(checks[0]) && /^PT photos not taken PICKS .* 1 Open PICKS/.test(checks[1]) && /^Desk bookings with no docket photo PICKS .* 1 Open PICKS/.test(checks[2]) && /^Shift summary and activity log Open/.test(checks[3]), checks);
-    const hv = await page.inputValue("#handoverText");
-    check("Dashboard: the handover note shows with who wrote it", hv === "Gate 2 key is in the safe" && /Written .* by SUGU/.test(await txt(".od-hrow small")), hv);
+    check("Dashboard: the handover note shows as text with who wrote it and when", await txt(".od-hnote") === "Gate 2 key is in the safe" && /^SUGU · \d\d:\d\d$/.test(await txt(".od-desk .od-hrow small")) && await page.locator("#handoverText").count() === 0);
+    await page.click("[data-handoveredit]"); await sleep(200);
+    check("Dashboard: Edit opens the note in a box, Cancel closes it unchanged", await page.inputValue("#handoverText") === "Gate 2 key is in the safe");
+    await page.fill("#handoverText", "not this"); await page.click("[data-handovercancel]"); await sleep(200);
+    check("Dashboard: Cancel keeps the saved note", await page.locator("#handoverText").count() === 0 && await txt(".od-hnote") === "Gate 2 key is in the safe" && !db.calls.some((c) => c.fn === "set_handover_note"));
+    await page.click("[data-handoveredit]"); await sleep(200);
     await page.fill("#handoverText", "Keys moved to cabinet 2"); await page.click("[data-savehandover]"); await sleep(500);
-    check("Dashboard: Save note sends the handover note and keeps the text", db.calls.some((c) => c.fn === "set_handover_note" && c.args.p_note === "Keys moved to cabinet 2") && await page.inputValue("#handoverText") === "Keys moved to cabinet 2");
+    check("Dashboard: Save note sends the handover note and shows it", db.calls.some((c) => c.fn === "set_handover_note" && c.args.p_note === "Keys moved to cabinet 2") && await txt(".od-hnote") === "Keys moved to cabinet 2");
+    await page.click("[data-handoveredit]"); await sleep(200);
     await page.fill("#handoverText", "typed, not saved"); await page.click("[data-dashdates]"); await sleep(150); await page.click("[data-dashdates]"); await sleep(150);
     check("Dashboard: a typed handover note survives the dashboard redrawing", await page.inputValue("#handoverText") === "typed, not saved");
     await page.evaluate(() => document.querySelector('[data-dashjump="exitpaid"]').click()); await sleep(200);
@@ -95,21 +104,25 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
       await page.setViewportSize({ width: 390, height: 844 });
     }
     await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150);
-    check("Dashboard: on a wide screen Parked now and Upcoming workload sit side by side, the table has its header", await page.evaluate(() => { const a = document.querySelector(".od-parked").getBoundingClientRect(), b = document.querySelector(".od-work").getBoundingClientRect(); return Math.abs(a.top - b.top) < 2 && b.left > a.right; }) && await page.locator(".od-th").isVisible() && !(await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible()));
-    check("Dashboard: Needs attention items sit in one row on a wide screen", await page.locator(".od-attn-item").evaluateAll((els) => els.every((e) => Math.abs(e.getBoundingClientRect().top - els[0].getBoundingClientRect().top) < 2)));
+    check("Dashboard: on a wide screen Site status sits beside Priority work, Upcoming workload beside Live queues, the table has its header", await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), m = r(".od-dmain"), a = r(".od-dside"), w = r(".od-work"), q = r(".od-queues"); return Math.abs(m.top - a.top) < 2 && a.left >= m.right - 1 && Math.abs(w.top - q.top) < 2 && q.left > w.right; }) && await page.locator(".od-th").isVisible() && !(await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible()));
+    check("Dashboard: wide screen, no sideways scrolling", await noSideScroll(page));
     await page.setViewportSize({ width: 390, height: 844 }); await sleep(150);
     const calls = db.dashCalls.length;
-    await page.click('.od-attn [data-dashjump="unpaid"]');
+    await page.click('.od-tasks [data-dashjump="unpaid"]');
     check("Dashboard: Left unpaid opens its records", await page.locator('#dash-unpaid').getAttribute('open') !== null && /LEFT01/.test(await page.locator('#dash-unpaid').innerText()) && db.dashCalls.length === calls);
-    await page.click('.od-attn [data-dashjump="late"]');
+    await page.click('.od-tasks [data-dashjump="late"]');
     check("Dashboard: overdue cars opens the cars past their return, by level", await page.locator('#dash-late').evaluate((e) => e.open && e.querySelector("summary") === document.activeElement) && /LATE1[\s\S]*2 days/.test(await page.locator('#dash-late').innerText()));
-    await page.click('.od-attn [data-dashjump="exit"]');
+    await page.click('.od-tasks [data-dashjump="exit"]');
     const exitTxt = (await page.locator('#dash-exit').innerText()).replace(/\s+/g, " ");
     check("Dashboard: exit fees to check lists cars handed back with none recorded, and those with no photo", /Exit fees to check \(3\)/.test(exitTxt) && /NOEXIT1 · MR LEFT Handed back, no exit fee recorded · FHR-1/.test(exitTxt) && /NOPHOTO · MR CASH CASH, no photo · SUGU/.test(exitTxt), exitTxt);
     await page.click('.od-pay [data-dashjump="records"]');
+
     check("Dashboard: Payment records goes to the records", await page.locator('#dash-records').evaluate((e) => e === document.activeElement));
     await page.click('.od-checks [data-dashjump="yards"]');
     check("Dashboard: Parked with no yard goes to the yards", await page.locator('#dash-yards').evaluate((e) => e === document.activeElement));
+    await page.click('#main').catch(() => {}); await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.click('.od-tasks [data-dashjump="yards"]');
+    check("Dashboard: Assign (no locations on PICKS) goes to the yards", await page.locator('#dash-yards').evaluate((e) => e === document.activeElement));
   }
   if (!theme) check("Dashboard (" + look + "): cars added at the desk, by hand and NEW BOOKING", /^Added at the desk 2 1 added · 1 NEW BOOKING/.test(tile("Added at the desk")), tile("Added at the desk"));
   if (!theme) check("Dashboard (" + look + "): money taken, cash and card", /Money taken £70 cash £20 · card £50/.test(tile("Money taken")), tile("Money taken"));
@@ -163,7 +176,7 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: no exit fee data, no exit fee row, alert or record", await page.locator('.od-pay .od-tr:not(.od-th)').count() === 1 && await page.locator('[data-dashjump="exit"], #dash-exit').count() === 0 && !/exit fee/i.test(await page.locator('.od-foot').innerText()));
     db.dash = { parked: { total: 0, late: 0, days: [], yards: [] } }; db.bookings = [];
     await page.click('[data-dashreload]'); await sleep(650);
-    check("Dashboard: empty data says so, no false alerts or dead controls", /Nothing needs attention/.test(await page.locator('.od-attn').innerText()) && await page.locator('.od-attn-item, [data-dashdates]').count() === 0 && /No bookings ahead yet/.test(await page.locator('.od-work').innerText()) && /Called, not sent\s*0/.test(await page.locator('.od-queues').innerText()));
+    check("Dashboard: empty data says so, no false alerts or dead controls", /Nothing needs doing right now/.test(await page.locator('.od-dmain').innerText()) && /0 open tasks/.test(await page.locator('.od-dmain').innerText()) && /No sheets for today yet|Nothing due in the next 4 hours/.test(await page.locator('.od-cup').innerText()) && await page.locator('.od-task, [data-dashdates]').count() === 0 && /No bookings ahead yet/.test(await page.locator('.od-work').innerText()) && /Called, not sent\s*0/.test(await page.locator('.od-queues').innerText()));
     await page.setViewportSize({ width: 360, height: 800 });
     check("Dashboard: smallest phone fits", await noSideScroll(page));
     check("Dashboard: no errors", page.__errors.length === 0, page.__errors);
@@ -209,7 +222,7 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   await page.evaluate(() => (document.querySelector("#cHead:not(.hidden)") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
   await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
   const parked = (await page.locator("#main .k-parked").innerText()).replace(/\s+/g, " ");
-  check("Capacity (" + look + "): Parked now shows the spaces free", (theme ? /^Parked now 10 free 30 of 40 75% occupied · 2 past their return/ : /30 of 40 · 10 free/).test(parked), parked);
+  check("Capacity (" + look + "): Parked now shows the spaces free", (theme ? /^Site status 30 parked 10 spaces free Occupancy 75% of 40 .*2 past their return/ : /30 of 40 · 10 free/).test(parked), parked);
   const onsiteTxt = (await page.locator("#main .booked").first().innerText().catch(() => "")).replace(/\s+/g, " ");
   check("Capacity (" + look + "): cars on site shows spaces free and over each day", /Today\s*38\s*2 free/.test(onsiteTxt) && /Tomorrow\s*45\s*5 over/.test(onsiteTxt) && await page.locator(".booked-row.over").count() === 1, onsiteTxt);
   const yard = (await page.locator("#main").innerText()).match(/NB[\s\S]{0,80}/)[0].replace(/\s+/g, " ");
@@ -218,7 +231,7 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   if (theme === "stdplus") check("Capacity: occupancy bar three quarters full", await page.locator(".ops-capbar i").evaluate((e) => e.style.width) === "75%");
   db.dash.parked.total = 45; await page.click("[data-dashreload]"); await sleep(650);
   const over = (await page.locator("#main .k-parked").innerText()).replace(/\s+/g, " ");
-  check("Capacity (" + look + "): over capacity says how many", (theme ? /^Parked now 5 over 45 of 40 113% occupied/ : /45 of 40 · 5 over/).test(over) && (!theme || await page.locator(".od-bar.over").count() === 1), over);
+  check("Capacity (" + look + "): over capacity says how many", (theme ? /^Site status 45 parked 5 over capacity Occupancy 113% of 40/ : /45 of 40 · 5 over/).test(over) && (!theme || await page.locator(".od-bar.over").count() === 1), over);
   check("Capacity (" + look + "): fits a phone", await noSideScroll(page));
 });
 await scenario(async () => {

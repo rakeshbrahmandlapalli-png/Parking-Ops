@@ -270,6 +270,8 @@
     if (t.dataset.dashreload !== undefined) { S.dash = null; S.dashLive = undefined; render(); return; }
     if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", queue: t.dataset.dashqueue || "", force: true });
     if (t.dataset.savehandover !== undefined) return saveHandover(t);
+    if (t.dataset.handoveredit !== undefined) { S.handoverEdit = true; render(); var ta = $("handoverText"); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } return; }
+    if (t.dataset.handovercancel !== undefined) { S.handoverEdit = false; S.handoverDraft = null; render(); return; }
     if (t.dataset.queueclear !== undefined) { S.boardQueue = ""; render(); return; }
     if (t.dataset.reset) {
       var p = S.staff[t.dataset.reset];

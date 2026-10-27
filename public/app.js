@@ -932,7 +932,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "topup" && !topupOn()) view = "board"; if (view === "topup") { TU.counts = null; TU.error = ""; loadTopup(); } if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "topup" && !topupOn()) view = "board"; if (view === "topup") { TU.counts = null; TU.error = ""; loadTopup(); } if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; S.handoverEdit = false; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -956,6 +956,10 @@
     called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
     sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
     soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }],
+    // The dashboard's Priority work.
+    desk: ["At the desk, not sent", function (r) { return r.kind === "drops" && atDesk(r) && !r.sent_at && !r.cleared_at; }],
+    noyard: ["Taken in, no yard", function (r) { return r.kind === "picks" && r.intake === "Collected" && !r.yard; }],
+    nodocket: ["Desk bookings, no docket photo", function (r) { return r.kind === "picks" && r.pick_called === "New Booking" && !r.doc_path; }],
     // A tapped number on Summary or Hourly stats: the cars it counts.
     way: ["On the way", function (r) { return !!r.sent_at && !r.cleared_at; }],
     over: ["Overstays", function (r) { return !!r.overstay; }],
@@ -4636,12 +4640,71 @@
     S.dashLive = { drops: d, dropsRows: got[0], picks: p, picksRows: got[1] };
     if (S.view === "dashboard") render();
   }
-  // The handover note: written by the owner or a manager, read by the next shift.
+  // The handover note: written by the owner or a manager, read by the next shift. Shown as text; Edit opens the box.
   function handoverHtml(H) {
     if (!H) return "";
-    var d = S.handoverDraft != null ? S.handoverDraft : (H.note || "");
-    return '<div class="od-handover"><label for="handoverText">Handover note</label><textarea id="handoverText" rows="3" maxlength="2000" placeholder="What the next shift needs to know">' + esc(d) + '</textarea>' +
-      '<div class="od-hrow"><small>' + (H.at ? "Written " + esc(dayShort(H.at) + " " + hhmm(H.at)) + (H.by ? " by " + esc(H.by) : "") : "No note yet") + '</small><button type="button" class="od-save" data-savehandover>Save note</button></div></div>';
+    var by = H.at ? [H.by, (londonParts(new Date(H.at)).key === londonParts(new Date()).key ? "" : dayShort(H.at) + " ") + hhmm(H.at)].filter(Boolean).join(" · ") : "";
+    if (S.handoverEdit || S.handoverDraft != null) {
+      var d = S.handoverDraft != null ? S.handoverDraft : (H.note || "");
+      return '<div class="od-handover editing"><label for="handoverText">Handover</label><textarea id="handoverText" rows="4" maxlength="2000" placeholder="What the next shift needs to know">' + esc(d) + '</textarea>' +
+        '<div class="od-hrow"><small>' + (by ? "Written " + esc(by) : "No note yet") + '</small><span class="od-hbtns"><button type="button" class="od-hcancel" data-handovercancel>Cancel</button><button type="button" class="od-save" data-savehandover>Save note</button></span></div></div>';
+    }
+    return '<div class="od-handover"><h2>Handover</h2>' + (H.note ? '<p class="od-hnote">' + esc(H.note) + "</p>" : '<p class="od-hnote none">No note for the next shift.</p>') +
+      '<div class="od-hrow"><small>' + esc(by) + '</small><button type="button" class="od-link od-hedit" data-handoveredit>' + (H.note ? "Edit" : "Write a note") + "</button></div></div>";
+  }
+  // Priority work: what someone has to act on now, most urgent first, each with the button that opens it.
+  // Coming up: today's PICKS still to arrive and tonight's DROPS still to go out, by hour, from this hour on.
+  function deskHtml(x, o) {
+    var L = o.live || {}, dr = L.dropsRows, pr = L.picksRows, tasks = [];
+    var task = function (title, note, btn, attr) { tasks.push({ title: title, note: note, btn: btn, attr: attr }); };
+    var plural = function (n, one, many) { return n + " " + (n === 1 ? one : many); };
+    if (dr && L.drops) {
+      var desk = dr.filter(QUEUES.desk[1]).length;
+      if (desk) task("Send " + plural(desk, "car", "cars") + " for " + (desk === 1 ? "a customer" : "customers") + " at the desk", "The customer is waiting and the car isn't sent yet.", "Open", 'data-dashsheet="' + esc(L.drops.id) + '" data-dashqueue="desk"');
+    }
+    if (o.late) task("Check " + plural(o.late, "overdue car", "overdue cars"), "Past their return time and not handed back.", "Open", 'data-dashjump="late"');
+    var pyard = picksYard() && L.picks && pr ? pr.filter(QUEUES.noyard[1]).length : null;
+    if (pyard) task("Assign " + plural(pyard, "car", "cars") + " to a yard", "Taken in today with no yard set.", "Assign", 'data-dashsheet="' + esc(L.picks.id) + '" data-dashqueue="noyard"');
+    else if (pyard === null && o.noYard) task("Assign " + plural(o.noYard, "car", "cars") + " to a yard", "Parked with no yard set.", "Assign", 'data-dashjump="yards"');
+    if (x.left.length) task("Review " + plural(x.left.length, "unpaid return", "unpaid returns"), money(o.unpaidSum) + " owed, handed back with no payment recorded.", "Review", 'data-dashjump="unpaid"');
+    if (o.exitReview) task("Check " + plural(o.exitReview, "exit fee", "exit fees"), "Handed back with no exit fee, or paid with no photo.", "Review", 'data-dashjump="exit"');
+    if (L.picks && pr) {
+      var dock = pr.filter(QUEUES.nodocket[1]).length;
+      if (dock) task("Photograph " + plural(dock, "docket", "dockets"), "Desk bookings on today's PICKS with no docket photo.", "Open", 'data-dashsheet="' + esc(L.picks.id) + '" data-dashqueue="nodocket"');
+    }
+    var now = londonParts(new Date());
+    var h = '<section class="od-card od-desk" aria-label="What needs doing"><div class="od-dmain"><div class="od-dhead"><h2 class="od-big">What needs doing?</h2><p>' +
+      esc(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: TZ })) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role || "") + "</p></div>";
+    h += '<div class="od-sechead"><h3>Priority work</h3><small>' + (S.dashLive === null ? "Loading…" : plural(tasks.length, "open task", "open tasks")) + "</small></div>";
+    h += tasks.length ? '<ol class="od-tasks">' + tasks.map(function (t, i) {
+      return '<li class="od-task' + (i === 0 ? " first" : "") + '"><span class="od-tn num">' + (i < 9 ? "0" : "") + (i + 1) + '</span><span class="od-tt"><b>' + esc(t.title) + "</b><small>" + esc(t.note) + '</small></span><button type="button" class="od-tbtn" ' + t.attr + ">" + t.btn + ' <span aria-hidden="true">→</span></button></li>';
+    }).join("") + "</ol>" : '<p class="od-none od-clear">Nothing needs doing right now.</p>';
+    // Coming up, by hour.
+    var slots = [], hr = +now.time.slice(0, 2);
+    for (var i = 0; i < 4; i++) slots.push({ h: (hr + i) % 24, inN: 0, outN: 0 });
+    var slotOf = function (ts) {
+      if (!ts) return null; var t = new Date(ts).getTime(), d = (t - Date.now()) / 3600000; if (d > 4 || d < -1) return null;
+      var hh = +hhmm(ts).slice(0, 2); return slots.filter(function (s) { return s.h === hh; })[0] || null;
+    };
+    if (pr) pr.forEach(function (r) { if (r.kind === "picks" && !r.intake) { var s = slotOf(r.drop_at); if (s) s.inN++; } });
+    if (dr) dr.forEach(function (r) { if (r.kind === "drops" && waiting(r)) { var s = slotOf(orderAt(r)); if (s) s.outN++; } });
+    var two = function (n) { return (n < 10 ? "0" : "") + n + ":00"; };
+    h += '<div class="od-sechead od-cuphead"><h3>Coming up</h3></div><div class="od-cup">';
+    if (S.dashLive === null) h += '<p class="od-none">Loading…</p>';
+    else if (!pr && !dr) h += '<p class="od-none">No sheets for today yet.</p>';
+    else if (!slots.some(function (s) { return s.inN || s.outN; })) h += '<p class="od-none">Nothing due in the next 4 hours.</p>';
+    else h += slots.filter(function (s) { return s.inN || s.outN; }).map(function (s) {
+      return '<div class="od-cuprow"><span class="num">' + two(s.h) + " – " + two((s.h + 1) % 24) + '</span><span>' + (pr ? plural(s.inN, "arrival", "arrivals") : "") + (pr && dr ? " · " : "") + (dr ? plural(s.outN, "return", "returns") : "") + "</span></div>";
+    }).join("");
+    h += '</div><button type="button" class="od-link od-boardlink" data-view="board">Open operations board <span aria-hidden="true">→</span></button></div>';
+    // Site status and the handover note.
+    var cap = o.cap, total = o.total, pct = cap ? Math.round(total / cap * 100) : 0;
+    h += '<aside class="od-dside"><section class="od-site k-parked" aria-label="Site status"><h2>Site status</h2><div class="od-sitenums"><span><strong class="num">' + total + "</strong><small>parked</small></span>" +
+      (cap ? '<span><strong class="num' + (total > cap ? " bad" : "") + '">' + Math.abs(cap - total) + "</strong><small>" + (total > cap ? "over capacity" : "spaces free") + "</small></span>" : '<span><strong class="num' + (o.late ? " bad" : "") + '">' + o.late + "</strong><small>past their return</small></span>") + "</div>" +
+      (cap ? '<div class="od-occ"><span>Occupancy <b class="num">' + pct + '%</b></span><span>of ' + cap + '</span></div><div class="od-bar ops-capbar' + (total > cap ? " over" : "") + '" role="img" aria-label="' + pct + '% full"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : "") +
+      '<div class="od-sitedays"><span>Returning today <b class="num">' + o.countOn(x.today) + '</b></span><span>Tomorrow <b class="num">' + o.countOn(o.tomorrow) + "</b></span>" + (cap && o.late ? '<span class="bad">' + o.late + " past their return</span>" : "") + "</div></section>" +
+      handoverHtml(x.D.handover) + "</aside></section>";
+    return h;
   }
   async function saveHandover(btn) {
     var ta = $("handoverText"); if (!ta) return;
@@ -4650,7 +4713,7 @@
     var r = await sb.rpc("set_handover_note", { p_note: text });
     btn.disabled = false;
     if (r.error) return toast(r.error.message, true);
-    S.handoverDraft = null;
+    S.handoverDraft = null; S.handoverEdit = false;
     if (S.dash) S.dash.handover = r.data || { note: text };
     toast(text ? "Handover note saved" : "Handover note cleared"); render();
   }
@@ -4678,26 +4741,32 @@
 
     var h = '<div class="ops-dashboard ops-v2 od">' + odHead("Updated " + hhmm(S.dashUpdated));
 
-    // Needs attention: only what someone has to act on.
-    var items = [];
-    if (late) items.push('<button type="button" class="od-attn-item" data-dashjump="late"><b class="od-n bad">' + late + '</b><span>' + (late === 1 ? "car" : "cars") + " past their return</span>" + goTag("late", "Open cars") + "</button>");
-    if (x.left.length) items.push('<button type="button" class="od-attn-item" data-dashjump="unpaid"><b class="od-n bad">' + money(unpaidSum) + '</b><span>left unpaid · ' + cars(x.left.length) + "</span>" + goTag("unpaid", "Review") + "</button>");
-    if (exitReview) items.push('<button type="button" class="od-attn-item" data-dashjump="exit"><b class="od-n warn">' + exitReview + '</b><span>exit ' + (exitReview === 1 ? "fee" : "fees") + " to check</span>" + goTag("exit", "Review") + "</button>");
-    h += '<section class="od-card od-attn ops-attention" aria-label="Needs attention"><h2>Needs attention</h2>' + (items.length ? '<div class="od-attn-list">' + items.join("") + "</div>" : '<p class="od-none">Nothing needs attention.</p>') + "</section>";
+    // What needs doing (the 27 Oct "Action desk" mockup): Priority work, Coming up and the board link on the left; Site status and the handover note on the right.
+    var noYard = (x.yards || []).filter(function (y) { return !y.yard; }).reduce(function (n, y) { return n + (+y.n || 0); }, 0);
+    h += deskHtml(x, { late: late, total: total, cap: cap, unpaidSum: unpaidSum, exitReview: exitReview, noYard: noYard, live: L, countOn: countOn, tomorrow: tomorrow, cars: cars });
 
-    // Parked now against capacity, and Upcoming workload.
-    var pct = cap ? Math.round(total / cap * 100) : 0;
-    h += '<div class="od-row od-row-top"><section class="od-parked k-parked" aria-label="Parked now"><div class="od-ptop"><span>Parked now</span>' + (cap ? '<span class="od-free">' + (total > cap ? (total - cap) + " over" : (cap - total) + " free") + "</span>" : "") + '</div><div class="od-pbig"><strong class="num">' + total + "</strong>" + (cap ? "<small>of " + cap + "</small>" : "") + "</div>" +
-      (cap ? '<div class="od-bar ops-capbar' + (total > cap ? " over" : "") + '" role="img" aria-label="' + pct + '% full"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : "") +
-      '<div class="od-pfoot"><span class="od-pnote">' + [cap ? pct + "% occupied" : "", late ? late + " past their return" : ""].filter(Boolean).join(" · ") + '</span><span class="od-pday"><small>Returning today</small><b class="num">' + countOn(x.today) + '</b></span><span class="od-pday"><small>Tomorrow</small><b class="num">' + countOn(tomorrow) + "</b></span></div></section>";
+    // Upcoming workload by day, and Live queues (tonight's DROPS).
     var onsite = D.onsite || [], dayLabel = function (k) { return k === x.today ? "Today" : k === tomorrow ? "Tomorrow" : longDay(k); };
     var work = onsite.length ? onsite.map(function (r) { return { day: r.day, n: (+r.in || 0) + (+r.out || 0), note: (+r.out || 0) + " returning · " + (+r.in || 0) + " arriving" }; })
       : (PK.days || []).map(function (d) { return { day: d.day, n: +d.n || 0, note: cars(+d.n || 0) + " returning" }; });
     var shownWork = S.dashAllDates ? work : work.slice(0, 2);
-    h += '<section class="od-card od-work" id="dash-work" tabindex="-1"><h2>Upcoming workload</h2><div class="od-list">' + (shownWork.length ? shownWork.map(function (w) {
+    h += '<div class="od-row"><section class="od-card od-work" id="dash-work" tabindex="-1"><h2>Upcoming workload</h2><div class="od-list">' + (shownWork.length ? shownWork.map(function (w) {
       return '<div class="od-line' + (w.day === x.today ? " today" : "") + '"><span class="od-label">' + esc(dayLabel(w.day)) + '<small>' + w.note + '</small></span><b class="num">' + w.n + "</b></div>";
     }).join("") : '<p class="od-none">No bookings ahead yet.</p>') + "</div>" +
-      (work.length > 2 ? '<button type="button" class="od-more" data-dashdates aria-expanded="' + !!S.dashAllDates + '">' + (S.dashAllDates ? "Show today and tomorrow" : "Open schedule, next " + work.length + " days") + ' <span aria-hidden="true">→</span></button>' : "") + "</section></div>";
+      (work.length > 2 ? '<button type="button" class="od-more" data-dashdates aria-expanded="' + !!S.dashAllDates + '">' + (S.dashAllDates ? "Show today and tomorrow" : "Open schedule, next " + work.length + " days") + ' <span aria-hidden="true">→</span></button>' : "") + "</section>";
+    var dr = L.dropsRows;
+    var qline = function (label, n, sheetId, act, queue) {
+      return '<button type="button" class="od-line od-tap"' + (sheetId ? ' data-dashsheet="' + esc(sheetId) + '"' + (queue ? ' data-dashqueue="' + queue + '"' : "") : " disabled") + '><span class="od-label">' + label + '</span><b class="num">' + n + "</b>" + (sheetId ? goTag("", act) : "") + "</button>";
+    };
+    h += '<section class="od-card od-queues" aria-label="Live queues"><div class="od-cardhead"><h2>Live queues</h2><small>' + (L.drops ? esc(sheetLabel(L.drops)) : "Tonight's DROPS") + "</small></div><div class=\"od-list\">";
+    if (S.dashLive === null) h += '<p class="od-none">Loading…</p>';
+    else if (!L.drops) h += '<p class="od-none">No DROPS sheet for tonight yet.</p>';
+    else if (!dr) h += '<p class="od-none">Couldn\'t load tonight\'s DROPS.</p>';
+    else {
+      var drops = dr.filter(function (r) { return r.kind === "drops"; });
+      h += ["called", "sent", "soon"].map(function (k) { return qline(QUEUES[k][0], drops.filter(QUEUES[k][1]).length, L.drops.id, "Open queue", k); }).join("");
+    }
+    h += "</section></div>";
 
     // Payments: what came in over the period, and what still needs collecting.
     var cell = function (label, v, cls) { return '<span class="od-c' + (cls ? " " + cls : "") + '"><small>' + label + "</small>" + v + "</span>"; };
@@ -4714,21 +4783,7 @@
     foot.push("Owed now " + money(x.sum(x.here, "due")) + " (" + cars(x.here.length) + " here)", "Waived " + money(x.N.waivedSum));
     h += '<section class="od-card od-pay" aria-label="Payments"><div class="od-cardhead"><h2>Payments</h2><small>Last ' + period + '</small></div><div class="od-table"><div class="od-tr od-th"><span>Payment</span><span>Collected</span><span>Cash</span><span>Card</span><span>To check</span></div>' + rows + '</div><div class="od-foot"><span>' + foot.join(" · ") + '</span><button type="button" class="od-more" data-dashjump="records">Payment records <span aria-hidden="true">→</span></button></div></section>';
 
-    // Live queues (tonight's DROPS) and Checks.
-    var dr = L.dropsRows;
-    var qline = function (label, n, sheetId, act, queue) {
-      return '<button type="button" class="od-line od-tap"' + (sheetId ? ' data-dashsheet="' + esc(sheetId) + '"' + (queue ? ' data-dashqueue="' + queue + '"' : "") : " disabled") + '><span class="od-label">' + label + '</span><b class="num">' + n + "</b>" + (sheetId ? goTag("", act) : "") + "</button>";
-    };
-    h += '<div class="od-row"><section class="od-card od-queues" aria-label="Live queues"><div class="od-cardhead"><h2>Live queues</h2><small>' + (L.drops ? esc(sheetLabel(L.drops)) : "Tonight's DROPS") + "</small></div><div class=\"od-list\">";
-    if (S.dashLive === null) h += '<p class="od-none">Loading…</p>';
-    else if (!L.drops) h += '<p class="od-none">No DROPS sheet for tonight yet.</p>';
-    else if (!dr) h += '<p class="od-none">Couldn\'t load tonight\'s DROPS.</p>';
-    else {
-      var drops = dr.filter(function (r) { return r.kind === "drops"; });
-      h += ["called", "sent", "soon"].map(function (k) { return qline(QUEUES[k][0], drops.filter(QUEUES[k][1]).length, L.drops.id, "Open queue", k); }).join("");
-    }
-    h += "</div></section>";
-    var noYard = (x.yards || []).filter(function (y) { return !y.yard; }).reduce(function (n, y) { return n + (+y.n || 0); }, 0);
+    // Checks.
     var pr = L.picksRows, checks = "";
     checks += '<button type="button" class="od-line od-tap" data-dashjump="yards"' + ((x.yards || []).length ? "" : " disabled") + '><span class="od-label">Parked with no yard</span><b class="num' + (noYard ? " warn" : "") + '">' + noYard + "</b>" + goTag("", "Yards") + "</button>";
     if (L.picks && pr) checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">PT photos not taken<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num">' + pr.filter(function (r) { return r.intake === "Collected" && !r.pt_at; }).length + "</b>" + goTag("", "Open PICKS") + "</button>";
@@ -4737,7 +4792,7 @@
       checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">Desk bookings with no docket photo<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num' + (noDocket ? " warn" : "") + '">' + noDocket + "</b>" + goTag("", "Open PICKS") + "</button>";
     }
     checks += '<button type="button" class="od-line od-tap" data-view="summary"><span class="od-label">Shift summary and activity log</span>' + goTag("", "Open") + "</button>";
-    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks and handover</h2></div><div class="od-list">' + checks + "</div>" + handoverHtml(D.handover) + "</section></div>";
+    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks</h2></div><div class="od-list">' + checks + "</div></section>";
 
     // Desk activity and cars on site (each folds away), parked by yard, then the records.
     var NN = x.N;
@@ -7676,6 +7731,8 @@
     if (t.dataset.dashreload !== undefined) { S.dash = null; S.dashLive = undefined; render(); return; }
     if (t.dataset.dashsheet) return switchSheet(t.dataset.dashsheet, { filter: "todo", queue: t.dataset.dashqueue || "", force: true });
     if (t.dataset.savehandover !== undefined) return saveHandover(t);
+    if (t.dataset.handoveredit !== undefined) { S.handoverEdit = true; render(); var ta = $("handoverText"); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } return; }
+    if (t.dataset.handovercancel !== undefined) { S.handoverEdit = false; S.handoverDraft = null; render(); return; }
     if (t.dataset.queueclear !== undefined) { S.boardQueue = ""; render(); return; }
     if (t.dataset.reset) {
       var p = S.staff[t.dataset.reset];

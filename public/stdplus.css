@@ -193,6 +193,73 @@ html.stdplus .od-pnote{flex:1;min-width:0;padding-bottom:2px;font-size:13px;colo
 html.stdplus .od-pday{flex:none;min-width:96px;padding-left:16px;margin-left:16px;border-left:1px solid #33445a;}
 html.stdplus .od-pday small{display:block;font-size:12px;color:#c4cfdd;}
 html.stdplus .od-pday b{display:block;margin-top:2px;font-size:22px;font-weight:650;color:#fff;}
+/* What needs doing: Priority work, Coming up and the board link; Site status and the handover note beside them */
+html.stdplus .od{--od-acc:color-mix(in srgb,var(--brand,#1f4f86) 62%,#000);}
+html.stdplus .od-desk{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);}
+html.stdplus .od-dmain{min-width:0;padding:26px 30px 24px;}
+html.stdplus .od-dside{min-width:0;padding:26px 28px 24px;border-left:1px solid var(--od-soft);}
+html.stdplus .od .od-big{margin:0;font-size:34px;font-weight:700;letter-spacing:-1px;line-height:1.1;}
+html.stdplus .od-dhead p{margin:6px 0 0;font-size:16px;color:var(--od-mut);}
+html.stdplus .od-sechead{display:flex;align-items:baseline;gap:12px;margin:26px 0 4px;}
+html.stdplus .od-sechead h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.2px;}
+html.stdplus .od-sechead small{font-size:13px;color:var(--od-mut);}
+html.stdplus .od-tasks{margin:0;padding:0;list-style:none;}
+html.stdplus .od-task{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:16px 0 16px 16px;border-bottom:1px solid var(--od-soft);}
+html.stdplus .od-task.first::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:2px;background:var(--brand,#1f4f86);}
+html.stdplus .od-tn{font-size:17px;color:var(--od-mut);}
+html.stdplus .od-tt{min-width:0;}
+html.stdplus .od-tt b{display:block;font-size:17px;font-weight:650;letter-spacing:-.2px;}
+html.stdplus .od-tt small{display:block;margin-top:3px;font-size:13.5px;color:var(--od-mut);}
+html.stdplus .od-tbtn{flex:none;min-height:40px;padding:0 16px;border:1px solid var(--od-acc);border-radius:5px;background:#fff;color:var(--od-acc);font:600 14px system-ui,sans-serif;white-space:nowrap;cursor:pointer;}
+html.stdplus .od-tbtn:hover{background:color-mix(in srgb,var(--brand,#1f4f86) 8%,#fff);}
+html.stdplus .od-clear{padding:14px 0;border-bottom:1px solid var(--od-soft);font-size:14px;}
+html.stdplus .od-cuphead{margin-top:24px;}
+html.stdplus .od-cup .od-none{padding:12px 0;}
+html.stdplus .od-cuprow{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--od-soft);font-size:15px;}
+html.stdplus .od-cuprow > .num{color:var(--od-ink);}
+html.stdplus .od-desk .od-link{padding:0;border:0;background:none;color:var(--od-acc);font:600 14px system-ui,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
+html.stdplus .od-boardlink{margin-top:18px;font-size:15px;}
+html.stdplus .od-dside h2{font-size:19px;font-weight:700;letter-spacing:-.2px;}
+html.stdplus .od-sitenums{display:flex;margin-top:14px;}
+html.stdplus .od-sitenums > span{flex:1;min-width:0;}
+html.stdplus .od-sitenums > span + span{padding-left:22px;border-left:1px solid var(--od-soft);}
+html.stdplus .od-sitenums strong{display:block;font-size:44px;font-weight:700;letter-spacing:-1.5px;line-height:1;}
+html.stdplus .od-sitenums small{display:block;margin-top:6px;font-size:15px;color:var(--od-mut);}
+html.stdplus .od-occ{display:flex;justify-content:space-between;margin:20px 0 8px;font-size:13px;color:var(--od-mut);}
+html.stdplus .od-occ b{color:var(--od-ink);font-weight:650;}
+html.stdplus .od-site .od-bar{margin:0;background:#e6e9ee;}
+html.stdplus .od-sitedays{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px;font-size:13px;color:var(--od-mut);}
+html.stdplus .od-sitedays b{margin-left:3px;color:var(--od-ink);font-weight:650;}
+html.stdplus .od .od-desk .od-handover{margin:22px 0 0;padding:22px 0 0;border-top:1px solid var(--od-soft);}
+html.stdplus .od .od-desk .od-hnote{margin:10px 0 0;font-size:17px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
+html.stdplus .od .od-desk .od-hnote.none{font-size:14px;color:var(--od-mut);}
+html.stdplus .od .od-desk .od-handover label{display:block;margin-bottom:8px;font-size:19px;font-weight:700;color:var(--od-ink);}
+html.stdplus .od .od-desk .od-handover textarea{display:block;width:100%;box-sizing:border-box;min-height:96px;padding:10px 12px;border:1px solid #c9d1db;border-radius:6px;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--od-ink);resize:vertical;}
+html.stdplus .od .od-desk .od-hrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;}
+html.stdplus .od .od-desk .od-hrow small{font-size:13px;color:var(--od-mut);}
+html.stdplus .od-hbtns{display:flex;gap:8px;}
+html.stdplus .od .od-desk .od-save,html.stdplus .od-hcancel{min-height:36px;padding:0 14px;border-radius:5px;font:600 13px system-ui,sans-serif;cursor:pointer;}
+html.stdplus .od .od-desk .od-save{border:1px solid var(--od-ink);background:var(--od-ink);color:#fff;}
+html.stdplus .od-hcancel{border:1px solid var(--od-line);background:#fff;color:var(--od-ink);}
+@media(max-width:900px){
+ html.stdplus .od-desk{grid-template-columns:1fr;}
+ html.stdplus .od-dside{border-left:0;border-top:1px solid var(--od-soft);}
+}
+@media(max-width:650px){
+ html.stdplus .od-dmain,html.stdplus .od-dside{padding:18px 16px;}
+ html.stdplus .od .od-big{font-size:27px;letter-spacing:-.6px;}
+ html.stdplus .od-dhead p{font-size:14.5px;}
+ html.stdplus .od-sechead{margin-top:20px;}
+ html.stdplus .od-sechead h3,html.stdplus .od-dside h2{font-size:17px;}
+ html.stdplus .od-task{grid-template-columns:28px minmax(0,1fr) auto;gap:10px;padding:13px 0 13px 12px;}
+ html.stdplus .od-tn{font-size:14px;}
+ html.stdplus .od-tt b{font-size:15.5px;}
+ html.stdplus .od-tt small{font-size:12.5px;}
+ html.stdplus .od-tbtn{min-height:38px;padding:0 11px;font-size:13px;}
+ html.stdplus .od-cuprow{grid-template-columns:112px minmax(0,1fr);font-size:14px;}
+ html.stdplus .od-sitenums strong{font-size:36px;}
+ html.stdplus .od .od-desk .od-hnote{font-size:16px;}
+}
 /* Lines: workload, queues, checks, desk activity */
 html.stdplus .od-line{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:10px 16px;border:0;border-top:1px solid var(--od-soft);background:none;color:var(--od-ink);font:inherit;font-size:14px;text-align:left;}
 html.stdplus .od-list > .od-line:first-child{border-top:0;}

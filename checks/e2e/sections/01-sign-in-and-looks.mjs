@@ -669,9 +669,9 @@ await scenario(async () => {
   check("Ops wide Menu: sections side by side in three columns", mn.g >= 4 && mn.cols === 3, mn);
   // Dashboard
   await go("dashboard");
-  const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, a = r(".od-attn"), p = r(".od-parked"), w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
-    return { attnFull: a && a.width > innerWidth - 80, three: p && w && q && Math.abs(p.top - w.top) < 2 && Math.abs(w.top - q.top) < 2 && p.right <= w.left && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
-  check("Ops wide Dashboard: Needs attention across, Parked / Upcoming / Live queues in one row", dsh.attnFull && dsh.three, dsh);
+  const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, a = r(".od-desk"), m = r(".od-dmain"), p = r(".od-dside"), w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
+    return { attnFull: a && a.width > innerWidth - 80, three: m && p && w && q && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1 && Math.abs(w.top - q.top) < 2 && w.right <= q.left && w.top > a.bottom, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
+  check("Ops wide Dashboard: What needs doing across, Site status beside Priority work, Upcoming / Live queues in one row below", dsh.attnFull && dsh.three, dsh);
   check("Ops wide Dashboard: Refresh and the period buttons visible and clickable", dsh.tools, dsh);
   check("Ops wide Dashboard: no sideways scrolling", await noSide());
   // Settings

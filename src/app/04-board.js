@@ -20,6 +20,10 @@
     called: ["Called, not sent", function (r) { return r.kind === "drops" && !!r.called_at && !r.sent_at && !r.cleared_at && !r.overstay && !inOverstayBlock(r); }],
     sent: ["Sent, not handed back", function (r) { return r.kind === "drops" && !!r.sent_at && !r.cleared_at; }],
     soon: ["Due in the next 2 hours, not sent", function (r) { return r.kind === "drops" && waiting(r) && orderAt(r) <= new Date(Date.now() + 2 * 3600000).toISOString(); }],
+    // The dashboard's Priority work.
+    desk: ["At the desk, not sent", function (r) { return r.kind === "drops" && atDesk(r) && !r.sent_at && !r.cleared_at; }],
+    noyard: ["Taken in, no yard", function (r) { return r.kind === "picks" && r.intake === "Collected" && !r.yard; }],
+    nodocket: ["Desk bookings, no docket photo", function (r) { return r.kind === "picks" && r.pick_called === "New Booking" && !r.doc_path; }],
     // A tapped number on Summary or Hourly stats: the cars it counts.
     way: ["On the way", function (r) { return !!r.sent_at && !r.cleared_at; }],
     over: ["Overstays", function (r) { return !!r.overstay; }],

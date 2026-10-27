@@ -559,6 +559,7 @@ async function scenario(fn, tag) {
   if (process.env.SAVESAFE_ONLY && tag !== 'savesafe') return;
   if (process.env.ATDESK_ONLY && tag !== 'atdesk') return;
   if (process.env.DASHLOAD_ONLY && tag !== 'dashload') return;
+  if (process.env.DASHDESK_ONLY && tag !== 'dashdesk') return;
   if (process.env.PAYMENTS_ONLY && tag !== 'payments') return;
   if (process.env.TEXTS_ONLY && tag !== 'texts') return;
   if (process.env.CALLS_ONLY && tag !== 'calls') return;

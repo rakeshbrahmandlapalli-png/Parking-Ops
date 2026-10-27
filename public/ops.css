@@ -487,11 +487,10 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
  html.ops body.ops-desk .od > *,html.ops body.ops-desk .od-row > *{margin:0;}
  html.ops body.ops-desk .od-row{display:contents;}
  html.ops body.ops-desk .od-head{grid-column:1/-1;order:1;justify-self:end;margin:0;}
- html.ops body.ops-desk .od-attn{grid-column:1/-1;order:2;}
+ html.ops body.ops-desk .od-desk{grid-column:1/-1;order:2;}
  html.ops body.ops-desk .od-err{grid-column:1/-1;order:2;}
- html.ops body.ops-desk .od-parked{grid-column:span 4;order:3;align-self:stretch;}
- html.ops body.ops-desk .od-work{grid-column:span 4;order:4;align-self:stretch;}
- html.ops body.ops-desk .od-queues{grid-column:span 4;order:5;align-self:stretch;}
+ html.ops body.ops-desk .od-work{grid-column:span 6;order:4;align-self:stretch;}
+ html.ops body.ops-desk .od-queues{grid-column:span 6;order:5;align-self:stretch;}
  html.ops body.ops-desk .od-pay{grid-column:span 8;order:6;}
  html.ops body.ops-desk .od-checks{grid-column:span 4;order:7;}
  html.ops body.ops-desk .od > .od-row > .ops-fold:first-child{grid-column:span 4;order:8;}
@@ -616,7 +615,7 @@ html.ops body:not(.ops-desk) .bn-desk,html.ops body:not(.ops-desk) #opsHead{disp
 }
 @media(min-width:900px) and (max-width:1199px){
  html.ops body.ops-desk .od{grid-auto-flow:row dense;}
- html.ops body.ops-desk .od-parked,html.ops body.ops-desk .od-work{grid-column:span 6;}
+ html.ops body.ops-desk .od-work{grid-column:span 6;}
  html.ops body.ops-desk .od-queues,html.ops body.ops-desk .od-checks{grid-column:span 6;}
  html.ops body.ops-desk .od-pay{grid-column:1/-1;}
  html.ops body.ops-desk .od > .od-row > .ops-fold:first-child,html.ops body.ops-desk .od > .od-row > .ops-fold:nth-child(2){grid-column:span 6;}

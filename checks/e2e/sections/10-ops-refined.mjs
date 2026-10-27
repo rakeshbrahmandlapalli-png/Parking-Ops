@@ -98,10 +98,10 @@ await scenario(async () => {
   check("Operations Refined: Booking import at 390 px, no sideways scrolling", await noSideScroll(page));
   await go(page, "dashboard"); await go(ops, "dashboard");
   const pay = (p) => p.evaluate(() => { const c = document.querySelector("#main .od-pay .od-coll"); if (!c) return null; const l = c.querySelector("small").getBoundingClientRect(), v = c.querySelector("b").getBoundingClientRect();
-    return { same: Math.abs(l.top - v.top) < 6, right: Math.round(v.left), th: getComputedStyle(document.querySelector("#main .od-th")).display, edge: getComputedStyle(document.querySelector("#main .od-attn-item")).boxShadow }; });
+    return { same: Math.abs(l.top - v.top) < 6, right: Math.round(v.left), th: getComputedStyle(document.querySelector("#main .od-th")).display }; });
   const rd = await pay(page), od = await pay(ops);
   check("Operations Refined: Dashboard payments as label and amount on one line (Operations stacks them)", rd && rd.same && rd.right > 200 && rd.th === "none" && od && !od.same, { rd, od });
-  check("Operations Refined: Dashboard, what needs attention edged in its colour", /inset/.test(rd.edge) && !/inset/.test(od.edge), { r: rd.edge, o: od.edge });
+  check("Operations Refined: Dashboard, What needs doing with its tasks", await page.locator("#main .od-desk .od-task").count() >= 1);
   check("Operations Refined: Dashboard at 390 px, no sideways scrolling", await noSideScroll(page));
   check("Operations Refined: no errors on Staff, Import and Dashboard", page.__errors.length === 0, page.__errors);
 });
