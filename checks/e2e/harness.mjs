@@ -172,6 +172,11 @@ function rpc(db, fn, a) {
     return sh.id;
   };
   switch (fn) {
+    // SKIDATA card top-up (part 128).
+    case "topup_counts": (db.topupCounts = db.topupCounts || []).push(a); if (db.topupError) throw new Error(db.topupError); return { day: a.p_day, shift: a.p_shift, drops: db.topupDrops ?? 20, picks: db.topupPicks ?? 0 };
+    case "topup_list": return db.topups || [];
+    case "record_topup": { const t = { id: "t" + ((db.topups || []).length + 1), at: now(), staff_name: db.me.name, shift_day: a.p.day, shift_name: (db.company.topup?.shifts || [{ name: "Morning" }, { name: "Night" }])[a.p.shift].name, amount: a.p.amount, card_before: a.p.card, tickets: a.p.tickets, photo: a.p.photo }; (db.topups = db.topups || []).unshift(t); return t; }
+    case "set_topup_settings": if (db.me.role !== "owner") throw new Error("Only an owner can change the card top-up."); db.company.topup = a.p; return a.p;
     case "lane_get": if (db.laneError) throw new Error(db.laneError); return db.laneData || {lanes:[],positions:[],cars:[],moves:[],can_move:true,can_manage:true};
     case "lane_save": {
       if(db.laneWriteError) throw new Error(db.laneWriteError);
@@ -238,7 +243,8 @@ function rpc(db, fn, a) {
     case "my_permissions": {
       const extra = db.me.extra || [];
       const collections = db.company.slug !== "platform" && db.company.brand?.collections !== false && !extra.includes("-collections") && (extra.includes("collections") || ["owner", "manager", "office"].includes(db.me.role));
-      return { collections, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake", "callpop"].map((k) => [k, true]))) };
+      const topup = db.company.brand?.topup === true && !extra.includes("-topup") && (extra.includes("topup") || ["owner", "manager", "office", "terminal"].includes(db.me.role));
+      return { collections, topup, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake", "callpop"].map((k) => [k, true]))) };
     }
     case "set_staff_access": {
       if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
@@ -558,6 +564,7 @@ async function scenario(fn, tag) {
   if (process.env.CALLS_ONLY && tag !== 'calls') return;
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
+  if (process.env.TOPUP_ONLY && tag !== 'topup') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));

@@ -463,7 +463,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { resetCallQueue(); resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetCallQueue(); resetNotificationCentre(); resetLanes(); resetTopup(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
@@ -681,7 +681,7 @@
   // picker, who is signed in, and a row of icon buttons. The yard tally, TO DO /
   // ALL, search and column captions belong to the board only.
   var OPS_TITLE = { calls: "Calls", summary: "Shift summary", stats: "Hourly stats", staff: "Staff & access" }, BN_VIEW = { logBtn: "summary", psBtn: "stats", flBtn: "flights" };
-  var VIEW_TITLE = { notifications: "Notifications", lanes: "Yard planner", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
+  var VIEW_TITLE = { notifications: "Notifications", lanes: "Yard planner", topup: "SKIDATA top-up", dashboard: "Dashboard", clients: "Clients", flights: "Flights", summary: "Summary and activity", import: "Booking import", staff: "Staff", settings: "Settings", archive: "Archive", me: "Me" };
   var YARD_LABEL = { Y: "NB", S: "S YARD" };
   // The tally reads left to right as the Sheet's did; any yard not listed follows.
   var YARD_ORDER = ["Y", "S", "CP", "NY", "T"];
@@ -902,10 +902,10 @@
   }
   function render() {
     if (!S.me) return;
-    document.body.classList.toggle("on-lanes", S.view === "lanes");
+    document.body.classList.toggle("on-lanes", S.view === "lanes"); document.body.classList.toggle("on-topup", S.view === "topup");
     document.body.classList.toggle("keychecking", S.view === "board" && keyOn() && !S.switching);
     try { renderChrome(); } catch (err) { oopsLog(err); }
-    var fn = { notifications: renderNotifications, calls: renderCalls, lanes: renderLanes, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
+    var fn = { notifications: renderNotifications, calls: renderCalls, lanes: renderLanes, topup: renderTopup, stats: renderStats, clients: renderClients, board: renderBoard, flights: renderFlights, summary: renderSummary, dashboard: renderDashboard, import: renderImport, staff: renderStaff, settings: renderSettings, archive: renderArchive, me: renderMe }[S.view] || renderBoard;
     var html;
     if (S.switching && S.view === "board" || S.switching && S.switching.o.archive) { boardChunks = null; html = loadingHtml(S.switching); setMain(html, "loading"); return; }
     // One screen going wrong never takes the app down: it says so and offers a way out.
@@ -932,7 +932,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "topup" && !topupOn()) view = "board"; if (view === "topup") { TU.counts = null; TU.error = ""; loadTopup(); } if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -5536,6 +5536,7 @@
       '<label class="check"><input type="checkbox" id="clPicksYard"' + (b.picks_yard ? " checked" : "") + "> Location on PICKS (instead of NO SHOW)</label>" +
       '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clTopup"' + (b.topup ? " checked" : "") + "> SKIDATA card top-up (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clVoice"' + (b.voice ? " checked" : "") + "> Voice calls: caller menu and calls in the app (add-on, needs Calls)</label>" +
@@ -5554,7 +5555,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, topup: $("clTopup").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -5707,13 +5708,13 @@
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
   var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
-    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"], callpop: ["office", "manager"] };
+    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"], callpop: ["office", "manager"], topup: ["office", "manager", "terminal"] };
   var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
-    ["collections", "View board collections"], ["callpop", "Call pop-ups and call alerts"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+    ["collections", "View board collections"], ["callpop", "Call pop-ups and call alerts"], ["topup", "SKIDATA card top-up"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
-  function permShown(x) { return x[0] === "callpop" ? !!(S.company && S.company.brand && S.company.brand.calls === true) : x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
+  function permShown(x) { if (x[0] === "topup") return !!(S.company && S.company.brand && S.company.brand.topup === true); return x[0] === "callpop" ? !!(S.company && S.company.brand && S.company.brand.calls === true) : x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).
@@ -7257,6 +7258,152 @@
     }
     savedSec(btn); toast("Caller menu saved"); loadVoiceMenu();
   }
+  // SKIDATA card top-up (part 128): the terminal car park's card, topped up per shift.
+  // Every terminal ticket costs the same: one per DROPS car taken over, one per PICKS car
+  // brought back, one per bongo round (cars ÷ drivers, rounded up, DROPS and PICKS apart).
+  // An add-on: only clients given it on the platform page (Clients → Edit, brand.topup).
+  function topupOn() { return !!(can("topup") && S.company && S.company.brand && S.company.brand.topup === true); }
+  var TU = { pick: null, counts: null, list: null, loading: false, error: "", seq: 0, card: "", busy: false, form: false, amount: "", file: null };
+  var TU_DRIVERS = "takeoff_topup_drivers";
+  function topupConf() {
+    var t = (S.company && S.company.topup) || {};
+    return { ticket: +t.ticket || 3.5, step: +t.step || 10,
+      shifts: t.shifts && t.shifts.length ? t.shifts : [{ name: "Morning", start: "04:00", end: "17:00" }, { name: "Night", start: "17:00", end: "04:00" }] };
+  }
+  // The shift on now (or the next to start), and the one after it, as { day, shift }.
+  function topupShifts() {
+    var sh = topupConf().shifts, now = londonParts(new Date()), t = minsOf(now.time), all = [];
+    [-1, 0, 1].forEach(function (d) {
+      var day = addDaysKey(now.key, d);
+      sh.forEach(function (x, i) {
+        var a = minsOf(x.start) + d * 1440, b = minsOf(x.end) + d * 1440; if (b <= a) b += 1440;
+        all.push({ day: day, shift: i, name: x.name, start: x.start, end: x.end, a: a, b: b });
+      });
+    });
+    all.sort(function (p, q) { return p.a - q.a; });
+    var on = all.filter(function (x) { return x.a <= t && t < x.b; }).pop(), i = on ? all.indexOf(on) : all.findIndex(function (x) { return x.a > t; });
+    var list = [all[i], all[i + 1]].filter(Boolean);
+    if (on) list[0].now = true;
+    return list;
+  }
+  function topupKey(x) { return x.day + ":" + x.shift; }
+  function topupDrivers() { try { return localStorage.getItem(TU_DRIVERS) || ""; } catch (e) { return ""; } }
+  function topupSums() {
+    var c = TU.counts, conf = topupConf(), drivers = parseInt(topupDrivers(), 10) || 0;
+    if (!c) return null;
+    var rounds = drivers > 0 ? Math.ceil(c.drops / drivers) + Math.ceil(c.picks / drivers) : null;
+    var tickets = rounds === null ? null : c.drops + c.picks + rounds, need = tickets === null ? null : Math.round(tickets * conf.ticket * 100) / 100;
+    var card = TU.card === "" ? null : +TU.card, top = need === null || card === null || isNaN(card) ? null : Math.max(0, Math.ceil(Math.round((need - card) * 100) / 100 / conf.step) * conf.step);
+    return { drops: c.drops, picks: c.picks, drivers: drivers, rounds: rounds, tickets: tickets, need: need, card: card, top: top, ticket: conf.ticket, step: conf.step };
+  }
+  async function loadTopup() {
+    if (!topupOn() || TU.loading) return;
+    var shifts = topupShifts(); if (!TU.pick || !shifts.some(function (x) { return topupKey(x) === TU.pick; })) TU.pick = shifts[0] && topupKey(shifts[0]);
+    var p = shifts.filter(function (x) { return topupKey(x) === TU.pick; })[0]; if (!p) return;
+    var seq = ++TU.seq, company = S.company.id; TU.loading = true; TU.error = "";
+    try {
+      var r = await Promise.all([sb.rpc("topup_counts", { p_day: p.day, p_shift: p.shift }), sb.rpc("topup_list")]);
+      if (seq !== TU.seq || !S.company || S.company.id !== company) return;
+      var err = r[0].error || r[1].error;
+      if (err) TU.error = /topup_counts|PGRST202/.test(err.message || "") ? "The card top-up needs database part 128." : err.message;
+      else { TU.counts = r[0].data; TU.list = r[1].data || []; }
+    } catch (e) { if (seq === TU.seq) TU.error = "Could not load the top-up. Check your connection."; }
+    finally { if (seq === TU.seq) { TU.loading = false; if (S.view === "topup") render(); } }
+  }
+  function resetTopup() { TU.seq++; TU.pick = null; TU.counts = null; TU.list = null; TU.loading = false; TU.error = ""; TU.card = ""; TU.busy = false; TU.form = false; TU.amount = ""; TU.file = null; }
+  function tuLine(label, value, sub, cls) { return '<div class="tu-line' + (cls ? " " + cls : "") + '"><span>' + label + (sub ? "<small>" + sub + "</small>" : "") + '</span><b class="num">' + value + "</b></div>"; }
+  function renderTopup() {
+    if (!topupOn()) return '<div class="msg">The card top-up is not switched on for your company.</div>';
+    if (!TU.counts && !TU.loading && !TU.error) loadTopup();
+    var shifts = topupShifts(), x = topupSums(), conf = topupConf();
+    var h = '<section class="tu"><div class="tu-head">' + "<span></span>" + '<button type="button" class="btn ghost small" data-tureload' + (TU.loading ? " disabled" : "") + ">Refresh</button></div>" +
+      '<div class="tu-shifts" role="group" aria-label="Shift">' + shifts.map(function (s) {
+        var on = topupKey(s) === TU.pick;
+        return '<button type="button" data-tushift="' + topupKey(s) + '" class="' + (on ? "on" : "") + '" aria-pressed="' + on + '"><b>' + esc(s.name) + " " + esc(dayShortLabel(s.day)) + "</b><small>" + esc(s.start + "–" + s.end) + (s.now ? " · now" : " · next") + "</small></button>";
+      }).join("") + "</div>";
+    if (TU.error) h += '<p class="tu-err" role="alert">' + esc(TU.error) + "</p>";
+    if (!x) return h + (TU.error ? "" : '<p class="note">Counting the cars…</p>') + "</section>";
+    h += '<div class="tu-box">' + tuLine("DROPS left", x.drops, "not sent yet") + tuLine("PICKS left", x.picks, "not taken in yet") +
+      '<label class="tu-line tu-in"><span>Drivers on shift</span><input id="tuDrivers" type="number" inputmode="numeric" min="1" max="99" value="' + esc(topupDrivers()) + '" placeholder="0"></label>' +
+      (x.rounds === null ? '<p class="tu-hint">Type the drivers on shift to work out the bongo rounds.</p>' :
+        tuLine("Bongo rounds", x.rounds, x.drops + " ÷ " + x.drivers + " and " + x.picks + " ÷ " + x.drivers + ", rounded up") +
+        tuLine("Tickets", x.tickets, x.drops + " + " + x.picks + " + " + x.rounds + " × " + money(x.ticket)) +
+        tuLine("Needed", money(x.need), "", "tu-need")) +
+      '<label class="tu-line tu-in"><span>On the card now<small>from the machine screen</small></span><span class="tu-money">£<input id="tuCard" type="number" inputmode="decimal" min="0" step="0.01" value="' + esc(TU.card) + '" placeholder="0"></span></label>' +
+      (x.top === null ? "" : '<div class="tu-top' + (x.top ? "" : " none") + '">' + (x.top ? "Top up <b class=\"num\">" + money(x.top) + "</b><small>in " + money(x.step) + " steps · card then " + money(x.card + x.top) + "</small>" : "No top-up needed") + "</div>") + "</div>";
+    h += TU.form ? topupForm(x) : '<div class="row-actions"><button type="button" class="btn" data-tuform>📷 Record top-up</button></div>';
+    h += '<h3 class="tu-h">Top-ups, last 14 days</h3>' + (TU.list && TU.list.length ? '<div class="tu-list">' + TU.list.map(function (t) {
+      return '<div class="tu-row"><b class="num">' + money(t.amount) + "</b><span>" + esc(t.shift_name + " " + dayShortLabel(t.shift_day)) + (t.card_before !== null ? " · card " + money(t.card_before) + " → " + money(+t.card_before + +t.amount) : "") +
+        (t.tickets ? " · " + t.tickets + " tickets" : "") + "</span><small>" + esc(t.staff_name) + " · " + esc(dayShort(t.at) + " " + hhmm(t.at)) + "</small>" +
+        (t.photo ? '<button type="button" class="link" data-tuphoto="' + esc(t.photo) + '">Photo</button>' : '<small class="tu-nophoto">No photo</small>') + "</div>";
+    }).join("") + "</div>" : '<p class="note">' + (TU.list ? "No top-ups recorded yet." : "Loading…") + "</p>");
+    if (S.me.role === "owner") h += '<details class="tu-set"><summary>Ticket price and shifts</summary><form id="tuSet"><label>Ticket £<input name="ticket" type="number" min="0.01" step="0.01" required value="' + conf.ticket + '"></label>' +
+      '<label>Top up in steps of £<input name="step" type="number" min="0.01" step="0.01" required value="' + conf.step + '"></label>' +
+      conf.shifts.concat([{ name: "", start: "", end: "" }]).map(function (s, i) {
+        return '<div class="tu-shiftrow"><input name="n' + i + '" maxlength="20" placeholder="' + (i < conf.shifts.length ? "Shift name" : "Another shift (optional)") + '" value="' + esc(s.name) + '"><input name="s' + i + '" type="time" value="' + esc(s.start) + '" aria-label="Starts"><span>to</span><input name="e' + i + '" type="time" value="' + esc(s.end) + '" aria-label="Ends"></div>';
+      }).join("") + '<p class="note">A shift that ends at or before it starts finishes the next day. Clear a name to remove that shift.</p><button type="submit" class="btn">Save</button></form></details>';
+    return h + "</section>";
+  }
+  function topupForm(x) {
+    var amt = TU.amount !== "" ? TU.amount : x.top ? String(x.top) : "";
+    return '<form id="tuRec" class="tu-form"><label>Amount topped up £<input id="tuAmount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required value="' + esc(amt) + '"></label>' +
+      '<label class="tu-file"><input id="tuFile" type="file" accept="image/*" capture="environment"><span>' + (TU.file ? "✓ Photo ready" : "📷 Photo of the machine") + "</span></label>" +
+      '<div class="tu-acts"><button type="submit" class="btn"' + (TU.busy ? " disabled" : "") + ">" + (TU.busy ? "Saving…" : "Save top-up") + '</button><button type="button" class="btn ghost" data-tucancel>Cancel</button></div></form>';
+  }
+  async function saveTopup() {
+    var x = topupSums(), p = topupShifts().filter(function (s) { return topupKey(s) === TU.pick; })[0], amount = +(($("tuAmount") || {}).value || 0);
+    if (!p || !(amount > 0)) return toast("Type the amount topped up.", true);
+    if (!navigator.onLine) return toast("Reconnect before saving the top-up.", true);
+    if (!TU.file && !confirm("Save without a photo of the machine?")) return;
+    TU.busy = true; render();
+    var company = S.company.id, path = "";
+    try {
+      if (TU.file) {
+        var small = await bkSmall(TU.file, true);
+        path = company + "/docs/topup/t" + Date.now() + ".jpg";
+        var up = await sb.storage.from("pt-photos").upload(path, small.blob, { contentType: "image/jpeg" });
+        if (up.error) throw up.error;
+      }
+      var r = await sb.rpc("record_topup", { p: { day: p.day, shift: p.shift, amount: amount, card: x && x.card, drivers: x && x.drivers || null, drops: x && x.drops, picks: x && x.picks, rounds: x && x.rounds, tickets: x && x.tickets, need: x && x.need, photo: path } });
+      if (r.error) throw r.error;
+      if (!S.company || S.company.id !== company) return;
+      toast("Top-up " + money(amount) + " saved");
+      TU.form = false; TU.amount = ""; TU.file = null; TU.card = "";
+    } catch (e) { toast("The top-up didn't save: " + ((e && e.message) || e), true); }
+    finally { TU.busy = false; TU.counts = null; loadTopup(); render(); }
+  }
+  async function saveTopupSettings(f) {
+    var v = new FormData(f), shifts = [];
+    for (var i = 0; v.has("n" + i); i++) if ((v.get("n" + i) || "").trim()) shifts.push({ name: v.get("n" + i).trim(), start: v.get("s" + i), end: v.get("e" + i) });
+    var r = await sb.rpc("set_topup_settings", { p: { ticket: v.get("ticket"), step: v.get("step"), shifts: shifts } });
+    if (r.error) return toast(r.error.message, true);
+    S.company.topup = r.data; TU.pick = null; TU.counts = null; toast("Saved"); loadTopup(); render();
+  }
+  document.addEventListener("click", async function (e) {
+    var t = e.target.closest("[data-tushift],[data-tureload],[data-tuform],[data-tucancel],[data-tuphoto]"); if (!t || S.view !== "topup") return;
+    if (t.hasAttribute("data-tushift")) { TU.pick = t.getAttribute("data-tushift"); TU.counts = null; loadTopup(); render(); }
+    else if (t.hasAttribute("data-tureload")) { TU.counts = null; loadTopup(); render(); }
+    else if (t.hasAttribute("data-tuform")) { TU.form = true; render(); }
+    else if (t.hasAttribute("data-tucancel")) { TU.form = false; TU.amount = ""; TU.file = null; render(); }
+    else if (t.hasAttribute("data-tuphoto")) {
+      var u = await sb.storage.from("pt-photos").createSignedUrl(t.getAttribute("data-tuphoto"), 3600);
+      if (u.error || !u.data) return toast("Photo not found.", true);
+      window.open(u.data.signedUrl, "_blank", "noopener");
+    }
+  });
+  document.addEventListener("input", function (e) {
+    if (S.view !== "topup") return;
+    if (e.target.id === "tuDrivers") { try { localStorage.setItem(TU_DRIVERS, e.target.value); } catch (x) {} topupRedraw("tuDrivers"); }
+    else if (e.target.id === "tuCard") { TU.card = e.target.value; topupRedraw("tuCard"); }
+    else if (e.target.id === "tuAmount") TU.amount = e.target.value;
+  });
+  // Redraw the sums but keep the box being typed in focused.
+  function topupRedraw(id) { var el = $(id), pos = el && el.selectionStart; render(); el = $(id); if (el) { el.focus(); try { if (pos !== null && pos !== undefined) el.setSelectionRange(pos, pos); } catch (x) {} } }
+  document.addEventListener("change", function (e) { if (e.target.id === "tuFile" && S.view === "topup") { TU.file = e.target.files && e.target.files[0] || null; render(); } });
+  document.addEventListener("submit", function (e) {
+    if (e.target.id === "tuRec") { e.preventDefault(); if (!TU.busy) saveTopup(); }
+    else if (e.target.id === "tuSet") { e.preventDefault(); saveTopupSettings(e.target); }
+  });
   // ── events ────────────────────────────────
   // A personal link opened while this page is already open only changes the hash.
   window.addEventListener("hashchange", function () { if (/^#t=/.test(location.hash) || /^#setup/.test(location.hash)) location.reload(); });
@@ -7656,7 +7803,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && (can("called") || can("callpop"))], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["topup", "SKIDATA top-up", topupOn()], ["calls", "Calls", callsAddon() && (can("called") || can("callpop"))], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -7676,6 +7823,7 @@
   // Display, You), and "Delete this sheet" alone at the bottom, in red.
   var MENU_ICON = { notifications: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/>',
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
+    topup: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     flights: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
@@ -7702,7 +7850,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +
