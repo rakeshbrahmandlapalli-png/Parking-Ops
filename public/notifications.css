@@ -11,6 +11,8 @@ html body .nc .btn.brand{background:#1b2a3a;color:#fff;border-color:#1b2a3a}.nc 
 .nc-tabs{display:flex;gap:0;border-bottom:1px solid #d6dfe8;margin-bottom:0;background:white;overflow:auto}
 .nc-tabs button{flex:1;border:0;border-bottom:3px solid transparent;min-height:48px;padding:12px 8px;background:none;white-space:nowrap;font:600 14px system-ui;color:#43566d}
 .nc-tabs button[aria-pressed=true]{color:#006c74;border-color:#007e85}.nc-tabs span{font-size:12px;background:#edf1f5;padding:2px 6px;border-radius:10px}
+.nc-clear{display:flex;justify-content:flex-end;padding:8px 12px;background:white;border:1px solid #d6dfe8;border-top:0}.nc-clear .btn{min-height:36px}
+.nc-confirm{display:block;background:#fff8ec;padding:12px 14px}.nc-confirm p{margin:0;font-size:13px;color:#4b3a16}.nc-confirm strong{display:block;color:#18283b;font-size:14px}
 .nc-list{border:1px solid #d6dfe8;border-top:0;background:white;border-radius:0 0 6px 6px;overflow:hidden}
 .nc-row{padding:16px 18px;border-left:4px solid #cbd4df;border-bottom:1px solid #e0e6ed}.nc-row:last-child{border-bottom:0}
 .nc-row.nc-urgent{border-left-color:#bd303c;background:#fffafa}.nc-row.nc-done{border-left-color:#2d795b}
