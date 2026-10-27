@@ -397,7 +397,7 @@
         '</div><div class="pbtns"><button type="button" data-closemenu>Close</button></div>';
       return $("menu").showModal();
     }
-    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["calls", "Calls", callsAddon() && (can("called") || can("callpop"))], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
+    var items = [["notifications", "Notifications" + (ncUnread() ? " (" + ncUnread() + ")" : ""), true], ["board", "Board", true], ["flights", "Flights", true], ["lanes", "Yard planner", lanePlanner()], ["topup", "SKIDATA top-up", topupOn()], ["calls", "Calls", callsAddon() && (can("called") || can("callpop"))], ["summary", "Summary and activity", can("summary") || can("log")], ["archive", "Archive: older days and search", can("log")], ["dashboard", "Dashboard", can("settings")],
       ["import", "Import bookings", can("import")], ["staff", "Staff", can("staff")], ["settings", "Settings", can("settings")], ["me", "Me · sign out", true]];
     var sh = sheet();
     var sheetTools = sh && can("import") ? '<label>THIS SHEET · ' + esc(sheetLabel(sh)) + '</label><div class="menu-list">' +
@@ -417,6 +417,7 @@
   // Display, You), and "Delete this sheet" alone at the bottom, in red.
   var MENU_ICON = { notifications: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/>',
     lanes: '<path d="M5 3v18M12 3v18M19 3v18M3 7h18M3 17h18"/>',
+    topup: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/>',
     board: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     calls: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     flights: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
@@ -443,7 +444,7 @@
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
-      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

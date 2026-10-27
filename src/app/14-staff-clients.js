@@ -82,6 +82,7 @@
       '<label class="check"><input type="checkbox" id="clPicksYard"' + (b.picks_yard ? " checked" : "") + "> Location on PICKS (instead of NO SHOW)</label>" +
       '<label class="check"><input type="checkbox" id="clLanes"' + (b.lane_planner ? " checked" : "") + "> Yard planner (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCollections"' + (b.collections ? " checked" : "") + "> Collections on DROPS (add-on)</label>" +
+      '<label class="check"><input type="checkbox" id="clTopup"' + (b.topup ? " checked" : "") + "> SKIDATA card top-up (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clVoice"' + (b.voice ? " checked" : "") + "> Voice calls: caller menu and calls in the app (add-on, needs Calls)</label>" +
@@ -100,7 +101,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, topup: $("clTopup").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -253,13 +254,13 @@
   // Mirrors can() in database parts 3 and 105: defaults before per-person changes.
   var ROLE_CAN = { sent: ["office", "manager", "bongo"], called: ["office", "manager"], desk: ["office", "manager", "terminal"], clear: ["office", "manager", "terminal"], yard: ["office", "manager"],
     summary: ["office", "manager"], log: ["office", "manager"], flights: ["office"], rtc: ["office", "manager", "bongo"], picksinfo: ["office", "manager", "terminal"],
-    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"], callpop: ["office", "manager"] };
+    import: ["office", "manager"], staff: ["office", "manager"], settings: ["manager"], collections: ["office", "manager"], callpop: ["office", "manager"], topup: ["office", "manager", "terminal"] };
   var PERMS = [["sent", "DROPS: press SENT"], ["called", "DROPS: press CALLED and OVERSTAY"], ["desk", "DROPS: press AT DESK"], ["clear", "DROPS: press CLEAR and COMPLAINT"], ["yard", "Set yards"],
     ["note", "Write notes"], ["flights", "Enter and check flight numbers"], ["intake", "PICKS: Collected, No show, PT"], ["rtc", "PICKS: RTC"],
     ["picksinfo", "Hourly stats, and PICKS returns"], ["summary", "Summary"], ["log", "Activity log and archive"], ["import", "Import, add and remove cars"],
-    ["collections", "View board collections"], ["callpop", "Call pop-ups and call alerts"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
+    ["collections", "View board collections"], ["callpop", "Call pop-ups and call alerts"], ["topup", "SKIDATA card top-up"], ["staff", "Staff: add people, new links, switch off"], ["settings", "Settings"]];
   // "View board collections" only where the client has the Collections add-on.
-  function permShown(x) { return x[0] === "callpop" ? !!(S.company && S.company.brand && S.company.brand.calls === true) : x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
+  function permShown(x) { if (x[0] === "topup") return !!(S.company && S.company.brand && S.company.brand.topup === true); return x[0] === "callpop" ? !!(S.company && S.company.brand && S.company.brand.calls === true) : x[0] !== "collections" || !!(S.company && S.company.brand && S.company.brand.collections === true); }
   function roleCan(role, a) { if (role === "owner") return true; var l = ROLE_CAN[a]; return l ? l.indexOf(role) !== -1 : role !== "view"; }
   function personCan(p, a) { var x = p.extra || []; if (x.indexOf("-" + a) !== -1) return false; if (x.indexOf(a) !== -1) return true; return roleCan(p.role, a) || (a === "desk" && p.role !== "view" && personCan(p, "called")); }
   // New link / switch off: the same rule as manage-staff (owners by an owner, managers by a manager or owner).

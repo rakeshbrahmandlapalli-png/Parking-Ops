@@ -299,7 +299,7 @@
       });
   }
   var liveLost = false, liveLostAt = 0;
-  function teardown() { resetCallQueue(); resetNotificationCentre(); resetLanes(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
+  function teardown() { resetCallQueue(); resetNotificationCentre(); resetLanes(); resetTopup(); if (channel) sb.removeChannel(channel); channel = null; liveLost = false; S.rows = []; S.keys = null; keyLoadSeq++; clearTimeout(keyLiveTimer); snapForget(); }
 
   // ── the last board, kept on the phone ──
   // If the server can't be reached when the app opens, the team still sees the
