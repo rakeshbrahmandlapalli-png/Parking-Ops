@@ -474,6 +474,11 @@ html.ops-refined body:not(.ops-desk) .bn-desk,html.ops-refined body:not(.ops-des
  html.ops-refined body.ops-desk .od-row{display:contents;}
  html.ops-refined body.ops-desk .od-head{grid-column:1/-1;order:1;justify-self:end;margin:0;}
  html.ops-refined body.ops-desk .od-desk{grid-column:1/-1;order:2;}
+ html.ops-refined body.ops-desk .od-wrap{max-width:none;}
+ html.ops-refined body.ops-desk .od[data-sec]:not([data-sec="workload"]){display:flex;flex-direction:column;align-items:stretch;}
+ html.ops-refined body.ops-desk .od[data-sec]:not([data-sec="workload"]) > *{order:0;}
+ html.ops-refined body.ops-desk .od[data-sec]:not([data-sec="workload"]) .od-head{align-self:flex-end;}
+ html.ops-refined body.ops-desk .od[data-sec="workload"] .od-checks{grid-column:1/-1;}
  html.ops-refined body.ops-desk .od-err{grid-column:1/-1;order:2;}
  html.ops-refined body.ops-desk .od-work{grid-column:span 6;order:4;align-self:stretch;}
  html.ops-refined body.ops-desk .od-queues{grid-column:span 6;order:5;align-self:stretch;}

@@ -193,6 +193,24 @@ html.stdplus .od-pnote{flex:1;min-width:0;padding-bottom:2px;font-size:13px;colo
 html.stdplus .od-pday{flex:none;min-width:96px;padding-left:16px;margin-left:16px;border-left:1px solid #33445a;}
 html.stdplus .od-pday small{display:block;font-size:12px;color:#c4cfdd;}
 html.stdplus .od-pday b{display:block;margin-top:2px;font-size:22px;font-weight:650;color:#fff;}
+/* The dashboard's side list (27 Oct): Overview, Workload, Payments, Yards, Activity; each opens its own section */
+html.stdplus .od-wrap{--od-ink:#18283b;--od-mut:#56657a;--od-line:#dce2e9;--od-soft:#edf0f4;display:grid;grid-template-columns:200px minmax(0,1fr);gap:20px;align-items:start;max-width:1340px;margin:0 auto;padding:16px 0 0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;}
+html.stdplus .od-wrap > .od{max-width:none;margin:0;padding-top:0;}
+html.stdplus .od-side{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid var(--od-line);border-radius:6px;background:#fff;}
+html.stdplus .od-side button{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:46px;justify-content:center;padding:6px 12px 6px 14px;border:0;border-radius:5px;background:none;color:var(--od-mut);font:600 14.5px system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;cursor:pointer;}
+html.stdplus .od-side button small{font-size:12px;font-weight:500;color:var(--od-mut);}
+html.stdplus .od-side button:hover{background:#f5f7fa;color:var(--od-ink);}
+html.stdplus .od-side button.on{background:#eef2f6;color:var(--od-ink);}
+html.stdplus .od-side button.on::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 2px 2px 0;background:var(--brand,#1f4f86);}
+html.stdplus .od-side button:focus-visible{outline:2px solid #1765ad;outline-offset:-2px;}
+@media(max-width:899px){
+ html.stdplus .od-wrap{display:block;padding-top:10px;}
+ html.stdplus .od-side{position:static;flex-direction:row;gap:4px;margin-bottom:12px;padding:4px;overflow-x:auto;scrollbar-width:none;}
+ html.stdplus .od-side::-webkit-scrollbar{display:none;}
+ html.stdplus .od-side button{flex:1 0 auto;align-items:center;min-height:38px;padding:0 9px;font-size:13px;}
+ html.stdplus .od-side button small{display:none;}
+ html.stdplus .od-side button.on::before{left:10px;right:10px;top:auto;bottom:0;width:auto;height:3px;border-radius:2px 2px 0 0;}
+}
 /* What needs doing: Priority work, Coming up and the board link; Site status and the handover note beside them */
 html.stdplus .od{--od-acc:color-mix(in srgb,var(--brand,#1f4f86) 62%,#000);}
 html.stdplus .od-desk{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);}

@@ -932,7 +932,7 @@
     if (desk && nav.parentNode !== bar.parentNode) bar.after(nav);
     else if (!desk && nav.parentNode === bar.parentNode) $("main").after(nav);
   }
-  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "topup" && !topupOn()) view = "board"; if (view === "topup") { TU.counts = null; TU.error = ""; loadTopup(); } if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; S.handoverEdit = false; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
+  function go(view) { if (S.view === "settings" && view !== "settings" && !leaveOk()) { if ($("menu").open) $("menu").close(); return false; } if (S.platform && view !== "me") view = "clients"; if (view === "import" && S.updateReady && !S.queue.length && !pt && !camStream && !BK.length) { location.reload(); return; } if (view === "import") S.recentImports = null; if (view === "lanes" && !lanePlanner()) view = "board"; if (view === "topup" && !topupOn()) view = "board"; if (view === "topup") { TU.counts = null; TU.error = ""; loadTopup(); } if (view === "notifications") { NC.selected = ""; loadNotificationCentre(); } if (view === "calls") S.callsList = null; if (view === "lanes") { LP.error = ""; loadLanes(); } S.view = view; S.settingsDraft = null; if (view === "summary") S.activity = null; if (view === "dashboard") { S.dash = null; S.dashLive = undefined; S.handoverEdit = false; S.dashSec = "overview"; } if ($("menu").open) $("menu").close(); render(); window.scrollTo(0, 0); }
 
   // ── board ─────────────────────────────────
   // Same rules as the Sheet app, so nobody has to relearn what a count means.
@@ -4541,7 +4541,7 @@
     // Standard with features and Operations: the loading and error states keep the loaded page's head, so the period bar doesn't change look.
     if (isStdPlus() && (!S.dash || S.dash.error)) {
       if (!S.dash) loadDash();
-      return '<div class="ops-dashboard ops-v2 od">' + odHead(S.dash ? "" : "Loading…", !S.dash) + (S.dash ? '<div class="od-err" role="alert">' + esc(S.dash.error) + "</div>" : "") + "</div>";
+      return '<div class="ops-dashboard ops-v2 od-wrap">' + dashSide({}) + '<div class="od" data-sec="' + dashSec() + '">' + odHead(S.dash ? "" : "Loading…", !S.dash) + (S.dash ? '<div class="od-err" role="alert">' + esc(S.dash.error) + "</div>" : "") + "</div></div>";
     }
     if (!S.dash) { loadDash(); return h + '<div class="empty">Loading…</div></div>'; }
     if (S.dash.error) return h + '<div class="alert">' + esc(S.dash.error) + '</div><button type="button" class="btn ghost small" data-dashreload>Try again</button></div>';
@@ -4672,6 +4672,7 @@
       var dock = pr.filter(QUEUES.nodocket[1]).length;
       if (dock) task("Photograph " + plural(dock, "docket", "dockets"), "Desk bookings on today's PICKS with no docket photo.", "Open", 'data-dashsheet="' + esc(L.picks.id) + '" data-dashqueue="nodocket"');
     }
+    if (o.out) o.out.tasks = S.dashLive === null ? null : tasks.length;
     var now = londonParts(new Date());
     var h = '<section class="od-card od-desk" aria-label="What needs doing"><div class="od-dmain"><div class="od-dhead"><h2 class="od-big">What needs doing?</h2><p>' +
       esc(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: TZ })) + " · " + esc(ROLE_LABEL[S.me.role] || S.me.role || "") + "</p></div>";
@@ -4739,18 +4740,19 @@
     var showExit = !!E && (fee > 0 || +E.paid > 0), exitReview = showExit ? (+E.unpaid || 0) + (+E.no_photo || 0) : 0;
     var unpaidSum = x.sum(x.left, "due"), taken = x.taken;
 
-    var h = '<div class="ops-dashboard ops-v2 od">' + odHead("Updated " + hhmm(S.dashUpdated));
+    // Each heading in the side list opens its own section (27 Oct, the user: "on the dashboard there is too much").
+    var P = { overview: "", workload: "", payments: "", yards: "", activity: "" }, h = "", out = {};
 
     // What needs doing (the 27 Oct "Action desk" mockup): Priority work, Coming up and the board link on the left; Site status and the handover note on the right.
     var noYard = (x.yards || []).filter(function (y) { return !y.yard; }).reduce(function (n, y) { return n + (+y.n || 0); }, 0);
-    h += deskHtml(x, { late: late, total: total, cap: cap, unpaidSum: unpaidSum, exitReview: exitReview, noYard: noYard, live: L, countOn: countOn, tomorrow: tomorrow, cars: cars });
+    P.overview = deskHtml(x, { late: late, total: total, cap: cap, unpaidSum: unpaidSum, exitReview: exitReview, noYard: noYard, live: L, countOn: countOn, tomorrow: tomorrow, cars: cars, out: out });
 
     // Upcoming workload by day, and Live queues (tonight's DROPS).
     var onsite = D.onsite || [], dayLabel = function (k) { return k === x.today ? "Today" : k === tomorrow ? "Tomorrow" : longDay(k); };
     var work = onsite.length ? onsite.map(function (r) { return { day: r.day, n: (+r.in || 0) + (+r.out || 0), note: (+r.out || 0) + " returning · " + (+r.in || 0) + " arriving" }; })
       : (PK.days || []).map(function (d) { return { day: d.day, n: +d.n || 0, note: cars(+d.n || 0) + " returning" }; });
     var shownWork = S.dashAllDates ? work : work.slice(0, 2);
-    h += '<div class="od-row"><section class="od-card od-work" id="dash-work" tabindex="-1"><h2>Upcoming workload</h2><div class="od-list">' + (shownWork.length ? shownWork.map(function (w) {
+    h = '<div class="od-row"><section class="od-card od-work" id="dash-work" tabindex="-1"><h2>Upcoming workload</h2><div class="od-list">' + (shownWork.length ? shownWork.map(function (w) {
       return '<div class="od-line' + (w.day === x.today ? " today" : "") + '"><span class="od-label">' + esc(dayLabel(w.day)) + '<small>' + w.note + '</small></span><b class="num">' + w.n + "</b></div>";
     }).join("") : '<p class="od-none">No bookings ahead yet.</p>') + "</div>" +
       (work.length > 2 ? '<button type="button" class="od-more" data-dashdates aria-expanded="' + !!S.dashAllDates + '">' + (S.dashAllDates ? "Show today and tomorrow" : "Open schedule, next " + work.length + " days") + ' <span aria-hidden="true">→</span></button>' : "") + "</section>";
@@ -4781,7 +4783,8 @@
     var foot = [];
     if (showExit) foot.push((E.paid_cars ? '<button type="button" class="od-link" data-dashjump="exitpaid">' : "<span>") + (+E.paid || 0) + " exit " + (+E.paid === 1 ? "fee" : "fees") + " paid" + (E.paid_cars ? "</button>" : "</span>"), (+E.exempt || 0) + " exempt");
     foot.push("Owed now " + money(x.sum(x.here, "due")) + " (" + cars(x.here.length) + " here)", "Waived " + money(x.N.waivedSum));
-    h += '<section class="od-card od-pay" aria-label="Payments"><div class="od-cardhead"><h2>Payments</h2><small>Last ' + period + '</small></div><div class="od-table"><div class="od-tr od-th"><span>Payment</span><span>Collected</span><span>Cash</span><span>Card</span><span>To check</span></div>' + rows + '</div><div class="od-foot"><span>' + foot.join(" · ") + '</span><button type="button" class="od-more" data-dashjump="records">Payment records <span aria-hidden="true">→</span></button></div></section>';
+    P.workload = h; h = "";
+    P.payments = '<section class="od-card od-pay" aria-label="Payments"><div class="od-cardhead"><h2>Payments</h2><small>Last ' + period + '</small></div><div class="od-table"><div class="od-tr od-th"><span>Payment</span><span>Collected</span><span>Cash</span><span>Card</span><span>To check</span></div>' + rows + '</div><div class="od-foot"><span>' + foot.join(" · ") + '</span><button type="button" class="od-more" data-dashjump="records">Payment records <span aria-hidden="true">→</span></button></div></section>';
 
     // Checks.
     var pr = L.picksRows, checks = "";
@@ -4792,23 +4795,23 @@
       checks += '<button type="button" class="od-line od-tap" data-dashsheet="' + esc(L.picks.id) + '"><span class="od-label">Desk bookings with no docket photo<small>' + esc(sheetLabel(L.picks)) + '</small></span><b class="num' + (noDocket ? " warn" : "") + '">' + noDocket + "</b>" + goTag("", "Open PICKS") + "</button>";
     }
     checks += '<button type="button" class="od-line od-tap" data-view="summary"><span class="od-label">Shift summary and activity log</span>' + goTag("", "Open") + "</button>";
-    h += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks</h2></div><div class="od-list">' + checks + "</div></section>";
+    P.workload += '<section class="od-card od-checks" aria-label="Checks"><div class="od-cardhead"><h2>Checks</h2></div><div class="od-list">' + checks + "</div></section>";
 
     // Desk activity and cars on site (each folds away), parked by yard, then the records.
     var NN = x.N;
-    h += '<div class="od-row">' + foldOpen("desk", "Desk activity", "Last " + period, NN.added + " added · " + NN.removed + " removed · " + NN.complaints + (NN.complaints === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
+    P.activity = foldOpen("desk", "Desk activity", "Last " + period, NN.added + " added · " + NN.removed + " removed · " + NN.complaints + (NN.complaints === 1 ? " complaint" : " complaints"), "", "od-fold") + '<div class="od-list">' +
       [["added", "Added at the desk", NN.added, NN.addedDesk + " added · " + (NN.added - NN.addedDesk) + " NEW BOOKING"],
         ["removed", "Removed", NN.removed, removeWhyLine(NN.removedBy)],
         ["complaints", "Complaints", NN.complaints, ""],
         ["", "Early returns", +D.early || 0, (+D.changed || 0) + " return changes"]].map(function (a) {
         return "<" + (a[0] ? 'button type="button" class="od-line od-tap" data-dashjump="' + a[0] + '"' : 'div class="od-line"') + '><span class="od-label">' + a[1] + (a[3] ? "<small>" + a[3] + "</small>" : "") + '</span><b class="num">' + a[2] + "</b>" + (a[0] ? "</button>" : "</div>");
-      }).join("") + "</div>" + FOLD_END +
-      foldOpen("onsite", "Cars on site", "Next 14 days", onsiteSummary(D), "", "od-fold ops-booked") + '<div class="booked">' + bookedBody(D, PK) + "</div>" + FOLD_END + "</div>";
-    if (x.yards.length) h += '<section class="od-card od-yards ops-yards" id="dash-yards" tabindex="-1"><div class="od-cardhead"><h2>Parked now, by yard</h2></div><div class="dlist">' + x.yards.map(function (y) {
+      }).join("") + "</div>" + FOLD_END;
+    if (x.yards.length) P.yards = '<section class="od-card od-yards ops-yards" id="dash-yards" tabindex="-1"><div class="od-cardhead"><h2>Parked now, by yard</h2></div><div class="dlist">' + x.yards.map(function (y) {
       var ds = y.days || [], shown = ds.slice(0, 4), rest = ds.slice(4).reduce(function (n, d) { return n + d.n; }, 0);
       var line = shown.map(function (d) { return (d.day ? esc(x.dayName(d.day)) : '<b class="late">past return</b>') + " " + d.n; }).join(" · ") + (rest ? " · later " + rest : "");
       return '<div class="rowline"><div class="grow"><strong>' + (y.yard ? esc(YARD_LABEL[y.yard] || y.yard) : "No yard yet") + '</strong><div class="note">' + line + "</div></div>" + yardNum(y) + "</div>";
     }).join("") + "</div></section>";
+    P.yards += foldOpen("onsite", "Cars on site", "Next 14 days", onsiteSummary(D), "", "od-fold ops-booked") + '<div class="booked">' + bookedBody(D, PK) + "</div>" + FOLD_END;
 
     var rec = x.records;
     rec["Past their return"] = { count: late, body: '<div class="dlist">' + lateBody(PK) + "</div>" };
@@ -4829,10 +4832,25 @@
       var r = rec[title] || { count: 0, body: '<div class="empty">None.</div>' };
       return '<details id="dash-' + id + '" class="ops-record"><summary>' + title + " <small>(" + r.count + ")</small></summary>" + (r.body.indexOf('<div class="dlist">') === 0 ? r.body : '<div class="dlist">' + r.body + "</div>") + "</details>";
     };
-    h += '<section class="od-card od-records ops-details" id="dash-records" tabindex="-1"><div class="od-cardhead"><h2>Records</h2><small>Last ' + period + "</small></div>" +
-      detail("late", "Past their return") + detail("unpaid", "Left with no payment recorded") + (showExit ? detail("exit", "Exit fees to check") + (E.paid_cars ? detail("exitpaid", "Exit fees paid") : "") : "") + detail("money", "Money taken") + detail("owed", "Owed now") + detail("waived", "Waived") + detail("added", "Added at the desk") + detail("removed", "Removed") + detail("complaints", "Complaints") + "</section>";
-    return h + "</div>";
+    var records = function (id, title, sub, body) { return '<section class="od-card od-records ops-details"' + (id ? ' id="' + id + '"' : "") + ' tabindex="-1"><div class="od-cardhead"><h2>' + title + "</h2><small>" + sub + "</small></div>" + body + "</section>"; };
+    P.payments += records("dash-records", "Payment records", "Last " + period, detail("unpaid", "Left with no payment recorded") + (showExit ? detail("exit", "Exit fees to check") + (E.paid_cars ? detail("exitpaid", "Exit fees paid") : "") : "") + detail("money", "Money taken") + detail("owed", "Owed now") + detail("waived", "Waived"));
+    P.yards += records("", "Cars past their return", "Right now", detail("late", "Past their return"));
+    P.activity += records("", "Activity records", "Last " + period, detail("added", "Added at the desk") + detail("removed", "Removed") + detail("complaints", "Complaints"));
+    var sec = dashSec();
+    var meta = { overview: out.tasks == null ? "" : out.tasks + (out.tasks === 1 ? " task" : " tasks"), payments: x.left.length ? money(unpaidSum) + " unpaid" : "", yards: total + " parked" };
+    return '<div class="ops-dashboard ops-v2 od-wrap">' + dashSide(meta) + '<div class="od" data-sec="' + sec + '">' + odHead("Updated " + hhmm(S.dashUpdated)) + P[sec] + "</div></div>";
   }
+  function dashSec() { return DASH_SECS.some(function (d) { return d[0] === S.dashSec; }) ? S.dashSec : "overview"; }
+  function dashSide(meta) {
+    var sec = dashSec();
+    return '<nav class="od-side" aria-label="Dashboard">' + DASH_SECS.map(function (d) {
+      var on = d[0] === sec;
+      return '<button type="button" data-dashsec="' + d[0] + '" class="' + (on ? "on" : "") + '"' + (on ? ' aria-current="page"' : "") + "><span>" + d[1] + "</span>" + (meta[d[0]] ? "<small>" + esc(meta[d[0]]) + "</small>" : "") + "</button>";
+    }).join("") + "</nav>";
+  }
+  // The dashboard's side list, and the section each record or link lives in.
+  var DASH_SECS = [["overview", "Overview"], ["workload", "Workload"], ["payments", "Payments"], ["yards", "Yards"], ["activity", "Activity"]];
+  var DASH_SEC_OF = { work: "workload", records: "payments", unpaid: "payments", exit: "payments", exitpaid: "payments", money: "payments", owed: "payments", waived: "payments", late: "yards", yards: "yards", added: "activity", removed: "activity", complaints: "activity" };
 
   // ── whose app this is ─────────────────────────────────────────────────────
   // One codebase, several parking companies. Each carries its own name, colour
@@ -7712,7 +7730,10 @@
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
     if (t.dataset.create !== undefined) return createSheet();
     if (t.dataset.reloadlog !== undefined) { S.activity = null; render(); return; }
+    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sb = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sb) sb.focus({ preventScroll: true }); return; }
     if (t.dataset.dashjump) {
+      var want = DASH_SEC_OF[t.dataset.dashjump];
+      if (want && want !== (S.dashSec || "overview")) { S.dashSec = want; render(); }
       var target = document.getElementById('dash-' + t.dataset.dashjump);
       if (target) {
         if (target.tagName === 'DETAILS') target.open = true;

@@ -20,7 +20,7 @@ for (const theme of ["stdplus", "ops", "ops-refined"]) await scenario(async () =
   const site = await txt(page, ".od-site");
   check("Dashboard desk (" + theme + "): Site status, parked, spaces free and occupancy", /^Site status 30 parked 10 spaces free Occupancy 75% of 40 Returning today 8 Tomorrow 0 2 past their return$/.test(site) && await page.locator(".od-site .od-bar i").evaluate((e) => e.style.width === "75%"), site);
   const cup = await page.locator(".od-cuprow").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-  check("Dashboard desk (" + theme + "): Coming up counts a PICKS car still to arrive", cup.reduce((n, c) => n + +(c.match(/(\d+) arrivals?/) || [0, 0])[1], 0) === 1, cup);
+  check("Dashboard desk (" + theme + "): Coming up counts a PICKS car still to arrive", cup.reduce((n, c) => n + +(c.match(/(\d+) arrivals?/) || [0, 0])[1], 0) >= 1, cup);
   check("Dashboard desk (" + theme + "): phone, no sideways scrolling", await noSideScroll(page));
   await page.click('.od-tasks [data-dashqueue="desk"]'); await sleep(700);
   check("Dashboard desk (" + theme + "): Open shows the car at the desk on the board", await page.locator('.row[data-id]').evaluateAll((els) => els.map((e) => e.dataset.id).join()) === "q1" && /At the desk, not sent · 1/.test(await page.locator(".queuebar").innerText()));

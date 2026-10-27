@@ -250,6 +250,11 @@ export async function shots(dir) {
         await page.click('#menuBody [data-view="dashboard"]'); await sleep(900);
         await page.setViewportSize({ width, height: await page.evaluate(() => document.documentElement.scrollHeight) }); await sleep(300);
         await page.screenshot({ path: path.join(dir, who + "-" + name + ".png") });
+        for (const sec of ["workload", "payments", "yards", "activity"]) {
+          await page.setViewportSize({ width, height }); await page.click('[data-dashsec="' + sec + '"]'); await sleep(400);
+          await page.setViewportSize({ width, height: await page.evaluate(() => document.documentElement.scrollHeight) }); await sleep(300);
+          await page.screenshot({ path: path.join(dir, who + "-" + name + "-" + sec + ".png") });
+        }
         await page.context().close();
       }
     }

@@ -58,7 +58,10 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   const tile = (name) => tiles.find((t) => t.startsWith(name)) || "";
   if (theme === "stdplus") {
     const txt = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
+    const sec = async (n) => { await page.click('[data-dashsec="' + n + '"]'); await sleep(250); };
     check("Dashboard: fits a phone", await noSideScroll(page));
+    const side = await page.locator(".od-side [data-dashsec]").evaluateAll((els) => els.map((e) => e.dataset.dashsec + (e.classList.contains("on") ? "*" : "")).join());
+    check("Dashboard: the side list, Overview open first", side === "overview*,workload,payments,yards,activity" && await page.locator(".od-work, .od-pay, .od-queues, .od-checks, .od-yards, [data-fold]").count() === 0, side);
     check("Dashboard: plain heading, update time, the three periods", await page.locator(".od-head h1").innerText() === "Dashboard" && /^Updated \d{2}:\d{2}$/.test(await txt(".od-updated")) && await page.locator(".od [data-dashp]").count() === 3);
     check("Dashboard: What needs doing?, today's date and the role", /^What needs doing\? \w+day \d+ \w+ · Owner$/.test(await txt(".od-dhead")), await txt(".od-dhead"));
     const tasks = await page.locator(".od-task").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
@@ -68,17 +71,21 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: Coming up, tonight's DROPS still to go out by hour", cup.length >= 1 && cup.every((c) => /^\d\d:00 – \d\d:00 \d+ arrivals? · \d+ returns?$/.test(c)) && cup.reduce((n, c) => n + +c.match(/(\d+) returns?$/)[1], 0) === 2, cup);
     const site = await txt(".od-site");
     check("Dashboard: Site status, parked and (no capacity set) past their return, returns today and tomorrow", /^Site status 30 parked 2 past their return Returning today 8 Tomorrow 0$/.test(site) && await page.locator(".od-site .od-bar").count() === 0, site);
+    await sec("workload");
+    check("Dashboard: Workload opens on its own, Overview hidden", await page.locator(".od-desk").count() === 0 && await page.locator('[data-dashsec="workload"].on[aria-current="page"]').count() === 1);
     const work = await page.locator(".od-work .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Upcoming workload, today and tomorrow, returns and arrivals", work.length === 2 && work[0] === "Today 6 returning · 4 arriving 10" && work[1] === "Tomorrow 7 returning · 5 arriving 12", work);
+    const queues = await page.locator(".od-queues .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+    check("Dashboard: Live queues from tonight's DROPS", queues.length === 3 && /^Called, not sent 1 Open queue/.test(queues[0]) && /^Sent, not handed back 1 Open queue/.test(queues[1]) && /^Due in the next 2 hours, not sent 2 Open queue/.test(queues[2]), queues);
+    const checks = await page.locator(".od-checks .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+    check("Dashboard: Checks, cars with no yard, PT photos not taken, the shift summary", /^Parked with no yard 12 Yards/.test(checks[0]) && /^PT photos not taken PICKS .* 1 Open PICKS/.test(checks[1]) && /^Desk bookings with no docket photo PICKS .* 1 Open PICKS/.test(checks[2]) && /^Shift summary and activity log Open/.test(checks[3]), checks);
+    await sec("payments");
     const pay = await page.locator(".od-pay .od-tr:not(.od-th)").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Payments, exit fees row (collected, cash, card, to check)", /^Exit fees £10 a car Collected £180 · 18 cars Cash £60 Card £120 To check 3 cars$/.test(pay[0]), pay[0]);
     check("Dashboard: Payments, overstay and charges row with what was left unpaid", /^Overstay and charges Money taken at the desk Collected £70 · 2 cars Cash £20 Card £50 Left unpaid £\d+ · 1 car$/.test(pay[1]), pay[1]);
     check("Dashboard: Payments footer, paid and exempt, owed now and waived", /18 exit fees paid · 5 exempt · Owed now £40 \(1 car here\) · Waived £30/.test(await txt(".od-foot")), await txt(".od-foot"));
     check("Dashboard: on a phone the payments table becomes labelled blocks", !(await page.locator(".od-th").isVisible()) && await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible());
-    const queues = await page.locator(".od-queues .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-    check("Dashboard: Live queues from tonight's DROPS", queues.length === 3 && /^Called, not sent 1 Open queue/.test(queues[0]) && /^Sent, not handed back 1 Open queue/.test(queues[1]) && /^Due in the next 2 hours, not sent 2 Open queue/.test(queues[2]), queues);
-    const checks = await page.locator(".od-checks .od-line").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
-    check("Dashboard: Checks, cars with no yard, PT photos not taken, the shift summary", /^Parked with no yard 12 Yards/.test(checks[0]) && /^PT photos not taken PICKS .* 1 Open PICKS/.test(checks[1]) && /^Desk bookings with no docket photo PICKS .* 1 Open PICKS/.test(checks[2]) && /^Shift summary and activity log Open/.test(checks[3]), checks);
+    await sec("overview");
     check("Dashboard: the handover note shows as text with who wrote it and when", await txt(".od-hnote") === "Gate 2 key is in the safe" && /^SUGU · \d\d:\d\d$/.test(await txt(".od-desk .od-hrow small")) && await page.locator("#handoverText").count() === 0);
     await page.click("[data-handoveredit]"); await sleep(200);
     check("Dashboard: Edit opens the note in a box, Cancel closes it unchanged", await page.inputValue("#handoverText") === "Gate 2 key is in the safe");
@@ -88,11 +95,13 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     await page.fill("#handoverText", "Keys moved to cabinet 2"); await page.click("[data-savehandover]"); await sleep(500);
     check("Dashboard: Save note sends the handover note and shows it", db.calls.some((c) => c.fn === "set_handover_note" && c.args.p_note === "Keys moved to cabinet 2") && await txt(".od-hnote") === "Keys moved to cabinet 2");
     await page.click("[data-handoveredit]"); await sleep(200);
-    await page.fill("#handoverText", "typed, not saved"); await page.click("[data-dashdates]"); await sleep(150); await page.click("[data-dashdates]"); await sleep(150);
+    await page.fill("#handoverText", "typed, not saved"); await sec("overview"); await sleep(150);
     check("Dashboard: a typed handover note survives the dashboard redrawing", await page.inputValue("#handoverText") === "typed, not saved");
+    await sec("payments");
     await page.evaluate(() => document.querySelector('[data-dashjump="exitpaid"]').click()); await sleep(200);
     const paidTxt = (await page.locator("#dash-exitpaid").innerText()).replace(/\s+/g, " ");
     check("Dashboard: paid exit fees list each payment (reg, method, photo, who, amount)", /Exit fees paid \(18\)/.test(paidTxt) && /PAID001 · MR PAID CARD · photo kept · SUGU · FHR-9 £10/.test(paidTxt) && /PAID002 · MRS PAID CASH · no photo · TERRY £10/.test(paidTxt) && /Showing the latest 2 of 18/.test(paidTxt), paidTxt);
+    await sec("activity");
     const desk = await page.locator('[data-fold="desk"] .od-line').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
     check("Dashboard: Desk activity, added, removed, complaints, early returns", desk[0] === "Added at the desk 1 added · 1 NEW BOOKING 2" && desk[1] === "Removed 1 no show 1" && desk[2] === "Complaints 1" && desk[3] === "Early returns 3 return changes 2", desk);
     check("Dashboard: nothing on it is emoji or a gradient", await page.evaluate(() => !/\p{Extended_Pictographic}/u.test(document.querySelector(".od").innerText) && ![...document.querySelectorAll(".od, .od *")].some((e) => /gradient/.test(getComputedStyle(e).backgroundImage))));
@@ -104,24 +113,31 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
       await page.setViewportSize({ width: 390, height: 844 });
     }
     await page.setViewportSize({ width: 1280, height: 900 }); await sleep(150);
-    check("Dashboard: on a wide screen Site status sits beside Priority work, Upcoming workload beside Live queues, the table has its header", await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), m = r(".od-dmain"), a = r(".od-dside"), w = r(".od-work"), q = r(".od-queues"); return Math.abs(m.top - a.top) < 2 && a.left >= m.right - 1 && Math.abs(w.top - q.top) < 2 && q.left > w.right; }) && await page.locator(".od-th").isVisible() && !(await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible()));
+    await sec("overview");
+    check("Dashboard: on a wide screen the side list sits left of the section, Site status beside Priority work", await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), sd = r(".od-side"), m = r(".od-dmain"), a = r(".od-dside"); return sd.right <= m.left && Math.abs(m.top - a.top) < 2 && a.left >= m.right - 1; }));
+    await sec("workload");
+    check("Dashboard: on a wide screen Upcoming workload sits beside Live queues", await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), w = r(".od-work"), q = r(".od-queues"); return Math.abs(w.top - q.top) < 2 && q.left > w.right; }));
+    await sec("payments");
+    check("Dashboard: on a wide screen the payments table has its header", await page.locator(".od-th").isVisible() && !(await page.locator(".od-pay .od-c:not(.od-name) > small").first().isVisible()));
     check("Dashboard: wide screen, no sideways scrolling", await noSideScroll(page));
     await page.setViewportSize({ width: 390, height: 844 }); await sleep(150);
     const calls = db.dashCalls.length;
+    await sec("overview");
     await page.click('.od-tasks [data-dashjump="unpaid"]');
+    check("Dashboard: Review opens Payments", await page.locator('[data-dashsec="payments"].on').count() === 1);
     check("Dashboard: Left unpaid opens its records", await page.locator('#dash-unpaid').getAttribute('open') !== null && /LEFT01/.test(await page.locator('#dash-unpaid').innerText()) && db.dashCalls.length === calls);
-    await page.click('.od-tasks [data-dashjump="late"]');
+    await sec("overview"); await page.click('.od-tasks [data-dashjump="late"]');
     check("Dashboard: overdue cars opens the cars past their return, by level", await page.locator('#dash-late').evaluate((e) => e.open && e.querySelector("summary") === document.activeElement) && /LATE1[\s\S]*2 days/.test(await page.locator('#dash-late').innerText()));
-    await page.click('.od-tasks [data-dashjump="exit"]');
+    await sec("overview"); await page.click('.od-tasks [data-dashjump="exit"]');
     const exitTxt = (await page.locator('#dash-exit').innerText()).replace(/\s+/g, " ");
     check("Dashboard: exit fees to check lists cars handed back with none recorded, and those with no photo", /Exit fees to check \(3\)/.test(exitTxt) && /NOEXIT1 · MR LEFT Handed back, no exit fee recorded · FHR-1/.test(exitTxt) && /NOPHOTO · MR CASH CASH, no photo · SUGU/.test(exitTxt), exitTxt);
     await page.click('.od-pay [data-dashjump="records"]');
 
     check("Dashboard: Payment records goes to the records", await page.locator('#dash-records').evaluate((e) => e === document.activeElement));
-    await page.click('.od-checks [data-dashjump="yards"]');
+    await sec("workload"); await page.click('.od-checks [data-dashjump="yards"]');
     check("Dashboard: Parked with no yard goes to the yards", await page.locator('#dash-yards').evaluate((e) => e === document.activeElement));
     await page.click('#main').catch(() => {}); await page.evaluate(() => document.activeElement && document.activeElement.blur());
-    await page.click('.od-tasks [data-dashjump="yards"]');
+    await sec("overview"); await page.click('.od-tasks [data-dashjump="yards"]');
     check("Dashboard: Assign (no locations on PICKS) goes to the yards", await page.locator('#dash-yards').evaluate((e) => e === document.activeElement));
   }
   if (!theme) check("Dashboard (" + look + "): cars added at the desk, by hand and NEW BOOKING", /^Added at the desk 2 1 added · 1 NEW BOOKING/.test(tile("Added at the desk")), tile("Added at the desk"));
@@ -129,8 +145,10 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   if (!theme) check("Dashboard (" + look + "): owed now only counts cars still here that owe something", /Owed now £40 1 car here/.test(tile("Owed now")), tile("Owed now"));
   if (!theme) check("Dashboard (" + look + "): a car that left with no payment recorded shows red", /^Left unpaid £(\d+) 1 car/.test(tile("Left unpaid")) && +tile("Left unpaid").match(/£(\d+)/)[1] >= 60 && await page.locator("#main .dstats .stat.warn").count() === 1, tile("Left unpaid"));
   if (!theme) check("Dashboard (" + look + "): waived, removed, complaints, early returns", /Waived £30 1 car/.test(tile("Waived")) && /Removed 1 1 no show/.test(tile("Removed")) && /Complaints 1/.test(tile("Complaints")) && /Early returns 2 3 return changes/.test(tile("Early returns")), tiles.join(" | "));
-  if (theme === "stdplus") await page.locator('.ops-record').evaluateAll((els) => els.forEach((e) => { e.open = true; }));
-  const body = await page.locator("#main").innerText();
+  let body = "";
+  if (theme === "stdplus") for (const n of ["payments", "yards", "activity"]) { await page.click('[data-dashsec="' + n + '"]'); await sleep(250); await page.locator('.ops-record').evaluateAll((els) => els.forEach((e) => { e.open = true; })); body += await page.locator("#main").innerText() + "\n"; }
+  else body = await page.locator("#main").innerText();
+  if (theme === "stdplus") await page.click('[data-dashsec="yards"]');
   check("Dashboard (" + look + "): the lists name the cars and who did it", /Left with no payment recorded \(1\)[\s\S]*LEFT01/i.test(body) && /AB12CDE[\s\S]*Added to DROPS · SUGU/.test(body) && /XY34ZZZ[\s\S]*Marked NEW BOOKING · TERRY/.test(body) && /CARD01[\s\S]*CARD · return date changed · SUGU/.test(body) && !/ZERO01/.test(body), body.slice(0, 400));
   if (!theme) check("Dashboard (" + look + "): Parked now counts the cars in, with those past their return", /^Parked now 30 2 past their return/.test(tile("Parked now")), tile("Parked now"));
   check("Dashboard (" + look + "): parked cars by yard, yards first, no yard last", /Parked now, by yard\s*NB\s*\S*\s*\w{3},? \d+ \w{3} 18\s*18\s*No yard yet\s*past return 2 · Today 10\s*12/i.test(body), (body.match(/Parked now, by yard[\s\S]{0,160}/i) || [""])[0]);
@@ -139,6 +157,7 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   await page.evaluate(() => { const d = document.querySelector("#main details.latebox, #dash-late"); if (d) d.open = true; }); await sleep(150);
   const lateTxt = await page.locator("#main details.latebox, #dash-late").first().innerText().catch(() => "");
   check("Dashboard (" + look + "): Past their return opens to list the cars by level", /LATE1/.test(lateTxt) && /LATE2/.test(lateTxt) && /2 days/.test(lateTxt) && /Less than a day/.test(lateTxt), lateTxt);
+  if (theme === "stdplus") await page.click('[data-dashsec="yards"]');
   const bookedTxt = (await page.locator("#main .booked").first().innerText().catch(() => "")).replace(/\s+/g, " ");
   check("Dashboard (" + look + "): cars on site per day shows the days counted by the app", /Busiest: Tomorrow 45/.test(bookedTxt) && /Today\s*38/.test(bookedTxt) && /\+5 in · 7 out/.test(bookedTxt), bookedTxt);
   check("Dashboard (" + look + "): no paste box, nothing to copy from another site", await page.locator("#bookedText, [data-savebooked]").count() === 0);
@@ -148,19 +167,24 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   const last = new Date(db.dashCalls[db.dashCalls.length - 1]).getTime();
   check("Dashboard (" + look + "): 30 days reads again from 30 days back", Math.abs(Date.now() - last - 30 * 86400000) < 600000 && await page.locator('#main [data-dashp="30"].on').count() === 1);
   if (theme === "stdplus") {
+    check("Dashboard: the period keeps the open section", await page.locator('[data-dashsec="yards"].on').count() === 1);
+    await page.click('[data-dashsec="payments"]'); await sleep(250);
     check("Dashboard: period label follows the filter", /Last 30 days/.test(await page.locator('.od-pay .od-cardhead').innerText()));
     const calls = db.dashCalls.length;
+    await page.click('[data-dashsec="workload"]'); await sleep(250);
     await page.click('.od-work [data-dashdates]');
     check("Dashboard: Open schedule shows every day without a new request", await page.locator('.od-work .od-line').count() === 4 && await page.locator('[data-dashdates]').getAttribute('aria-expanded') === 'true' && db.dashCalls.length === calls);
     await page.click('[data-dashdates]');
     check("Dashboard: the schedule closes again and keeps the focus on its button", await page.locator('.od-work .od-line').count() === 2 && await page.locator('[data-dashdates]').evaluate((e) => e === document.activeElement));
     const foldTxt = async (id) => (await page.locator('[data-fold="' + id + '"] > summary').innerText()).replace(/\s+/g, " ");
-    check("Dashboard: Desk activity and Cars on site fold and start open", (await page.locator('details.ops-fold[open]').count()) === 2);
+    await page.click('[data-dashsec="yards"]'); await sleep(250);
+    check("Dashboard: Cars on site folds and starts open", (await page.locator('details.ops-fold[open]').count()) === 1);
     await page.click('[data-fold="onsite"] > summary'); await sleep(150);
     check("Dashboard: Cars on site folds with a one-line summary", /Tonight 38/.test(await foldTxt("onsite")) && !(await page.locator('[data-fold="onsite"] .booked-row').first().isVisible()), await foldTxt("onsite"));
     await page.click('[data-dashreload]'); await sleep(650);
-    check("Dashboard: Refresh reads again and the fold stays as left", db.dashCalls.length === calls + 1 && (await page.locator('details.ops-fold[open]').count()) === 1);
+    check("Dashboard: Refresh reads again and the fold stays as left", db.dashCalls.length === calls + 1 && (await page.locator('details.ops-fold[open]').count()) === 0);
     await page.click('[data-fold="onsite"] > summary'); await sleep(150);
+    await page.click('[data-dashsec="workload"]'); await sleep(250);
     await page.click('.od-queues [data-dashsheet]'); await sleep(700);
     check("Dashboard: Open queue shows only that queue (not the whole To Do board)", await page.locator('.row[data-id]').evaluateAll((els) => els.map((e) => e.dataset.id).join()) === "q1" && /Showing Called, not sent · 1/.test(await page.locator(".queuebar").innerText()));
     await page.click("[data-queueclear]"); await sleep(300);
@@ -168,15 +192,22 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
     check("Dashboard: Open queue opens tonight's DROPS on TO DO", await page.evaluate(() => document.getElementById("main").dataset.view === "board") && await page.locator('#tabTodo.on').count() === 1 && await page.locator('.row[data-id="q1"]').count() === 1);
     await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
     await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
+    check("Dashboard: opening it again starts on Overview", await page.locator('[data-dashsec="overview"].on').count() === 1);
+    await page.click('[data-dashsec="workload"]'); await sleep(250);
     await page.click('.od-checks [data-view="summary"]'); await sleep(500);
     check("Dashboard: the shift summary row opens Summary", await page.evaluate(() => document.getElementById("main").dataset.view === "summary"));
     await page.evaluate(() => (document.querySelector("#bnav [data-bn=menuBtn]") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
     delete db.dash.exit; db.company.exit_fee = 0;
     await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
-    check("Dashboard: no exit fee data, no exit fee row, alert or record", await page.locator('.od-pay .od-tr:not(.od-th)').count() === 1 && await page.locator('[data-dashjump="exit"], #dash-exit').count() === 0 && !/exit fee/i.test(await page.locator('.od-foot').innerText()));
+    const noExitTask = await page.locator('[data-dashjump="exit"]').count() === 0;
+    await page.click('[data-dashsec="payments"]'); await sleep(250);
+    check("Dashboard: no exit fee data, no exit fee row, alert or record", noExitTask && await page.locator('.od-pay .od-tr:not(.od-th)').count() === 1 && await page.locator('[data-dashjump="exit"], #dash-exit').count() === 0 && !/exit fee/i.test(await page.locator('.od-foot').innerText()));
     db.dash = { parked: { total: 0, late: 0, days: [], yards: [] } }; db.bookings = [];
     await page.click('[data-dashreload]'); await sleep(650);
-    check("Dashboard: empty data says so, no false alerts or dead controls", /Nothing needs doing right now/.test(await page.locator('.od-dmain').innerText()) && /0 open tasks/.test(await page.locator('.od-dmain').innerText()) && /No sheets for today yet|Nothing due in the next 4 hours/.test(await page.locator('.od-cup').innerText()) && await page.locator('.od-task, [data-dashdates]').count() === 0 && /No bookings ahead yet/.test(await page.locator('.od-work').innerText()) && /Called, not sent\s*0/.test(await page.locator('.od-queues').innerText()));
+    await page.click('[data-dashsec="overview"]'); await sleep(250);
+    const emptyOverview = /Nothing needs doing right now/.test(await page.locator('.od-dmain').innerText()) && /0 open tasks/.test(await page.locator('.od-dmain').innerText()) && /No sheets for today yet|Nothing due in the next 4 hours/.test(await page.locator('.od-cup').innerText()) && await page.locator('.od-task').count() === 0;
+    await page.click('[data-dashsec="workload"]'); await sleep(250);
+    check("Dashboard: empty data says so, no false alerts or dead controls", emptyOverview && await page.locator('[data-dashdates]').count() === 0 && /No bookings ahead yet/.test(await page.locator('.od-work').innerText()) && /Called, not sent\s*0/.test(await page.locator('.od-queues').innerText()));
     await page.setViewportSize({ width: 360, height: 800 });
     check("Dashboard: smallest phone fits", await noSideScroll(page));
     check("Dashboard: no errors", page.__errors.length === 0, page.__errors);
@@ -191,10 +222,13 @@ await scenario(async () => {
   await page.evaluate(() => (document.querySelector("#cHead:not(.hidden)") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
   await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
   const txt = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
+  await page.click('[data-dashsec="activity"]'); await sleep(250);
   const desk = await page.locator('[data-fold="desk"] .od-line').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
   check("Totals: Desk activity uses the true counts", desk[0] === "Added at the desk 400 added · 12 NEW BOOKING 412" && /^Removed 300 no show · 20 cancelled · 5 duplicate 325$/.test(desk[1]) && desk[2] === "Complaints 301", desk);
+  await page.click('[data-dashsec="payments"]'); await sleep(250);
   const pay = await page.locator(".od-pay .od-tr:not(.od-th)").evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
   check("Totals: money taken uses the true sums and count", /Collected £21000 · 350 cars Cash £9000 Card £12000/.test(pay[0]) && /Waived £210/.test(await txt(".od-foot")), pay);
+  await page.click('[data-dashsec="activity"]'); await sleep(250);
   await page.evaluate(() => document.querySelector('[data-dashjump="added"]').click()); await sleep(150);
   check("Totals: a record list says it shows the latest rows of the true total", /Added at the desk \(412\)/.test(await txt("#dash-added")) && /Showing the latest 2 of 412/.test(await txt("#dash-added")), await txt("#dash-added"));
   check("Totals: no errors", page.__errors.length === 0, page.__errors);
@@ -223,10 +257,12 @@ for (const theme of ["", "stdplus"]) await scenario(async () => {
   await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
   const parked = (await page.locator("#main .k-parked").innerText()).replace(/\s+/g, " ");
   check("Capacity (" + look + "): Parked now shows the spaces free", (theme ? /^Site status 30 parked 10 spaces free Occupancy 75% of 40 .*2 past their return/ : /30 of 40 · 10 free/).test(parked), parked);
+  if (theme) { await page.click('[data-dashsec="yards"]'); await sleep(250); }
   const onsiteTxt = (await page.locator("#main .booked").first().innerText().catch(() => "")).replace(/\s+/g, " ");
   check("Capacity (" + look + "): cars on site shows spaces free and over each day", /Today\s*38\s*2 free/.test(onsiteTxt) && /Tomorrow\s*45\s*5 over/.test(onsiteTxt) && await page.locator(".booked-row.over").count() === 1, onsiteTxt);
   const yard = (await page.locator("#main").innerText()).match(/NB[\s\S]{0,80}/)[0].replace(/\s+/g, " ");
   check("Capacity (" + look + "): a yard over its spaces shows red", /18 \/ 15/.test(yard) && await page.locator("#main strong.num.late").count() === 1, yard);
+  if (theme) { await page.click('[data-dashsec="overview"]'); await sleep(250); }
   if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + "/capacity-dashboard-" + look + ".png", fullPage: true });
   if (theme === "stdplus") check("Capacity: occupancy bar three quarters full", await page.locator(".ops-capbar i").evaluate((e) => e.style.width) === "75%");
   db.dash.parked.total = 45; await page.click("[data-dashreload]"); await sleep(650);
