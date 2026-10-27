@@ -349,7 +349,7 @@ function rpc(db, fn, a) {
     case "remove_booking": { if (!["No show", "Cancelled", "Duplicate", "RTC", "Early return"].includes(a.p_reason)) throw new Error("Not a valid reason: " + a.p_reason); const b = row(a.p_booking); Object.assign(b, { removed_at: new Date().toISOString(), removed_reason: a.p_reason, removed_by: "s1" }); return b; }
     case "restore_booking": { const b = db.bookings.find((x) => x.id === a.p_booking); Object.assign(b, { removed_at: null, removed_reason: "" }); return b; }
     case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString();
-      const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) b.sheet_id = to.id; return b; }
+      const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) { b.sheet_id = to.id; b.overstay = false; } return b; }
     case "set_reg": { const b = row(a.p_booking); b.reg = a.p_reg; return b; }
     case "set_phone": { const b = row(a.p_booking); b.phone = a.p_phone; return b; }
     case "set_yard": { const b = row(a.p_booking); b.yard = a.p_yard; return b; }
@@ -557,6 +557,7 @@ async function scenario(fn, tag) {
   if (process.env.TEXTS_ONLY && tag !== 'texts') return;
   if (process.env.CALLS_ONLY && tag !== 'calls') return;
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
+  if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   try { await fn(); } catch (e) {
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
