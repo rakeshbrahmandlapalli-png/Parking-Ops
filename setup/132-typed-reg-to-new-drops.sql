@@ -43,6 +43,5 @@ begin
 end;
 $$;
 revoke execute on function bookings_reg_in() from public, anon, authenticated;
-drop trigger if exists bookings_reg_in on bookings;
-create trigger bookings_reg_in after insert on bookings
+create or replace trigger bookings_reg_in after insert on bookings
   for each row when (new.kind = 'drops') execute function bookings_reg_in();
