@@ -5176,7 +5176,11 @@
     var r = await sb.rpc("auto_import_status");
     var d = r && !r.error ? (r.data || {}) : {};
     var keep = S.autoImport || {};
-    S.autoImport = { available: !!d.available, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, failed: keep.failed, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft, result: keep.result, running: !!d.running || !!keep.running, checking: keep.checking };
+    S.autoImport = { available: !!d.available, blocked_until: d.blocked_until, last_ok: d.last_ok, last_error: d.last_error, open_reviews: d.open_reviews || 0, preview: keep.preview, error: keep.error, failed: keep.failed, stale: keep.stale, checked_at: keep.checked_at, reviews: keep.reviews, custom: keep.custom, from: keep.from, to: keep.to, schedule: d.schedule, schedDraft: keep.schedDraft, result: keep.result, running: !!d.running || !!keep.mine, mine: keep.mine, checking: keep.checking };
+    // Busy on the server but not by this page's own run (28 Oct: a run whose answer the page lost left it on
+    // "Importing…" for good): look again shortly, so the label clears once that run ends.
+    clearTimeout(S.autoBusyTimer);
+    if (d.running && !keep.mine && !keep.checking) S.autoBusyTimer = setTimeout(function () { if (S.view === "import") loadAutoImport(); }, 8000);
     if (d.available && d.open_reviews) {
       var rv = await sb.rpc("swift_reviews_open");
       S.autoImport.reviews = rv && !rv.error ? rv.data : null;
@@ -5200,11 +5204,11 @@
   async function runAutoImport(btn) {
     var a = S.autoImport; if (!a || !a.preview || !a.preview.can_apply) return;
     if (a.preview.selection_supported && !autoSelected(a.preview).length && !a.preview.counts.review) return;
-    a.running = true; a.error = ""; a.failed = ""; render();
+    a.running = a.mine = true; a.error = ""; a.failed = ""; render();
     toast("Getting bookings… this can take a moment.");
     var r;
     r = await callBookings(Object.assign(Object.assign({ action: "apply", expect_hash: a.preview.hash }, a.preview.selection_supported ? { selected: autoSelected(a.preview) } : {}), a.custom ? biRange(a) : {}));
-    a.running = false;
+    a.running = a.mine = false;
     var out = r && r.data;
     if ((r && r.error) || !out || out.ok === false) {
       a.error = (out && out.error) || "The import response was lost. Check bookings again to confirm the result before retrying.";
