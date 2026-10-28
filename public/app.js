@@ -5228,7 +5228,7 @@
     if (!want.length) return;
     want.forEach(function (x) { S.revCars[x.kind + "|" + x.ref] = null; });
     var refs = want.map(function (x) { return x.ref; }).filter(function (x, i, l) { return l.indexOf(x) === i; });
-    sb.from("bookings").select("id, sheet_id, kind, ref, reg, name, cleared_at, removed_at, early, return_at, sheets!bookings_sheet_id_fkey(day, kind)").in("ref", refs).then(function (r) {
+    sb.from("bookings").select("id, sheet_id, kind, ref, reg, name, cleared_at, removed_at, removed_reason, early, return_at, sheets!bookings_sheet_id_fkey(day, kind)").in("ref", refs).then(function (r) {
       if (r.error) { want.forEach(function (x) { delete S.revCars[x.kind + "|" + x.ref]; }); return; }
       want.forEach(function (x) { S.revCars[x.kind + "|" + x.ref] = false; });
       // One car per booking: one still on a board before a removed one, then the latest night.
@@ -5247,6 +5247,7 @@
   // The move the app can make safely: a car not gone; DROPS not already early;
   // PICKS to the booking site's new drop-off, by the office (part 102).
   function revMove(kind, why, changes, b) {
+    var pb = revPutBack(kind, why, changes, b); if (pb) return pb;
     var m = /moved from sheet (\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)/.exec(why || "");
     if (m && kind === "picks" && b && !b.removed_at && can("import") && (b.sheets || {}).day !== m[2]) {
       var dr = (changes || []).filter(function (c) { return c.field === "drop"; })[0];
@@ -5259,6 +5260,18 @@
     if (to > here && can("import") && ret && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(ret.to || "")) return { day: to, ret: ret.to };
     return null;
   }
+  // A no-show (or cancelled) DROPS car rebooked under the same reference for a later
+  // night (28 Oct, YD56VWO): the office puts it back on the new return night (part 131).
+  function revPutBack(kind, why, changes, b) {
+    if (kind !== "drops" || !/already handed back or removed/.test(why || "") || !b || !b.removed_at || b.cleared_at || !can("import")) return null;
+    if (["No show", "Cancelled"].indexOf(b.removed_reason) < 0) return null;
+    var pick = function (f) { var c = (changes || []).filter(function (x) { return x.field === f; })[0]; return c && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(c.to || "") ? c.to : ""; };
+    var ret = pick("return"); if (!ret) return null;
+    var end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5);
+    var day = ret.slice(11) <= end ? addDaysKey(ret.slice(0, 10), -1) : ret.slice(0, 10);
+    if (day < currentShiftKey() || day <= ((b.sheets || {}).day || "")) return null;
+    return { day: day, ret: ret, drop: pick("drop"), putBack: true };
+  }
   S.revCtx = {};
   var revWant = [], revTimer = null;
   // A cancelled review whose car is still on a board gets Remove (24 Oct: a review marked Done left LLHGPC on PICKS).
@@ -5268,7 +5281,7 @@
     if (!b) return "";
     var mv = revMove(kind, why, changes, b);
     S.revCtx[k] = { mv: mv, rid: rid };
-    return (cancelled && !b.removed_at && can("import") ? '<button type="button" class="btn small" data-rvremove="' + esc(k) + '">Remove as cancelled</button>' : "") + (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">Move to ' + esc(sheetLabel({ kind: kind, day: mv.day }).replace(/^(DROPS|PICKS) /, "")) + "</button>" : "") +
+    return (cancelled && !b.removed_at && can("import") ? '<button type="button" class="btn small" data-rvremove="' + esc(k) + '">Remove as cancelled</button>' : "") + (mv ? '<button type="button" class="btn small" data-rvmove="' + esc(k) + '">' + (mv.putBack ? "Put back on " : "Move to ") + esc(sheetLabel({ kind: kind, day: mv.day }).replace(/^(DROPS|PICKS) /, "")) + "</button>" : "") +
       '<button type="button" class="btn ghost small" data-rvopen="' + esc(k) + '">' + (b.removed_at ? "Removed cars" : "Open") + "</button>";
   }
   async function revOpen(k) {
@@ -5282,6 +5295,7 @@
   async function revMoveGo(k, btn) {
     var b = S.revCars[k], c = S.revCtx[k], mv = c && c.mv; if (!b || !mv) return;
     var to = sheetLabel({ kind: b.kind, day: mv.day });
+    if (mv.putBack) return revPutBackGo(k, b, c, mv, to, btn);
     if (!confirm("Move " + (b.reg || "this car") + " to " + to + (mv.drop ? ", drop-off " + biWhen(mv.drop) + "?" : mv.ret ? ", back " + biWhen(mv.ret) + "?" : " as an early return?"))) return;
     btn.disabled = true;
     var x = mv.drop ? await sb.rpc("move_pick", { p_booking: b.id, p_drop_local: mv.drop }) : mv.ret ? await sb.rpc("set_return", { p_booking: b.id, p_return_local: mv.ret }) : await sb.rpc("early_return", { p_booking: b.id, p_day: mv.day });
@@ -5290,6 +5304,18 @@
     if (c.rid) await sb.rpc("swift_review_resolve", { p_id: Number(c.rid) });
     delete S.revCars[k];
     toast((b.reg || "Car") + (x.data && x.data.sheet_id !== b.sheet_id ? " moved to " + to + "." : " stays on its night as staying longer until " + to + " is imported."));
+    await loadSheets(); loadAutoImport();
+  }
+  async function revPutBackGo(k, b, c, mv, to, btn) {
+    if (!confirm("Put " + (b.reg || "this car") + " back on " + to + ", back " + biWhen(mv.ret) + "? It was removed as " + b.removed_reason + " from " + sheetLabel({ kind: b.kind, day: (b.sheets || {}).day }) + ".")) return;
+    btn.disabled = true;
+    var x = await sb.rpc("put_back_rebooked", { p_booking: b.id, p_drop_local: mv.drop || "", p_return_local: mv.ret });
+    btn.disabled = false;
+    if (x.error) return toast(x.error.message, true);
+    if (c.rid) await sb.rpc("swift_review_resolve", { p_id: Number(c.rid) });
+    dropRemoved(b.id);
+    delete S.revCars[k];
+    toast((b.reg || "Car") + " put back on " + to + ".");
     await loadSheets(); loadAutoImport();
   }
   async function revRemoveGo(k, btn) {
