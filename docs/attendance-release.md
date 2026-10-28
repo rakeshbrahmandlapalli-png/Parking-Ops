@@ -1,7 +1,7 @@
 # Attendance essentials — release checklist
 
 At the inherited checkpoint, setup 130 was the only reported live change.
-Step 4 uses synthetic local data only; no live state is read or changed.
+Steps 4 and 5 use synthetic local data only; no live state is read or changed.
 Private pilot: the explicitly linked individual RAKESH account at TAKEOFF.
 No other employee may be enrolled or receive Attendance notifications.
 
@@ -44,15 +44,16 @@ demo rendering/navigation, not real Supabase Auth, PostgREST or phone delivery.
 - Step 4: staff workflow acceptance complete against the isolated shared test
   backend, including four responsive browser journeys. See
   [scope, checks and limits](attendance-step4.md). Both PRs remain drafts.
-- Step 5: manager integration remains partial; manager approval UI and
-  timesheet/export acceptance have not been completed.
+- Step 5: manager workflow acceptance complete against the isolated shared test
+  backend: staff/timesheet filters, correction decisions, audit, CSV, overnight/DST,
+  pagination and four responsive journeys. See [scope and evidence](attendance-step5.md).
 - Step 6: sender and recipient gate prepared; delivery/phone tests remain.
 - Steps 7 and 8: not started. No pilot enrolment, deployment or activation.
 
 ## Before deployment
 
-1. Complete manager browser journeys and later live Auth/API acceptance. Step 4
-   staff journeys against the isolated test backend have passed at all four widths.
+1. Complete later real Auth/API acceptance. Staff and manager journeys against the
+   isolated test backend have passed at all four widths in Steps 4 and 5.
 2. Complete manager staff-enrolment policy/UI for the private pilot; never reuse
    the legacy staff function's password/ban operations for shared parking users.
 3. Verify the real API relationship embeds; local PostgreSQL cannot prove PostgREST.
