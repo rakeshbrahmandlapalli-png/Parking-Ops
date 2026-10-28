@@ -491,7 +491,7 @@ async function backend(ctx, db) {
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const JWT = b64({ alg: "HS256" }) + "." + b64({ sub: "u1", role: "authenticated", exp: 4102444800 }) + ".sig";
 async function phone(browser, db, { signedIn = true, ua, width = 390, noBitmap = false, still = "", pdfLabels = false, stuckBlob = false, touch = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
+  const ctx = await browser.newContext({ viewport: { width, height: 844 }, timezoneId: "Europe/London", userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
   await backend(ctx, db);
   await ctx.addInitScript(([jwt, signedIn, noBitmap, still, pdfLabels, stuckBlob]) => {
     // Every label the PDF button shows, however quickly it changes.
@@ -569,7 +569,9 @@ async function scenario(fn, tag) {
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
+  if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
+    if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
   }
