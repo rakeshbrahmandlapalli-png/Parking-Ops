@@ -353,6 +353,9 @@ function rpc(db, fn, a) {
     case "set_overstay_paid": { const b = row(a.p_booking); Object.assign(b, { charge_amount: a.p_amount, charge_method: a.p_method, charge_at: a.p_method ? new Date().toISOString() : null, charge_by: a.p_method ? "s1" : null }); return b; }
     case "set_overstay_agreed": { const b = row(a.p_booking); b.charge_agreed = a.p_amount; b.charge_reason = a.p_amount == null ? "" : (a.p_reason || ""); return b; }
     case "remove_booking": { if (!["No show", "Cancelled", "Duplicate", "RTC", "Early return"].includes(a.p_reason)) throw new Error("Not a valid reason: " + a.p_reason); const b = row(a.p_booking); Object.assign(b, { removed_at: new Date().toISOString(), removed_reason: a.p_reason, removed_by: "s1" }); return b; }
+    case "put_back_rebooked": { const b = row(a.p_booking); if (!b.removed_at) throw new Error("This car is not removed.");
+      const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10)); if (!to) throw new Error("Import DROPS first.");
+      Object.assign(b, { sheet_id: to.id, removed_at: null, removed_reason: "", removed_by: null, return_at: new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString() }); return b; }
     case "restore_booking": { const b = db.bookings.find((x) => x.id === a.p_booking); Object.assign(b, { removed_at: null, removed_reason: "" }); return b; }
     case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString();
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) { b.sheet_id = to.id; b.overstay = false; } return b; }
@@ -488,7 +491,7 @@ async function backend(ctx, db) {
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const JWT = b64({ alg: "HS256" }) + "." + b64({ sub: "u1", role: "authenticated", exp: 4102444800 }) + ".sig";
 async function phone(browser, db, { signedIn = true, ua, width = 390, noBitmap = false, still = "", pdfLabels = false, stuckBlob = false, touch = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
+  const ctx = await browser.newContext({ viewport: { width, height: 844 }, timezoneId: "Europe/London", userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
   await backend(ctx, db);
   await ctx.addInitScript(([jwt, signedIn, noBitmap, still, pdfLabels, stuckBlob]) => {
     // Every label the PDF button shows, however quickly it changes.
@@ -566,7 +569,9 @@ async function scenario(fn, tag) {
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
+  if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
+    if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
   }

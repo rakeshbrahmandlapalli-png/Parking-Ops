@@ -1,3 +1,71 @@
+# Step 6 follow-up — local checks passed, browser/phone acceptance pending
+
+This section supersedes the historical checkpoint below. Production release is
+still blocked. No merge, production deployment, Supabase write, environment
+change, Attendance enablement or pilot activation was performed. Automatic
+preview deployment suppression remains unchanged; current-head preview testing
+is pending under the latest instruction to skip listener tests and not deploy.
+
+## Incorporated fixes
+
+Reviewed and cherry-picked the required changes from Parking-Ops PRs #166–#169
+onto attendance-integration, without merging or rebasing main:
+
+- #166: restrict import undo snapshots to the relevant sheet/reference/registration.
+- #167: restore a rebooked no-show/cancellation through import review.
+- #168: clear stale Importing state and poll while the server reports a running import.
+- #169: carry an explicitly corrected PICKS registration into a later imported DROPS car.
+
+Setup 130/131/132 and their rollback scripts are included as source only. No SQL
+was applied to Supabase. Existing shared Attendance changes were preserved.
+
+## Browser corrections and outstanding acceptance
+
+The PICKS return-date assertion now expects the existing comma-free format.
+The DROPS 17:30/17:31 fixture constructs instants in an explicitly configured
+Europe/London browser zone, handling both GMT and BST instead of hardcoding +01.
+
+The previous full run was wrapped in a 580-second external timeout; its exit 124
+and browser-closure cascade do not establish independent product failures. The
+runner now uses fresh processes/browsers per section, two workers, aggregate
+summaries, explicit signal failure and missing-summary detection. A disconnected
+browser aborts its section instead of producing repeated new-context failures.
+No test sections are skipped by this change. STRESS and screenshot modes remain.
+These runner changes have passed syntax checks but remain browser-unverified.
+
+A rerun attempted in the restricted sandbox could not open its localhost HTTP
+listener (`listen EPERM: operation not permitted 127.0.0.1`); all 25 sections
+were correctly reported incomplete, with zero accepted assertions. Subsequent
+permission attempts did not complete. The user then explicitly deferred the
+localhost browser suite. **No full browser pass or confirmed closure resolution
+is claimed.** Re-run `CHROMIUM=/usr/bin/chromium node checks/e2e/run.mjs` with
+localhost allowed; do not impose the previous 580-second global timeout.
+
+## Verified non-browser checks
+
+All 48 `checks/*.mjs` scripts pass with Node 24, including the three new import
+SQL regression scripts and Attendance access/add-on checks, using synthetic or
+local PGlite data. Both generated bundles match maintained sources. Changed E2E
+modules parse and `git diff --check` passes. Logs are under
+`/tmp/attendance-regression/` in this workspace. A full Step 5/6 browser gate is
+not implied by these results.
+
+## Remaining physical-phone checks
+
+On physical Android and iPhone: staff and manager PWA installation/separate
+icons, launch/relaunch and session separation; push permission, foreground and
+background delivery/tap routing; GPS inside/outside site, denied permission and
+poor accuracy; offline/airplane-mode, timeout/lost-response retry and recovery;
+revoked-access finish-only behavior. These require a separately authorised
+isolated test setup. Neither TAKEOFF identity is activated.
+
+Backup restore rehearsal/PITR/Storage recovery, security-advisor triage, browser
+regressions, current-head preview acceptance and explicit pilot UUID approval
+remain release gates. The historical observations below are not current-head
+acceptance evidence.
+
+---
+
 # Safe Step 6 checkpoint — release blocked
 
 No production database writes, migrations, environment-variable changes,

@@ -142,6 +142,58 @@ await scenario(async () => {
   await page.context().close();
 }, 'held');
 
+// 18b1c. A no-show rebooked under the same reference for a later night (28 Oct, YD56VWO): Put back on DROPS.
+await scenario(async () => {
+  const db = makeDb();
+  const why = "already handed back or removed, but the booking site now shows different details";
+  Object.assign(db.bookings.find((b) => b.id === "b1"), { removed_at: iso(TONIGHT, "18:00"), removed_reason: "No show" });
+  Object.assign(db.bookings.find((b) => b.id === "b2"), { removed_at: iso(TONIGHT, "18:00"), removed_reason: "Duplicate" });
+  db.autoImport = { available: true, running: false, open_reviews: 2 };
+  db.reviews = [
+    { id: 31, ref: "R1", kind: "conflict", detail: { kind: "drops", why, changes: [{ field: "drop", from: TONIGHT + " 04:00", to: TOMORROW + " 04:00" }, { field: "return", from: TONIGHT + " 21:45", to: TOMORROW + " 10:00" }, { field: "flight", from: "", to: "W43652" }] } },
+    { id: 32, ref: "R2", kind: "conflict", detail: { kind: "drops", why, changes: [{ field: "return", from: TONIGHT + " 22:00", to: TOMORROW + " 10:00" }] } },
+  ];
+  for (const width of [1280, 390]) {
+    const page = await phone(browser, db, { width });
+    await open(page);
+    await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(400);
+    await page.waitForSelector("[data-autoreviews] [data-rvopen]", { timeout: 6000 });
+    const rowOf = (ref) => page.locator("[data-autoreviews] .bi-hr", { hasText: ref + " ·" });
+    check("put back (" + width + "): a rebooked no-show offers Put back on its new night", await rowOf("R1").locator("[data-rvmove]").count() === 1 && /Put back on \d+[A-Z]{2} [A-Z]{3}/.test(await rowOf("R1").locator("[data-rvmove]").innerText()), await rowOf("R1").innerText());
+    check("put back (" + width + "): a car removed as Duplicate offers Removed cars only", await rowOf("R2").locator("[data-rvmove]").count() === 0 && await rowOf("R2").locator("[data-rvopen]").count() === 1);
+    const box = await rowOf("R1").boundingBox();
+    check("put back (" + width + "): the row fits the screen", box && box.x + box.width <= width + 1, box);
+    if (process.env.PUTBACK_SHOTS) { await rowOf("R1").evaluate((e) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 160)); await sleep(200); await page.screenshot({ path: process.env.PUTBACK_SHOTS + "/put-back-" + width + ".png" }); }
+    if (width === 390) {
+      await rowOf("R1").locator("[data-rvmove]").click(); await sleep(800);
+      check("put back: confirms with the night, the return and why it was removed", page.__dialogs.some((d) => /Put EK14JPV back on DROPS .*, back .*10:00\? It was removed as No show from DROPS/.test(d)), page.__dialogs);
+      check("put back: sends the site's drop-off and return in one call", db.calls.some((c) => c.fn === "put_back_rebooked" && c.args.p_booking === "b1" && c.args.p_drop_local === TOMORROW + " 04:00" && c.args.p_return_local === TOMORROW + " 10:00"), db.calls.filter((c) => c.fn === "put_back_rebooked"));
+      check("put back: the review closes", db.calls.some((c) => c.fn === "swift_review_resolve" && c.args.p_id === 31) && !(await page.locator("[data-autoreviews]").innerText()).includes("R1 ·"));
+      check("put back: the car is on the new night, not removed", (() => { const b = db.bookings.find((x) => x.id === "b1"); return b.sheet_id === "d1" && !b.removed_at; })());
+      check("put back: says so", /EK14JPV put back on DROPS/.test(await toast(page)), await toast(page));
+    }
+    check("put back (" + width + "): no errors", page.__errors.length === 0, page.__errors);
+    await page.context().close();
+  }
+}, 'held');
+
+// 18b1d. Busy on the server when the page opens (28 Oct: a run whose answer the page lost left "Importing…" for good):
+// the page looks again and the label clears once that run ends.
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: true, open_reviews: 0 };
+  const page = await phone(browser, db, { width: 1280 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(600);
+  check("busy elsewhere: the page says Importing… while the server is busy", /Importing…/.test(await page.locator(".bi").innerText()));
+  db.autoImport.running = false;
+  await sleep(9500);
+  const t = await page.locator(".bi").innerText();
+  check("busy elsewhere: once that run ends the label clears by itself", !/Importing…/.test(t) && await page.locator("[data-autopreview]").isEnabled(), t.slice(0, 300));
+  check("busy elsewhere: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, 'held');
+
 // 18b2. A failed check shows the reason and offers no import; an invalid record blocks it.
 await scenario(async () => {
   const db = makeDb();
@@ -437,9 +489,11 @@ await scenario(async () => {
 // 18a0. DROPS by hour: morning is up to 17:30, night from 17:31
 await scenario(async () => {
   const db = makeDb();
-  db.bookings.find((x) => x.id === "b1").return_at = new Date(TONIGHT + "T17:30:00+01:00").toISOString();
-  db.bookings.find((x) => x.id === "b2").return_at = new Date(TONIGHT + "T17:31:00+01:00").toISOString();
   const page = await phone(browser, db, { width: 1000 });
+  // Use the browser's Europe/London zone, including GMT after the clock change.
+  const times = await page.evaluate(day => ['17:30','17:31'].map(time => new Date(day+'T'+time+':00').toISOString()), TONIGHT);
+  db.bookings.find((x) => x.id === "b1").return_at = times[0];
+  db.bookings.find((x) => x.id === "b2").return_at = times[1];
   await open(page);
   await page.click("#psBtn");
   await sleep(500);
