@@ -177,6 +177,23 @@ await scenario(async () => {
   }
 }, 'held');
 
+// 18b1d. Busy on the server when the page opens (28 Oct: a run whose answer the page lost left "Importing…" for good):
+// the page looks again and the label clears once that run ends.
+await scenario(async () => {
+  const db = makeDb();
+  db.autoImport = { available: true, running: true, open_reviews: 0 };
+  const page = await phone(browser, db, { width: 1280 });
+  await open(page);
+  await page.click("#menuBtn"); await sleep(300); await page.click('#menu [data-view="import"]'); await sleep(600);
+  check("busy elsewhere: the page says Importing… while the server is busy", /Importing…/.test(await page.locator(".bi").innerText()));
+  db.autoImport.running = false;
+  await sleep(9500);
+  const t = await page.locator(".bi").innerText();
+  check("busy elsewhere: once that run ends the label clears by itself", !/Importing…/.test(t) && await page.locator("[data-autopreview]").isEnabled(), t.slice(0, 300));
+  check("busy elsewhere: no errors", page.__errors.length === 0, page.__errors);
+  await page.context().close();
+}, 'held');
+
 // 18b2. A failed check shows the reason and offers no import; an invalid record blocks it.
 await scenario(async () => {
   const db = makeDb();
