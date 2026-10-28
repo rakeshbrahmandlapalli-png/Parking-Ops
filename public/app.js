@@ -7821,7 +7821,7 @@
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
     if (t.dataset.create !== undefined) return createSheet();
     if (t.dataset.reloadlog !== undefined) { S.activity = null; render(); return; }
-    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sb = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sb) sb.focus({ preventScroll: true }); return; }
+    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sectionButton = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sectionButton) sectionButton.focus({ preventScroll: true }); return; }
     if (t.dataset.dashjump) {
       var want = DASH_SEC_OF[t.dataset.dashjump];
       if (want && want !== (S.dashSec || "overview")) { S.dashSec = want; render(); }

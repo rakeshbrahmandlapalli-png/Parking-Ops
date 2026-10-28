@@ -36,7 +36,8 @@ await scenario(async () => {
   const page = await phone(browser, db);
   await open(page); await sleep(400);
   await page.evaluate(() => (document.querySelector("#cHead:not(.hidden)") || document.getElementById("menuBtn")).click()); await page.waitForSelector("#menu[open]"); await sleep(300);
-  await page.click('#menuBody [data-view="dashboard"]'); await sleep(700);
+  await page.click('#menuBody [data-view="dashboard"]');
+  await page.click('[data-dashsec="activity"]'); await page.waitForSelector('[data-fold="desk"] .od-line');
   const desk = await page.locator('[data-fold="desk"] .od-line').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
   check("Remove reasons: the dashboard counts RTC and early returns", desk[1] === "Removed 1 no show · 1 RTC · 2 early return 4", desk);
   check("Remove reasons (dashboard): no errors", page.__errors.length === 0, page.__errors);

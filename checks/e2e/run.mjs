@@ -3,7 +3,10 @@ import { readdirSync } from 'node:fs';
 import { fork } from 'node:child_process';
 
 if (!process.env.E2E_SECTION && !process.env.STRESS && !process.env.SHOTS) {
-  const sections = readdirSync(new URL('./sections/', import.meta.url)).filter(f => /^\d\d-.+\.mjs$/.test(f)).sort();
+  const allSections = readdirSync(new URL('./sections/', import.meta.url)).filter(f => /^\d\d-.+\.mjs$/.test(f)).sort();
+  // The 250ms tap benchmark must not compete with another browser section.
+  const performanceSections = allSections.filter(file => file === '07-office-and-key-check.mjs');
+  const sections = allSections.filter(file => !performanceSections.includes(file));
   let passed = 0, failed = 0;
   const active = new Set();
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
@@ -12,9 +15,9 @@ if (!process.env.E2E_SECTION && !process.env.STRESS && !process.env.SHOTS) {
     process.exit(signal === 'SIGINT' ? 130 : 143);
   });
   // Bounded parallelism keeps memory use predictable without one global timeout.
-  async function worker() {
-    while (sections.length) {
-      const section = sections.shift();
+  async function worker(queue = sections) {
+    while (queue.length) {
+      const section = queue.shift();
       await new Promise(resolve => {
         console.log(`\nSECTION ${section}`);
         const child = fork(new URL('./run.mjs', import.meta.url), [], { env: { ...process.env, E2E_SECTION: section }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
@@ -35,6 +38,7 @@ if (!process.env.E2E_SECTION && !process.env.STRESS && !process.env.SHOTS) {
     }
   }
   await Promise.all([worker(), worker()]);
+  await worker(performanceSections);
   console.log(`\nTOTAL ${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 } else {
