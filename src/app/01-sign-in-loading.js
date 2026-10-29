@@ -360,23 +360,37 @@
   // copy and every open panel go; what stays is their name and a way to clock in.
   function clockedOut(st) {
     var was = !!S.me;
-    S.gateOn = st; S.gated = true;
+    S.gateOn = st; S.gated = true; attendanceAccess = {};
     if (S.me) { S.me = null; teardown(); }
     snapForget();
     try { $("panel").close(); } catch (e) {}
     S.rows = []; S.removed = []; S.sheets = []; S.handArchived = []; S.staff = {}; S.company = null;
     setMain("", "gate");
     only("boot");
-    $("boot").innerHTML = '<div class="gatebox"><h2>Clocked out</h2><p>' + esc(st.name ? "Hi " + st.name + ". " : "") +
-      "Clock in on Attendance to see the board.</p>" +
-      (st.attendance ? '<p><button class="btn brand" type="button" id="gateAtt" data-attendance="staff">Open Attendance</button></p>' : "") +
-      '<p><button class="btn ghost" type="button" id="gateAgain">I\'ve clocked in</button></p>' +
-      '<p><button class="btn ghost" type="button" id="gateOut">Sign out</button></p></div>';
-    if ($("gateAtt")) $("gateAtt").onclick = function () { openAttendance(this); };
+    $("boot").innerHTML = '<div class="gatebox">' + (st.company ? '<p class="gate-co">' + esc(st.company) + "</p>" : "") +
+      '<h2>Clocked out</h2><p class="gate-hi">' + esc(st.name ? "Hi " + st.name : "Hi") + '</p><p class="gate-when" id="gateWhen">&nbsp;</p>' +
+      (st.attendance ? clockSlideHtml("in") : "") +
+      '<p class="gate-note">Customer details stay hidden until you clock in.</p>' +
+      '<div class="gate-more"><button class="btn ghost" type="button" id="gateAgain">Check again</button>' +
+      '<button class="btn ghost" type="button" id="gateOut">Sign out</button></div></div>';
     $("gateAgain").onclick = function () { gateCheck(true); };
     $("gateOut").onclick = async function () { S.gateOn = null; await sb.auth.signOut(); showSignIn(); };
-    if (was) toast("You've clocked out, so the board is hidden.");
+    gateWhen();
+    if (st.attendance) clockLocate();
+    if (was) toast("Clocked out. Clock in to see the board again.");
   }
+  // When their last shift ended, from Attendance (read-only; nothing shows if it can't be read).
+  async function gateWhen() {
+    var line = "Not clocked in today.";
+    try {
+      var uid = ((await sb.auth.getSession()).data.session || {}).user;
+      var r = uid ? await sb.from("aero_shifts").select("clock_out_at").eq("user_id", uid.id).not("clock_out_at", "is", null).order("clock_out_at", { ascending: false }).limit(1) : null;
+      var out = r && !r.error && r.data && r.data[0] && r.data[0].clock_out_at;
+      if (out && londonDay(out) === londonDay(new Date().toISOString())) line = "Clocked out at " + hhmm(out) + " today.";
+    } catch (e) {}
+    if ($("gateWhen") && S.gateOn) $("gateWhen").textContent = line;
+  }
+  function londonDay(ts) { return fmt("ymd", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts)); }
   async function gateCheck(byHand) {
     var r; try { r = await sb.rpc("clock_gate_status"); } catch (e) { r = { error: e }; }
     if (r.error || !r.data) { if (byHand) toast(r.error ? r.error.message || String(r.error) : "Try again.", true); return; }

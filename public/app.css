@@ -866,6 +866,3 @@ span.bi-undo{color:var(--ink-2);}
 .bi details.mi-files>summary{min-height:36px;cursor:pointer;font-weight:700;font-size:15px;}
 .bi details.mi-files .bi-rh{justify-content:flex-end;margin-bottom:0;}
 @media(max-width:720px){.bi details.mi-files:not([open]){padding:6px 12px;}.bi details.mi-files>summary{min-height:40px;display:list-item;align-content:center;}}
-.gatebox{max-width:360px;margin:0 auto;}
-.gatebox h2{margin:0 0 8px;color:var(--ink);}
-.gatebox .btn{min-width:220px;}

@@ -524,23 +524,37 @@
   // copy and every open panel go; what stays is their name and a way to clock in.
   function clockedOut(st) {
     var was = !!S.me;
-    S.gateOn = st; S.gated = true;
+    S.gateOn = st; S.gated = true; attendanceAccess = {};
     if (S.me) { S.me = null; teardown(); }
     snapForget();
     try { $("panel").close(); } catch (e) {}
     S.rows = []; S.removed = []; S.sheets = []; S.handArchived = []; S.staff = {}; S.company = null;
     setMain("", "gate");
     only("boot");
-    $("boot").innerHTML = '<div class="gatebox"><h2>Clocked out</h2><p>' + esc(st.name ? "Hi " + st.name + ". " : "") +
-      "Clock in on Attendance to see the board.</p>" +
-      (st.attendance ? '<p><button class="btn brand" type="button" id="gateAtt" data-attendance="staff">Open Attendance</button></p>' : "") +
-      '<p><button class="btn ghost" type="button" id="gateAgain">I\'ve clocked in</button></p>' +
-      '<p><button class="btn ghost" type="button" id="gateOut">Sign out</button></p></div>';
-    if ($("gateAtt")) $("gateAtt").onclick = function () { openAttendance(this); };
+    $("boot").innerHTML = '<div class="gatebox">' + (st.company ? '<p class="gate-co">' + esc(st.company) + "</p>" : "") +
+      '<h2>Clocked out</h2><p class="gate-hi">' + esc(st.name ? "Hi " + st.name : "Hi") + '</p><p class="gate-when" id="gateWhen">&nbsp;</p>' +
+      (st.attendance ? clockSlideHtml("in") : "") +
+      '<p class="gate-note">Customer details stay hidden until you clock in.</p>' +
+      '<div class="gate-more"><button class="btn ghost" type="button" id="gateAgain">Check again</button>' +
+      '<button class="btn ghost" type="button" id="gateOut">Sign out</button></div></div>';
     $("gateAgain").onclick = function () { gateCheck(true); };
     $("gateOut").onclick = async function () { S.gateOn = null; await sb.auth.signOut(); showSignIn(); };
-    if (was) toast("You've clocked out, so the board is hidden.");
+    gateWhen();
+    if (st.attendance) clockLocate();
+    if (was) toast("Clocked out. Clock in to see the board again.");
   }
+  // When their last shift ended, from Attendance (read-only; nothing shows if it can't be read).
+  async function gateWhen() {
+    var line = "Not clocked in today.";
+    try {
+      var uid = ((await sb.auth.getSession()).data.session || {}).user;
+      var r = uid ? await sb.from("aero_shifts").select("clock_out_at").eq("user_id", uid.id).not("clock_out_at", "is", null).order("clock_out_at", { ascending: false }).limit(1) : null;
+      var out = r && !r.error && r.data && r.data[0] && r.data[0].clock_out_at;
+      if (out && londonDay(out) === londonDay(new Date().toISOString())) line = "Clocked out at " + hhmm(out) + " today.";
+    } catch (e) {}
+    if ($("gateWhen") && S.gateOn) $("gateWhen").textContent = line;
+  }
+  function londonDay(ts) { return fmt("ymd", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts)); }
   async function gateCheck(byHand) {
     var r; try { r = await sb.rpc("clock_gate_status"); } catch (e) { r = { error: e }; }
     if (r.error || !r.data) { if (byHand) toast(r.error ? r.error.message || String(r.error) : "Try again.", true); return; }
@@ -763,7 +777,7 @@
       $("kindSeg").querySelector('[data-kind="drops"]').setAttribute("aria-pressed", sh.kind === "drops");
       $("kindSeg").querySelector('[data-kind="picks"]').setAttribute("aria-pressed", sh.kind === "picks");
     }
-    show("notifyBtn", !S.platform); notificationBadge();
+    show("notifyBtn", !S.platform); notificationBadge(); clockBtnPlace();
     show("logBtn", !S.platform && (can("summary") || can("log")));
     show("flBtn", !S.platform && can("flights") && !picks);
     show("rtBtn", !S.platform && can("picksinfo") && picks);
@@ -6667,29 +6681,37 @@
       attendance + myLinkHtml() + pinFormHtml();
   }
   var attendanceAccess = {};
-  function attendanceLinks() {
-    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return '';
+  // Attendance for this login: false while unknown or without it, else {manager, shift}.
+  function attendanceState() {
+    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return false;
     var key = S.me.id, access = attendanceAccess[key];
     if (access === undefined) {
       attendanceAccess[key] = false;
-      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager')]).then(function (r) {
+      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager'), sb.rpc('aero_open_shift')]).then(function (r) {
         if (!r[0].error && r[0].data) {
-          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true};
-          if (S.me && S.me.id === key && S.view === 'me') render();
+          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true, shift: !r[2].error && r[2].data && r[2].data.clock_in_at ? r[2].data : null};
+          if (!S.me || S.me.id !== key) return;
+          clockBtnPlace();
+          if ($('menu').open) openMenu(); else if (S.view === 'me') render();
         }
       }, function () {});
-      return '';
+      return false;
     }
+    return access;
+  }
+  function attendanceLinks() {
+    var access = attendanceState();
     if (!access) return '';
-    return '<div class="row-actions"><button class="btn brand" type="button" data-attendance="staff">Attendance</button>' +
-      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div>';
+    return '<div class="box pinbox att-me"><strong>Attendance</strong>' + clockBoxHtml(access) +
+      '<div class="row-actions"><button class="btn ghost" type="button" data-attendance="staff">Open Attendance</button>' +
+      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div></div>';
   }
   async function openAttendance(button) {
     button.disabled = true;
     try {
       var result = await callFunction('aero-access', {target: button.dataset.attendance}, true);
       if (!result.token_hash) throw new Error('Could not open Attendance.');
-      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
+      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1' + (button.dataset.clock ? '&clock=1&back=' + encodeURIComponent(location.origin) : '') + '#attendance_token=' + encodeURIComponent(result.token_hash));
     } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
   }
   function pinFormHtml() {
@@ -6701,6 +6723,146 @@
       '<div class="row-actions"><button type="button" class="btn ghost" data-signout>Sign out</button><button type="button" class="btn ghost" data-forget>Sign out and remove my link</button></div>';
   }
 
+  // ── clock in and out inside Parking Ops ──
+  // For people with Attendance: one slide, no trip to Attendance and no map.
+  // The site check runs in aero_clock_in() in the database, as in Attendance;
+  // the phone is only asked where it is on this screen and when sliding.
+  var CLK = { sites: null, pos: null, busy: false };
+  function clockSlideHtml(kind) {
+    var word = kind === "in" ? "Clock in" : "Clock out";
+    return '<div class="clk-slide clk-' + kind + '" data-clk="' + kind + '"><span class="clk-fill" aria-hidden="true"></span>' +
+      '<span class="clk-label" aria-hidden="true">Slide to ' + word.toLowerCase() + '</span>' +
+      '<button type="button" class="clk-knob" aria-label="' + word + '"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></svg></button></div>' +
+      '<p class="clk-zone" data-clkzone aria-live="polite"></p>';
+  }
+  // The shift box on Menu and Me: on shift with a slide to clock out, or a slide to clock in.
+  function clockBoxHtml(access) {
+    var shift = access.shift;
+    if (!shift) return '<div class="clk-box"><p class="clk-state">Not clocked in</p>' + clockSlideHtml("in") + "</div>";
+    var mins = Math.max(0, Math.round((Date.now() - new Date(shift.clock_in_at)) / 60000));
+    return '<div class="clk-box"><p class="clk-state"><span class="att-dot" aria-hidden="true"></span>On shift since ' + esc(hhmm(shift.clock_in_at)) +
+      ' <span class="num">· ' + Math.floor(mins / 60) + "h " + String(mins % 60).padStart(2, "0") + "m</span></p>" + clockSlideHtml("out") + "</div>";
+  }
+  function clkZone(text, state) {
+    document.querySelectorAll("[data-clkzone]").forEach(function (el) { el.textContent = text; el.className = "clk-zone" + (state ? " " + state : ""); });
+  }
+  function clkSlide(kind, state, label) {
+    document.querySelectorAll('.clk-slide[data-clk="' + kind + '"]').forEach(function (el) {
+      el.className = "clk-slide clk-" + kind + (state ? " " + state : "");
+      el.querySelector(".clk-label").textContent = label || "Slide to clock " + kind;
+      if (state !== "done" && state !== "busy") el.style.removeProperty("--x");
+      el.querySelector(".clk-knob").disabled = state === "busy" || state === "done";
+    });
+  }
+  function clkHere(fresh) {
+    return new Promise(function (ok) {
+      if (!fresh && CLK.pos && Date.now() - CLK.pos.at < 60000) return ok(CLK.pos);
+      if (!navigator.geolocation) return ok(null);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        CLK.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; ok(CLK.pos);
+      }, function () { ok(null); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    });
+  }
+  async function clkSites() {
+    if (CLK.sites) return CLK.sites;
+    var r = await sb.from("aero_worksites").select("id,name,lat,lng,radius_m");
+    if (!r.error && r.data) CLK.sites = r.data;
+    return CLK.sites || [];
+  }
+  function clkMetres(a, b) {
+    var p = Math.PI / 180, x = Math.sin((b.lat - a.lat) * p / 2), y = Math.sin((b.lng - a.lng) * p / 2);
+    return Math.round(2 * 6371000 * Math.asin(Math.sqrt(x * x + Math.cos(a.lat * p) * Math.cos(b.lat * p) * y * y)));
+  }
+  // The site you're inside, else the nearest.
+  function clkNearest(sites, pos) {
+    var best = null;
+    sites.forEach(function (w) { var m = clkMetres(pos, w); if (!best || m - w.radius_m < best.m - best.w.radius_m) best = { w: w, m: m }; });
+    if (best) best.inside = best.m <= best.w.radius_m + Math.min(pos.acc || 0, 50);
+    return best;
+  }
+  function clkSay(near) {
+    if (!near) return clkZone("Turn on location to clock in.", "warn");
+    if (near.inside) return clkZone("At " + near.w.name, "ok");
+    clkZone((near.m < 1000 ? near.m + " m" : (near.m / 1000).toFixed(1) + " km") + " from " + near.w.name + ". Move closer to clock in.", "warn");
+  }
+  async function clockLocate() {
+    clkZone("Finding your location…");
+    var sites = await clkSites(), pos = await clkHere(true);
+    if (!sites.length) return clkZone("No sites set up. Speak to the office.", "warn");
+    clkSay(pos ? clkNearest(sites, pos) : null);
+  }
+  async function clockDo(kind) {
+    if (CLK.busy) return;
+    CLK.busy = true;
+    clkSlide(kind, "busy", kind === "in" ? "Locating…" : "Clocking out…");
+    try {
+      var pos = await clkHere(false), r;
+      if (kind === "in") {
+        var sites = await clkSites(), near = pos && clkNearest(sites, pos);
+        if (!near) { clkSay(null); clkSlide(kind); return; }
+        clkSay(near);
+        r = await sb.rpc("aero_clock_in", { p_worksite_id: near.w.id, p_lat: pos.lat, p_lng: pos.lng, p_accuracy: pos.acc ? Math.round(pos.acc) : null });
+      } else {
+        // Clock-out is never blocked: no location just means it's marked unverified.
+        r = await sb.rpc("aero_clock_out", { p_lat: pos && pos.lat, p_lng: pos && pos.lng, p_note: "" });
+      }
+      if (r.error) {
+        // A dropped signal can follow a write that went through: ask before saying it failed.
+        var check = await sb.rpc("aero_open_shift");
+        if (check.error || !!(check.data && check.data.clock_in_at) !== (kind === "in")) { clkZone(r.error.message, "warn"); clkSlide(kind); return; }
+      }
+      clkSlide(kind, "done", kind === "in" ? "Clocked in" : "Clocked out");
+      attendanceAccess = {};
+      setTimeout(function () {
+        if (S.gateOn || S.gated) gateCheck(false);
+        if (S.me && !S.gateOn) { if ($("panel").open && $("panelTitle") && /^Clock/.test($("panelTitle").textContent)) $("panel").close(); if ($("menu").open) openMenu(); else render(); clockBtnPlace(); }
+      }, 900);
+    } catch (e) { clkZone(e.message || String(e), "warn"); clkSlide(kind); }
+    finally { CLK.busy = false; }
+  }
+  // Slide to confirm: a tap only nudges the handle; dragging to the end clocks.
+  // Keyboard users press the handle (a click with detail 0).
+  var clkDrag = null;
+  document.addEventListener("pointerdown", function (e) {
+    var knob = e.target.closest && e.target.closest(".clk-knob"); if (!knob || knob.disabled) return;
+    var track = knob.parentNode; clkDrag = { track: track, knob: knob, start: e.clientX, x: 0, max: Math.max(0, track.clientWidth - 8 - knob.offsetWidth) };
+    track.classList.remove("snap"); knob.setPointerCapture(e.pointerId);
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (!clkDrag) return;
+    clkDrag.x = Math.max(0, Math.min(clkDrag.max, e.clientX - clkDrag.start));
+    clkDrag.track.style.setProperty("--x", clkDrag.x + "px");
+  });
+  document.addEventListener("pointerup", function () {
+    if (!clkDrag) return;
+    var d = clkDrag; clkDrag = null;
+    if (d.x >= d.max - 4) return clockDo(d.track.dataset.clk);
+    d.track.classList.add("snap"); d.track.style.setProperty("--x", (d.x < 4 ? 24 : 0) + "px");
+    setTimeout(function () { d.track.style.setProperty("--x", "0px"); }, d.x < 4 ? 160 : 0);
+  });
+  document.addEventListener("click", function (e) {
+    var knob = e.target.closest && e.target.closest(".clk-knob");
+    if (knob && e.detail === 0 && !knob.disabled) clockDo(knob.parentNode.dataset.clk);
+  });
+  // The top bar button: "On shift 3h 12m" (green dot) or "Clock in"; opens a sheet with the slide.
+  function clockBtnPlace() {
+    var b = $("clockBtn"); if (!b) return;
+    var a = S.platform || !S.me ? false : attendanceState();
+    show("clockBtn", !!a); if (!a) return;
+    var m = a.shift ? Math.max(0, Math.round((Date.now() - new Date(a.shift.clock_in_at)) / 60000)) : 0;
+    b.className = "clkbtn" + (a.shift ? " on" : "");
+    b.innerHTML = a.shift ? '<span class="att-dot" aria-hidden="true"></span><span class="num">' + Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m</span>" : "Clock in";
+    b.setAttribute("aria-label", a.shift ? "On shift " + Math.floor(m / 60) + " hours " + (m % 60) + " minutes. Clock out" : "Clock in");
+  }
+  function clockSheet() {
+    var a = attendanceState(); if (!a) return;
+    $("panelBody").innerHTML = '<h2 id="panelTitle">' + (a.shift ? "Clock out" : "Clock in") + "</h2>" + clockBoxHtml(a) +
+      '<div class="pbtns"><button type="button" data-close>Close</button></div>';
+    if (!$("panel").open) $("panel").showModal();
+    if (!a.shift) clockLocate();
+  }
+  document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("#clockBtn")) clockSheet(); });
+  setInterval(function () { if (document.visibilityState === "visible" && S.me) clockBtnPlace(); }, 60000);
   // Physical yard positions are shared, confirmed online, and independent of a shift.
   // An add-on: only clients given it on the platform page (Clients → Edit, brand.lane_planner).
   function lanePlanner() { return !!(S.company && S.company.brand && S.company.brand.lane_planner); }
@@ -8073,7 +8235,7 @@
       (sh.archived_at ? '<button type="button" data-unarchive="' + sh.id + '">Bring back to the list</button>' : '<button type="button" data-archivesheet="' + sh.id + '">Archive this sheet</button>') +
       '<button type="button" class="danger" data-deletesheet="' + sh.id + '">Delete this sheet</button></div>' : "";
     if (hasFeatures()) { $("menuBody").innerHTML = premiumMenuHtml(items, sh); if (!$("menu").open) { opsMenuPlace(); $("menu").showModal(); } markBnav(); menuVersionCheck(); return; }
-    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + "</h2>" + whoSub() +
+    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + "</h2>" + whoSub() + menuClockHtml() +
       '<div class="menu-list">' + items.filter(function (x) { return x[2]; }).map(function (x) {
         return (x[0] === "me" ? '<button type="button" data-tutorials>Tutorials</button>' : "") + '<button type="button" data-view="' + x[0] + '"' + (S.view === x[0] ? ' aria-current="page"' : "") + ">" + x[1] + "</button>";
       }).join("") + "</div>" + sheetTools + modeHtml() + '<div class="pbtns"><button type="button" data-closemenu>Close</button></div>' + appVersionHtml();
@@ -8102,6 +8264,8 @@
     play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>'
   };
   function menuIcon(k) { return '<svg class="mi" viewBox="0 0 24 24" aria-hidden="true">' + (MENU_ICON[k] || "") + "</svg>"; }
+  // People with Attendance clock in and out from the top of the Menu.
+  function menuClockHtml() { var a = attendanceState(); return a ? '<div class="menu-clock">' + clockBoxHtml(a) + "</div>" : ""; }
   function premiumMenuHtml(items, sh) {
     var have = {}, o = isOps(); items.forEach(function (x) { if (x[2]) have[x[0]] = x[1]; });
     // Operations: a Menu page of panels, in the words of its other pages.
@@ -8110,7 +8274,7 @@
     // A wide screen: each section in its own panel, side by side.
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
-    var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
+    var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() + menuClockHtml() +
       group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
