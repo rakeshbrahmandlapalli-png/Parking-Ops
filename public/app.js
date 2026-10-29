@@ -3401,7 +3401,7 @@
     if (t.dataset.undoimport) return undoImport(t.dataset.undoimport, t);
     if (t.dataset.goneall !== undefined) return removeGone(Array.prototype.map.call($("panelBody").querySelectorAll("[data-gone]"), function (b) { return b.dataset.gone; }), t);
     if (t.dataset.acting !== undefined) return setActing(t.dataset.acting, t);
-    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined)) return staffPanelAction(t);
+    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined || t.dataset.setrole !== undefined)) return staffPanelAction(t);
     if (!panelRow) return;
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
     if (t.dataset.savepanel !== undefined) { if (savePanelEdits(r)) $("panel").close(); return; }
@@ -5874,7 +5874,12 @@
   function openStaffPanel(id) {
     var p = S.staff[id]; if (!p) return;
     staffEdit = id;
+    // Change role (part 138): an owner can also make an owner.
+    var roles = ["office", "manager", "bongo", "terminal", "view"].concat(S.me.role === "owner" ? ["owner"] : []);
     $("panelBody").innerHTML = '<h2 id="panelTitle">' + esc(p.name) + " <small>" + esc(ROLE_LABEL[p.role] || p.role) + "</small></h2>" +
+      '<label>ROLE</label><div class="pseg roles" style="flex-wrap:wrap">' + roles.map(function (x) {
+        return '<button type="button" style="flex:1 1 30%" data-setrole="' + x + '"' + (x === p.role ? ' class="on" aria-pressed="true"' : "") + ">" + esc(ROLE_LABEL[x]) + "</button>";
+      }).join("") + "</div>" +
       '<label>WHAT ' + esc(p.name.toUpperCase()) + ' CAN DO</label><div class="acc">' + PERMS.filter(permShown).map(function (x) {
         var d = roleCan(p.role, x[0]);
         return '<label class="chk"><input type="checkbox" data-perm="' + x[0] + '"' + (personCan(p, x[0]) ? " checked" : "") + "><span>" + esc(x[1]) +
@@ -5896,6 +5901,18 @@
       return;
     }
     var r;
+    if (t.dataset.setrole !== undefined) {
+      var to = t.dataset.setrole;
+      if (to === p.role) return;
+      if (!confirm("Make " + p.name + " " + ROLE_LABEL[to] + "? What they can do changes to " + ROLE_LABEL[to] + "'s defaults, plus anything ticked for them by hand.")) return;
+      t.disabled = true;
+      r = await sb.rpc("set_staff_role", { p_staff: p.id, p_role: to });
+      t.disabled = false;
+      if (r.error) return toast(r.error.message, true);
+      toast(p.name + " is now " + ROLE_LABEL[to] + ". It applies next time they open the app.");
+      await reloadStaff(); openStaffPanel(p.id); render();
+      return;
+    }
     t.disabled = true;
     if (t.dataset.saveaccess !== undefined) {
       var extra = [];

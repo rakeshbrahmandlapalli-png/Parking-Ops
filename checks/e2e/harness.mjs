@@ -247,6 +247,16 @@ function rpc(db, fn, a) {
       const topup = db.company.brand?.topup === true && !extra.includes("-topup") && (extra.includes("topup") || ["owner", "manager", "office", "terminal"].includes(db.me.role));
       return { collections, topup, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake", "callpop"].map((k) => [k, true]))) };
     }
+    case "set_staff_role": {
+      // part 138: the same rule as set_staff_access; only an owner makes an owner.
+      if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
+      const p = db.staff.find((p) => p.id === a.p_staff && !p.removed_at);
+      if (!p) throw new Error("Person not found.");
+      if (p.id === db.me.id) throw new Error("You can't do that to yourself.");
+      if (p.role === "owner" && db.me.role !== "owner") throw new Error("Only an owner can change an owner.");
+      if (a.p_role === "owner" && db.me.role !== "owner") throw new Error("Only an owner can make someone an owner.");
+      p.role = a.p_role; return p;
+    }
     case "set_staff_access": {
       if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
       const p = db.staff.find((p) => p.id === a.p_staff && (!p.company_id || p.company_id === db.me.company_id) && !p.removed_at);
@@ -571,6 +581,7 @@ async function scenario(fn, tag) {
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
+  if (process.env.ROLE_ONLY && tag !== 'role') return;
   if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
     if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);
