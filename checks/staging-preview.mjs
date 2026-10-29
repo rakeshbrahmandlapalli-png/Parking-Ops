@@ -11,7 +11,8 @@ async function api(p,{body,key='staging-public-v1',token,headers={},method}={}){
  const response=await fetch(origin+'/_staging'+p,{method:method||(body?'POST':'GET'),headers:{apikey:key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});return {response,data:await response.json()};
 }
 const info=await api('/info');ok('backend is synthetic with outbound disabled',info.data.mode==='synthetic-preview'&&info.data.outbound==='disabled');
-const accounts=(await api('/accounts')).data;assert.equal(accounts.length,4);
+const accounts=(await api('/accounts')).data;assert.equal(accounts.length,7);
+for(const name of ['rakesh','aashish','anil']){const a=accounts.find(a=>a.name===name);ok(name+' trial account is in tenant A',a&&a.company==='Synthetic 1');ok(name+' trial account signs in',(await api('/auth/v1/token?grant_type=password',{body:{email:a.email,password:a.password}})).response.status===200);}
 const one=accounts.find(a=>a.name==='staff-a'),two=accounts.find(a=>a.name==='staff-b'),manager=accounts.find(a=>a.name==='manager-a');
 async function login(a){const r=await api('/auth/v1/token?grant_type=password',{body:{email:a.email,password:a.password}});assert.equal(r.response.status,200);return r.data.access_token;}
 const s1=await login(one),s2=await login(two),m1=await login(manager);

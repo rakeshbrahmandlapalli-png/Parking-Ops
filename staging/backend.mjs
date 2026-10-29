@@ -3,6 +3,7 @@ import {testApi,apiOrigin} from './aero/checks/shared-test-api.mjs';
 import {seedManager,id} from './aero/checks/shared-manager-fixture.mjs';
 import {committed} from './aero/checks/shared-fixture.mjs';
 import {randomUUID} from 'node:crypto';
+const TRIAL=[[14,'Rakesh'],[10,'Aashish'],[11,'Anil']];
 export async function createBackend(config) {
  const instance=randomUUID();
  const api=await testApi({seed:async db=>{
@@ -14,8 +15,13 @@ export async function createBackend(config) {
    await db.query('insert into private.attendance_testers(company_id,user_id) values($1,$2) on conflict do nothing',[id(c),id(c*10+2)]);
    await db.query("insert into aero_shifts(id,company_id,user_id,worksite_id,clock_in_at,clock_out_at,note) values($1,$2,$3,$4,now()-interval '2 days',now()-interval '1 day 16 hours','Synthetic closed shift')",[id(350+c),id(c),id(c*10+2),id(100+c)]);
   }
+  // The three-person trial (rakesh, aashish, anil): fictional logins with their first names, tenant 1 only.
+  for(const [n,name] of TRIAL){
+   await db.query('update aero_profiles set full_name=$1 where id=$2',[name+' (test)',id(n)]);
+   await db.query('update staff set name=$1 where id=$2',[name.toUpperCase(),id(n)]);
+  }
  }});
- const accounts=[['staff-a',12],['manager-a',13],['staff-b',22],['manager-b',23]].map(([name,n])=>({name,id:id(n),email:name+'@staging.invalid',role:name.startsWith('manager')?'manager':'staff',company:n<20?'Synthetic 1':'Synthetic 2',password:config.password,pin:config.pin,link:'staging-'+name.padEnd(32,'x')}));
+ const accounts=[['staff-a',12],['manager-a',13],['staff-b',22],['manager-b',23],...TRIAL.map(([n,name])=>[name.toLowerCase(),n])].map(([name,n])=>({name,id:id(n),email:name+'@staging.invalid',role:name.startsWith('manager')||n===14?'manager':'staff',company:n<20?'Synthetic 1':'Synthetic 2',password:config.password,pin:config.pin,link:'staging-'+name.padEnd(32,'x')}));
  const reply=(status,data)=>({status,data,headers:{'Cache-Control':'no-store','X-Synthetic-Instance':instance}});
  async function company(user){return (await committed(api.db,user,'select aero_current_company_id() id'))[0]?.id;}
  async function manager(user){return (await committed(api.db,user,'select aero_is_manager() ok'))[0]?.ok;}
