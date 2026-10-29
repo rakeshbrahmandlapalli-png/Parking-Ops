@@ -1,3 +1,5 @@
+> Automated blockers below are superseded by [the completed verification report](attendance-step6-verification.md). Physical/staging/release gates remain open.
+
 # Step 6 follow-up — local checks passed, browser/phone acceptance pending
 
 This section supersedes the historical checkpoint below. Production release is
