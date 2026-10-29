@@ -247,6 +247,19 @@ function rpc(db, fn, a) {
       const topup = db.company.brand?.topup === true && !extra.includes("-topup") && (extra.includes("topup") || ["owner", "manager", "office", "terminal"].includes(db.me.role));
       return { collections, topup, ...(db.perms || Object.fromEntries(["sent", "called", "desk", "clear", "yard", "summary", "log", "flights", "rtc", "picksinfo", "import", "staff", "settings", "note", "intake", "callpop"].map((k) => [k, true]))) };
     }
+    case "attendance_people": {
+      // part 139: one row per active person; db.att = { staffId: { attendance, locked, on_shift } }
+      if (db.noAttPart) throw new Error("Could not find the function public.attendance_people");
+      return db.staff.filter((p) => !p.removed_at && p.active !== false).map((p) => ({ staff_id: p.id, attendance: false, locked: false, on_shift: false, ...((db.att || {})[p.id] || {}) }));
+    }
+    case "attendance_person_set": case "clock_gate_set": {
+      if (db.me.role !== "owner") throw new Error("Only an owner can do this.");
+      if (a.p_staff === db.me.id) throw new Error("Not allowed.");
+      db.att = db.att || {}; const x = db.att[a.p_staff] = db.att[a.p_staff] || { attendance: false, locked: false, on_shift: false };
+      if (fn === "clock_gate_set") { if (a.p_on && !x.attendance) throw new Error("Give this person Attendance first, or they could never clock in."); x.locked = a.p_on; }
+      else { if (!a.p_on && x.locked) throw new Error("Switch their lock off first, or they could never see Parking Ops again."); x.attendance = a.p_on; }
+      return null;
+    }
     case "set_staff_role": {
       // part 138: the same rule as set_staff_access; only an owner makes an owner.
       if (!["owner", "manager"].includes(db.me.role)) throw new Error("Only a manager or the owner can do that.");
@@ -582,6 +595,7 @@ async function scenario(fn, tag) {
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
   if (process.env.ROLE_ONLY && tag !== 'role') return;
+  if (process.env.ATTSW_ONLY && tag !== 'attsw') return;
   if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
     if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);

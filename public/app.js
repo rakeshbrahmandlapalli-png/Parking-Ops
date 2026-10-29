@@ -3401,7 +3401,7 @@
     if (t.dataset.undoimport) return undoImport(t.dataset.undoimport, t);
     if (t.dataset.goneall !== undefined) return removeGone(Array.prototype.map.call($("panelBody").querySelectorAll("[data-gone]"), function (b) { return b.dataset.gone; }), t);
     if (t.dataset.acting !== undefined) return setActing(t.dataset.acting, t);
-    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined || t.dataset.setrole !== undefined)) return staffPanelAction(t);
+    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined || t.dataset.setrole !== undefined || t.dataset.attswitch !== undefined)) return staffPanelAction(t);
     if (!panelRow) return;
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
     if (t.dataset.savepanel !== undefined) { if (savePanelEdits(r)) $("panel").close(); return; }
@@ -5871,6 +5871,27 @@
     if (!list.error) { S.staff = {}; list.data.forEach(function (p) { S.staff[p.id] = p; }); }
   }
   var staffEdit = null;
+  // Attendance and the clock-in lock (part 139): an owner switches both for the other people at their company.
+  var attPeople = {}, attMissing = false;
+  function attBoxHtml(p) {
+    if (!(S.company && S.company.brand && S.company.brand.attendance === true) || S.me.role !== "owner" || p.id === S.me.id || (p.desk_names || []).length || attMissing) return "";
+    var a = attPeople[p.id];
+    if (!a) return '<label>ATTENDANCE</label><p class="hint">Loading…</p>';
+    function seg(kind, on, off) {
+      return '<div class="pseg">' + [["on", "On", on], ["off", "Off", !on]].map(function (x) {
+        return '<button type="button" data-attswitch="' + kind + '" data-to="' + x[0] + '"' + (x[2] ? ' class="on" aria-pressed="true"' : "") + (kind === "lock" && x[0] === "on" && !a.attendance ? " disabled" : "") + ">" + x[1] + "</button>";
+      }).join("") + "</div>";
+    }
+    return '<label>ATTENDANCE</label>' + seg("attendance", a.attendance) +
+      '<label>PARKING OPS ONLY WHILE CLOCKED IN</label>' + seg("lock", a.locked) +
+      '<p class="hint">' + esc(a.on_shift ? "On shift now." : "Not clocked in now.") + (a.locked ? " Clocked out, they see nothing." : " Turn this on once they have clocked in once.") + "</p>";
+  }
+  async function loadAttPeople(id) {
+    if (!(S.company && S.company.brand && S.company.brand.attendance === true) || S.me.role !== "owner") return;
+    var r = await sb.rpc("attendance_people");
+    if (r.error || !Array.isArray(r.data)) { attMissing = true; } else { attMissing = false; attPeople = {}; r.data.forEach(function (x) { attPeople[x.staff_id] = x; }); }
+    var box = $("spAtt"); if (box && staffEdit === id && S.staff[id]) box.innerHTML = attBoxHtml(S.staff[id]);
+  }
   function openStaffPanel(id) {
     var p = S.staff[id]; if (!p) return;
     staffEdit = id;
@@ -5880,6 +5901,7 @@
       '<label>ROLE</label><div class="pseg roles" style="flex-wrap:wrap">' + roles.map(function (x) {
         return '<button type="button" style="flex:1 1 30%" data-setrole="' + x + '"' + (x === p.role ? ' class="on" aria-pressed="true"' : "") + ">" + esc(ROLE_LABEL[x]) + "</button>";
       }).join("") + "</div>" +
+      '<div id="spAtt">' + attBoxHtml(p) + "</div>" +
       '<label>WHAT ' + esc(p.name.toUpperCase()) + ' CAN DO</label><div class="acc">' + PERMS.filter(permShown).map(function (x) {
         var d = roleCan(p.role, x[0]);
         return '<label class="chk"><input type="checkbox" data-perm="' + x[0] + '"' + (personCan(p, x[0]) ? " checked" : "") + "><span>" + esc(x[1]) +
@@ -5893,9 +5915,20 @@
       '<button type="button" class="link rmcar" data-removestaff>Remove ' + esc(p.name) + '</button>' +
       '<div class="pbtns"><button type="button" data-close>Close</button></div>';
     if (!$("panel").open) $("panel").showModal();
+    loadAttPeople(id);
   }
   async function staffPanelAction(t) {
     var p = S.staff[staffEdit]; if (!p) return;
+    if (t.dataset.attswitch !== undefined) {
+      var kind = t.dataset.attswitch, on = t.dataset.to === "on";
+      if (t.classList.contains("on")) return;
+      if (kind === "lock" && on && !confirm("Lock Parking Ops for " + p.name + "? Unless they are clocked in on Attendance, they will see nothing, not even customer names.")) return;
+      Array.prototype.forEach.call($("panelBody").querySelectorAll("[data-attswitch]"), function (b) { b.disabled = true; });
+      var r2 = await sb.rpc(kind === "lock" ? "clock_gate_set" : "attendance_person_set", { p_staff: p.id, p_on: on });
+      if (r2.error) { toast(r2.error.message, true); } else { toast(kind === "lock" ? (on ? "Locked for " + p.name + "." : "Unlocked for " + p.name + ".") : "Attendance " + (on ? "on" : "off") + " for " + p.name + "."); }
+      await loadAttPeople(p.id);
+      return;
+    }
     if (t.dataset.roledefault !== undefined) {
       Array.prototype.forEach.call($("panelBody").querySelectorAll("[data-perm]"), function (c) { c.checked = roleCan(p.role, c.dataset.perm); });
       return;

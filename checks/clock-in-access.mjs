@@ -12,13 +12,20 @@ await db.exec(`
 create role anon; create role authenticated; create schema private; create schema auth;
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
 grant usage on schema auth to authenticated;
-create table companies (id uuid primary key default gen_random_uuid(), name text, slug text unique, brand jsonb not null default '{}', suspended_at timestamptz);
+create table companies (id uuid primary key default gen_random_uuid(), name text, slug text unique, brand jsonb not null default '{}', suspended_at timestamptz, time_zone text default 'Europe/London');
 create table staff (id uuid primary key default gen_random_uuid(), company_id uuid references companies(id), user_id uuid, name text, role text,
   extra text[] not null default '{}', active boolean default true, removed_at timestamptz, desk_names text[] not null default '{}');
-create table activity (id serial, company_id uuid, staff_name text, action text, value text);
+create table activity (id serial, company_id uuid, staff_id uuid, staff_name text, action text, value text);
 create table bookings (id uuid primary key default gen_random_uuid(), company_id uuid, reg text, customer text, phone text);
 alter table bookings enable row level security;
-create table aero_profiles (id uuid primary key, company_id uuid, full_name text, role text, active boolean default true);
+create table aero_companies (id uuid primary key, name text, time_zone text);
+create table aero_profiles (id uuid primary key, company_id uuid, full_name text, role text check (role in ('owner','admin','staff')) default 'staff', active boolean default true);
+create table attendance_staff_links (id uuid primary key default gen_random_uuid(), company_id uuid, staff_id uuid unique, attendance_user_id uuid unique, active boolean default true);
+create table private.attendance_release (company_id uuid primary key, pilot boolean not null default true);
+create table private.attendance_testers (id uuid primary key default gen_random_uuid(), company_id uuid, user_id uuid, active boolean default true, unique(company_id,user_id));
+create function private.attendance_pilot_allowed(p_company uuid,p_user uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select p_user is not null and (exists(select 1 from private.attendance_release where company_id=p_company and not pilot)
+ or exists(select 1 from private.attendance_testers where company_id=p_company and user_id=p_user and active)) $$;
 create table aero_shifts (id uuid primary key default gen_random_uuid(), company_id uuid, user_id uuid, clock_in_at timestamptz default now(), clock_out_at timestamptz);
 create table push_subscriptions (id uuid primary key default gen_random_uuid(), staff_id uuid, company_id uuid, endpoint text, p256dh text default 'k', auth text default 'a');
 create table private.ops_push_outbox (id uuid primary key default gen_random_uuid(), subscription_id uuid, staff_id uuid, company_id uuid, delivery_key text,
@@ -36,12 +43,13 @@ create policy bookings_read on bookings for select to authenticated using (compa
 grant select on bookings to authenticated;
 grant execute on all functions in schema public to authenticated;
 `);
+const part2 = fs.readFileSync(new URL("../setup/139-attendance-switches.sql", import.meta.url), "utf8");
 await db.exec(part);
 await db.exec(part); // safe to run again
 
 const co = {}, staff = {}, user = {};
 for (const slug of ["takeoff", "apb", "platform"]) co[slug] = (await q("insert into companies(name,slug,brand) values($1,$1,'{\"attendance\":true}') returning id", [slug]))[0].id;
-for (const [who, slug, role, desk] of [["rakesh", "takeoff", "owner"], ["aashish", "takeoff", "office"], ["anil", "takeoff", "office"], ["wasim", "takeoff", "bongo"],
+for (const [who, slug, role, desk] of [["rakesh", "takeoff", "owner"], ["aashish", "takeoff", "office"], ["anil", "takeoff", "office"], ["wasim", "takeoff", "bongo"], ["sam", "takeoff", "office"],
   ["office", "takeoff", "office", ["A", "B"]], ["apb", "apb", "manager"], ["admin", "platform", "owner"]]) {
   user[who] = crypto.randomUUID();
   staff[who] = (await q("insert into staff(company_id,user_id,name,role,desk_names) values($1,$2,$3,$4,$5) returning id", [co[slug], user[who], who.toUpperCase(), role, desk || []]))[0].id;
@@ -64,7 +72,7 @@ check("before the trial, Aashish sees TAKEOFF bookings", (await sees("aashish"))
 check("before the trial, status says not gated", (await as("aashish", () => q("select clock_gate_status() s")))[0].s.gated === false);
 
 // Who may switch it.
-check("a client owner cannot switch the gate", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.aashish], /Not allowed/)));
+check("before part 139, a client owner cannot switch the gate", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.aashish], /Not allowed/)));
 check("signed out cannot switch the gate", await as(null, () => fails("select clock_gate_set($1,true)", [staff.aashish], /Not allowed/)));
 check("a shared desk login cannot be gated", await as("admin", () => fails("select clock_gate_set($1,true)", [staff.office], /shared login/)));
 check("someone without Attendance cannot be gated", await as("admin", () => fails("select clock_gate_set($1,true)", [staff.apb], /Attendance first/)));
@@ -112,6 +120,46 @@ check("that push is expired, not left pending", (await q("select o.state from pr
 await gate("anil", false);
 check("Anil switched off the trial sees the board without clocking in", (await sees("anil")).length === 1);
 check("switching off is logged", (await q("select count(*)::int n from activity where value = 'Clock in to see the board: off for ANIL'"))[0].n === 1);
+
+// Part 139: an owner switches Attendance and the lock for the other people at their own company.
+await db.exec(part2);
+await db.exec(part2); // safe to run again
+await clockIn("rakesh"); // the owner is gated too; a clocked-out owner has no access to switch anything
+const people = (who) => as(who, () => q("select * from attendance_people()"));
+const byName = (rows) => Object.fromEntries(rows.map(r => [Object.keys(staff).find(k => staff[k] === r.staff_id), r]));
+const p1 = byName(await people("rakesh"));
+check("owner sees their own company's people only", !("apb" in p1) && "aashish" in p1 && "sam" in p1, Object.keys(p1));
+check("Attendance reads: Aashish on, Sam off", p1.aashish.attendance === false && p1.sam.attendance === false, [p1.aashish, p1.sam]);
+check("lock and on-shift show", p1.rakesh.locked === true && p1.rakesh.on_shift === true && p1.aashish.locked === true && p1.aashish.on_shift === false, [p1.rakesh, p1.aashish]);
+check("a driver (bongo) reads nobody", (await people("wasim")).length === 0);
+check("another company's manager sees only their own", (await people("apb")).every(r => r.staff_id === staff.apb));
+const set = (who, target, on) => as(who, () => q("select attendance_person_set($1,$2)", [staff[target], on]));
+check("a non-owner cannot switch Attendance", await as("aashish", () => fails("select attendance_person_set($1,true)", [staff.sam], /Only an owner/)));
+check("an owner cannot switch their own Attendance", await as("rakesh", () => fails("select attendance_person_set($1,true)", [staff.rakesh], /your own/)));
+check("an owner cannot reach another company's person", await as("rakesh", () => fails("select attendance_person_set($1,true)", [staff.apb], /at your company/)));
+check("a shared desk login cannot be given Attendance", await as("rakesh", () => fails("select attendance_person_set($1,true)", [staff.office], /shared login/)));
+await q("update companies set brand='{}' where id=$1", [co.takeoff]);
+check("refused when the company has no Attendance add-on", await as("rakesh", () => fails("select attendance_person_set($1,true)", [staff.sam], /not switched on/)));
+await q("update companies set brand='{\"attendance\":true}' where id=$1", [co.takeoff]);
+await set("rakesh", "sam", true);
+await set("rakesh", "sam", true); // twice is fine
+const sam = (await q("select p.role, p.active, l.active la, t.active ta from aero_profiles p join attendance_staff_links l on l.attendance_user_id=p.id join private.attendance_testers t on t.user_id=p.id where p.id=$1", [user.sam]))[0];
+check("switching on writes the profile, link and trial list", sam && sam.role === "staff" && sam.active && sam.la && sam.ta, sam);
+check("Sam now reads Attendance on", byName(await people("rakesh")).sam.attendance === true);
+check("switching on is logged with the owner's name", (await q("select count(*)::int n from activity where value='Attendance: on for SAM' and staff_name='RAKESH'"))[0].n === 2);
+check("owner locks Sam", await as("rakesh", () => q("select clock_gate_set($1,true)", [staff.sam])).then(() => true));
+check("Sam is shut out until he clocks in", (await sees("sam")).length === 0);
+check("cannot switch Attendance off while locked", await as("rakesh", () => fails("select attendance_person_set($1,false)", [staff.sam], /lock off first/)));
+check("an owner cannot lock themselves", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.rakesh], /Not allowed/)));
+check("an owner cannot lock another company's person", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.apb], /Not allowed/)));
+check("a non-owner still cannot switch the lock", await as("aashish", () => fails("select clock_gate_set($1,false)", [staff.sam], /Not allowed/)));
+await as("rakesh", () => q("select clock_gate_set($1,false)", [staff.sam]));
+check("lock off: Sam sees the board again", (await sees("sam")).length === 1);
+check("the owner's lock change is logged under their own name", (await q("select count(*)::int n from activity where value='Clock in to see the board: off for SAM' and staff_name='RAKESH'"))[0].n === 1);
+await set("rakesh", "sam", false);
+check("Attendance off leaves the trial list, keeps the link and profile", (await q("select (select active from private.attendance_testers where user_id=$1) ta, (select count(*)::int from aero_profiles where id=$1) pr, (select active from attendance_staff_links where staff_id=$2) la", [user.sam, staff.sam]))[0].ta === false);
+check("Sam reads Attendance off again", byName(await people("rakesh")).sam.attendance === false);
+check("a platform admin can still switch the lock for anyone", await gate("anil", true).then(() => true));
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
