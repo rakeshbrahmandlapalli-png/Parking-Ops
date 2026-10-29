@@ -427,7 +427,7 @@
     if (t.dataset.undoimport) return undoImport(t.dataset.undoimport, t);
     if (t.dataset.goneall !== undefined) return removeGone(Array.prototype.map.call($("panelBody").querySelectorAll("[data-gone]"), function (b) { return b.dataset.gone; }), t);
     if (t.dataset.acting !== undefined) return setActing(t.dataset.acting, t);
-    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined)) return staffPanelAction(t);
+    if (staffEdit && (t.dataset.saveaccess !== undefined || t.dataset.roledefault !== undefined || t.dataset.savepin !== undefined || t.dataset.removestaff !== undefined || t.dataset.savenames !== undefined || t.dataset.setrole !== undefined)) return staffPanelAction(t);
     if (!panelRow) return;
     var r = S.rows.filter(function (x) { return x.id === panelRow.id; })[0] || panelRow;
     if (t.dataset.savepanel !== undefined) { if (savePanelEdits(r)) $("panel").close(); return; }
