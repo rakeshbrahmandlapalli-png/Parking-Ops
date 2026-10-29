@@ -176,7 +176,7 @@
     try {
       var result = await callFunction('aero-access', {target: button.dataset.attendance}, true);
       if (!result.token_hash) throw new Error('Could not open Attendance.');
-      location.assign('https://aero-attendance.vercel.app/' + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
+      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
     } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
   }
   function pinFormHtml() {

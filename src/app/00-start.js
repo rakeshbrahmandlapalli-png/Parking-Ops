@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var CFG = {
+  var CFG = window.STAGING_CONFIG ? window.STAGING_CONFIG.client() : {
     url: "https://oioqjfrlwrjovnouhusp.supabase.co",
     // TAKEOFF's public (anon) key: safe in the page, it can only do what the
     // database rules allow a signed-in person to do.
