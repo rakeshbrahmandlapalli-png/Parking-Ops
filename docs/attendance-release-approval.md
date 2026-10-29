@@ -80,11 +80,11 @@ See https://supabase.com/docs/guides/database/database-linter .
 Do not reapply foundation 130, and NEVER apply prototype 133. After validating
 the live object definitions against the reviewed scripts, the candidate order is:
 
-1. `setup/131-attendance-identity.sql`: new Attendance identity/link/context APIs;
+1. `setup/134-attendance-identity.sql`: new Attendance identity/link/context APIs;
    no parking password, role, active flag or company UUID changes.
-2. `setup/132-attendance-pilot.sql`: private release/tester tables, explicit
+2. `setup/135-attendance-pilot.sql`: private release/tester tables, explicit
    server-side default-deny tester gate and Attendance link policy. Enrols nobody.
-3. `setup/134-attendance-shared.sql`: namespaced Attendance schema, RLS/grants,
+3. `setup/136-attendance-shared.sql`: namespaced Attendance schema, RLS/grants,
    company FK, clock/break/correction/audit APIs and finish-only endpoints.
    Creates extensions if absent; installs no push destination or timer.
 
@@ -97,7 +97,7 @@ For an approved operator session, the command shape is:
 ```sh
 PGOPTIONS='-c lock_timeout=1s -c statement_timeout=60s' \
   psql "$PARKING_OPS_DATABASE_URL" -X -v ON_ERROR_STOP=1 \
-  -f setup/131-attendance-identity.sql
+  -f setup/134-attendance-identity.sql
 # Repeat only on success for 132, then 134; record migration history correctly.
 ```
 
@@ -114,7 +114,7 @@ the reviewed data-preserving emergency stop is:
 
 ```sh
 psql "$PARKING_OPS_DATABASE_URL" -X -v ON_ERROR_STOP=1 \
-  -f setup/rollback/134-attendance-shared-rollback.sql
+  -f setup/rollback/136-attendance-shared-rollback.sql
 ```
 
 It disables Attendance testers, forces pilot gating and revokes pilot provisioning.

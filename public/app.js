@@ -275,7 +275,13 @@
       return;
     }
     S.bootFailed = false; clearTimeout(S.bootRetry);
-    if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
+    if (!me.data || !me.data.id) {
+      // Clock-in access (part 137): a clocked-out person keeps their sign-in
+      // so they can open Attendance, and sees nothing else.
+      var gate = await sb.rpc("clock_gate_status");
+      if (!gate.error && gate.data && gate.data.closed) return clockedOut(gate.data);
+      await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office.");
+    }
     if (!S.me || S.me.id !== me.data.id || S.me.company_id !== me.data.company_id) resetNotificationCentre();
     S.me = me.data;
     sb.rpc("i_am_here").then(function () {}, function () {});
@@ -283,8 +289,12 @@
       sb.rpc("my_permissions"),
       sb.from("companies").select("*").eq("id", S.me.company_id).single(),
       sb.from("staff").select("*").order("name"),
-      loadSheets()
+      loadSheets(),
+      sb.rpc("clock_gate_status")
     ]);
+    // Before part 137 is installed the call fails: nobody is gated.
+    S.gated = !!(res[4] && !res[4].error && res[4].data && res[4].data.gated);
+    if (S.gated) snapForget();
     if (!res[1].data || res.some(function (x) { return x && x.error && isDown(x); })) { if (openFromSnap()) return; throw new Error("Couldn't load the company"); }
     S.offline = false;
     S.perms = res[0].data || {};
@@ -471,7 +481,7 @@
   // the phone and go through when the server answers again. Cleared on sign-out.
   var SNAP_KEY = "takeoff_snap", snapTimer = null;
   function snapSave() {
-    if (!S.me || !S.company || S.platform) return;
+    if (!S.me || !S.company || S.platform || S.gated) return;
     clearTimeout(snapTimer);
     snapTimer = setTimeout(function () {
       try {
@@ -508,6 +518,38 @@
     S.reconnectWait = Math.min(120000, (S.reconnectWait || 10000) * 1.5);
     S.reconnect = setTimeout(reconnect, S.reconnectWait);
   }
+
+  // ── clock in to see the board (part 137) ──
+  // Only for people the trial lists. Clocked out: the board, the saved offline
+  // copy and every open panel go; what stays is their name and a way to clock in.
+  function clockedOut(st) {
+    var was = !!S.me;
+    S.gateOn = st; S.gated = true;
+    if (S.me) { S.me = null; teardown(); }
+    snapForget();
+    try { $("panel").close(); } catch (e) {}
+    S.rows = []; S.removed = []; S.sheets = []; S.handArchived = []; S.staff = {}; S.company = null;
+    setMain("", "gate");
+    only("boot");
+    $("boot").innerHTML = '<div class="gatebox"><h2>Clocked out</h2><p>' + esc(st.name ? "Hi " + st.name + ". " : "") +
+      "Clock in on Attendance to see the board.</p>" +
+      (st.attendance ? '<p><button class="btn brand" type="button" id="gateAtt" data-attendance="staff">Open Attendance</button></p>' : "") +
+      '<p><button class="btn ghost" type="button" id="gateAgain">I\'ve clocked in</button></p>' +
+      '<p><button class="btn ghost" type="button" id="gateOut">Sign out</button></p></div>';
+    if ($("gateAtt")) $("gateAtt").onclick = function () { openAttendance(this); };
+    $("gateAgain").onclick = function () { gateCheck(true); };
+    $("gateOut").onclick = async function () { S.gateOn = null; await sb.auth.signOut(); showSignIn(); };
+    if (was) toast("You've clocked out, so the board is hidden.");
+  }
+  async function gateCheck(byHand) {
+    var r; try { r = await sb.rpc("clock_gate_status"); } catch (e) { r = { error: e }; }
+    if (r.error || !r.data) { if (byHand) toast(r.error ? r.error.message || String(r.error) : "Try again.", true); return; }
+    if (S.gateOn && !r.data.closed) { S.gateOn = null; return loadApp(); }
+    if (S.gateOn && byHand) toast("You're not clocked in yet.", true);
+    if (!S.gateOn && S.me && r.data.closed) clockedOut(r.data);
+  }
+  setInterval(function () { if ((S.gated || S.gateOn) && document.visibilityState === "visible") gateCheck(false); }, 30000);
+  document.addEventListener("visibilitychange", function () { if ((S.gated || S.gateOn) && document.visibilityState === "visible") gateCheck(false); });
 
   var redraw = null;
   function onChange(p) {

@@ -1,4 +1,4 @@
--- Rollback for 130-attendance-addon.sql. Existing Parking Ops data is retained.
+-- Rollback for 133-attendance-addon.sql. Existing Parking Ops data is retained.
 begin;
 update companies set brand=brand-'attendance' where brand ? 'attendance';
 drop function if exists private.attendance_on(uuid);

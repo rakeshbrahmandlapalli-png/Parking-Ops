@@ -221,6 +221,7 @@ function rpc(db, fn, a) {
       Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
     }
     case "me": return db.me;
+    case "clock_gate_status": if (db.noGatePart) throw new Error("Could not find the function public.clock_gate_status"); return db.gate || { gated: false, closed: false };
     case "i_am_here": db.hereCalls = (db.hereCalls || 0) + 1; return null;
     case "staff_seen": return db.seen || [];
     case "set_acting": { if (a.p_name && !(db.me.desk_names || []).includes(a.p_name)) throw new Error("That name isn't on this login."); db.me.acting = a.p_name; return db.me; }
@@ -555,6 +556,7 @@ const pickKind = async (page, kind) => {
 // Each section stands alone: if one breaks part-way, it's reported and the rest still run.
 async function scenario(fn, tag) {
   if (process.env.LANES_ONLY && tag !== 'lanes') return;
+  if (process.env.GATE_ONLY && tag !== 'gate') return;
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;

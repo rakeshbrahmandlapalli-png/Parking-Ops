@@ -70,7 +70,7 @@ for(const name of ['harness.mjs','shared-fixture.mjs','shared-manager-fixture.mj
 }
 fs.writeFileSync(path.join(func,'aero/checks/shared-checkout.mjs'),"import fs from 'node:fs';export function verifySharedCheckouts(){};export const readParking=p=>fs.readFileSync(new URL('../../parking/'+p,import.meta.url),'utf8');\n");
 fs.mkdirSync(path.join(func,'aero/setup'),{recursive:true});fs.writeFileSync(path.join(func,'aero/setup/schema.sql'),scrub(fs.readFileSync(path.join(aero,'setup/schema.sql'),'utf8')));
-for(const name of ['130-attendance-addon.sql','131-attendance-identity.sql','132-attendance-pilot.sql','134-attendance-shared.sql']){
+for(const name of ['133-attendance-addon.sql','134-attendance-identity.sql','135-attendance-pilot.sql','136-attendance-shared.sql']){
  const target=path.join(func,'parking/setup',name);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,scrub(fs.readFileSync(path.join(root,'setup',name),'utf8')));
 }
 const dependency=JSON.parse(fs.readFileSync(path.join(here,'dependency.json'))),dest=path.join(func,'node_modules/@electric-sql/pglite');fs.mkdirSync(dest,{recursive:true});
