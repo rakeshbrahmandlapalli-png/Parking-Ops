@@ -221,6 +221,21 @@ function rpc(db, fn, a) {
       Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
     }
     case "me": return db.me;
+    case "aero_current_company_id": return db.aero ? db.company.id : null;
+    case "aero_is_manager": return !!(db.aero && db.aero.manager);
+    case "aero_open_shift": return (db.aero && db.aero.open) || null;
+    case "aero_clock_in": {
+      if (db.aero && db.aero.refuse) throw new Error(db.aero.refuse);
+      db.aero.open = { id: "sh-new", clock_in_at: new Date().toISOString(), worksite_id: a.p_worksite_id };
+      if (db.gate) { db.gate = { ...db.gate, closed: false }; if (!db.me && db.meSaved) db.me = db.meSaved; }
+      return db.aero.open;
+    }
+    case "aero_clock_out": {
+      if (!db.aero || !db.aero.open) throw new Error("You are not clocked in.");
+      const was = db.aero.open; db.aero.open = null;
+      if (db.gate && db.gate.gated) { db.gate = { ...db.gate, closed: true }; db.meSaved = db.me || db.meSaved; db.me = null; }
+      return { ...was, clock_out_at: new Date().toISOString() };
+    }
     case "clock_gate_status": if (db.noGatePart) throw new Error("Could not find the function public.clock_gate_status"); return db.gate || { gated: false, closed: false };
     case "i_am_here": db.hereCalls = (db.hereCalls || 0) + 1; return null;
     case "staff_seen": return db.seen || [];
@@ -482,6 +497,8 @@ async function backend(ctx, db) {
     if (p === "/rest/v1/customer_sms") return reply(200, (db.sms || []).filter(t => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")));
     if (p === "/rest/v1/customer_texts") return reply(200, (db.texts || []).filter((t) => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")).sort((x, y) => (x.at < y.at ? 1 : -1)));
     if (p === "/rest/v1/flight_runs") return reply(200, db.flightRuns || []);
+    if (p === "/rest/v1/aero_worksites") return reply(200, (db.aero && db.aero.sites) || []);
+    if (p === "/rest/v1/aero_shifts") return reply(200, (db.aero && db.aero.shifts) || []);
     if (p === "/rest/v1/staff") return reply(200, db.staff);
     if (p === "/rest/v1/sheets") return reply(200, db.sheets);
     if (p === "/rest/v1/bookings") {

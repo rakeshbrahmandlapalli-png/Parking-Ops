@@ -415,7 +415,7 @@
       (sh.archived_at ? '<button type="button" data-unarchive="' + sh.id + '">Bring back to the list</button>' : '<button type="button" data-archivesheet="' + sh.id + '">Archive this sheet</button>') +
       '<button type="button" class="danger" data-deletesheet="' + sh.id + '">Delete this sheet</button></div>' : "";
     if (hasFeatures()) { $("menuBody").innerHTML = premiumMenuHtml(items, sh); if (!$("menu").open) { opsMenuPlace(); $("menu").showModal(); } markBnav(); menuVersionCheck(); return; }
-    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + "</h2>" + whoSub() +
+    $("menuBody").innerHTML = "<h2>" + esc(S.company.name) + "</h2>" + whoSub() + menuClockHtml() +
       '<div class="menu-list">' + items.filter(function (x) { return x[2]; }).map(function (x) {
         return (x[0] === "me" ? '<button type="button" data-tutorials>Tutorials</button>' : "") + '<button type="button" data-view="' + x[0] + '"' + (S.view === x[0] ? ' aria-current="page"' : "") + ">" + x[1] + "</button>";
       }).join("") + "</div>" + sheetTools + modeHtml() + '<div class="pbtns"><button type="button" data-closemenu>Close</button></div>' + appVersionHtml();
@@ -444,6 +444,8 @@
     play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>'
   };
   function menuIcon(k) { return '<svg class="mi" viewBox="0 0 24 24" aria-hidden="true">' + (MENU_ICON[k] || "") + "</svg>"; }
+  // People with Attendance clock in and out from the top of the Menu.
+  function menuClockHtml() { var a = attendanceState(); return a ? '<div class="menu-clock">' + clockBoxHtml(a) + "</div>" : ""; }
   function premiumMenuHtml(items, sh) {
     var have = {}, o = isOps(); items.forEach(function (x) { if (x[2]) have[x[0]] = x[1]; });
     // Operations: a Menu page of panels, in the words of its other pages.
@@ -452,7 +454,7 @@
     // A wide screen: each section in its own panel, side by side.
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
-    var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() +
+    var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() + menuClockHtml() +
       group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +

@@ -1,5 +1,5 @@
 {
-  "git": { "deploymentEnabled": { "attendance-integration": false, "claude/project-thread-xro69h": false } },
+  "git": { "deploymentEnabled": { "attendance-integration": false, "claude/project-thread-xro69h": false, "claude/project-thread-yqgtmj": false } },
   "outputDirectory": "public",
   "rewrites": [
     {
@@ -74,7 +74,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self), microphone=(), geolocation=(), payment=()"
+          "value": "camera=(self), microphone=(), geolocation=(self), payment=()"
         }
       ]
     }

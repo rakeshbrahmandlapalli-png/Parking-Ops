@@ -43,7 +43,7 @@
       $("kindSeg").querySelector('[data-kind="drops"]').setAttribute("aria-pressed", sh.kind === "drops");
       $("kindSeg").querySelector('[data-kind="picks"]').setAttribute("aria-pressed", sh.kind === "picks");
     }
-    show("notifyBtn", !S.platform); notificationBadge();
+    show("notifyBtn", !S.platform); notificationBadge(); clockBtnPlace();
     show("logBtn", !S.platform && (can("summary") || can("log")));
     show("flBtn", !S.platform && can("flights") && !picks);
     show("rtBtn", !S.platform && can("picksinfo") && picks);

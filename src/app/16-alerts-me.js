@@ -154,29 +154,37 @@
       attendance + myLinkHtml() + pinFormHtml();
   }
   var attendanceAccess = {};
-  function attendanceLinks() {
-    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return '';
+  // Attendance for this login: false while unknown or without it, else {manager, shift}.
+  function attendanceState() {
+    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return false;
     var key = S.me.id, access = attendanceAccess[key];
     if (access === undefined) {
       attendanceAccess[key] = false;
-      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager')]).then(function (r) {
+      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager'), sb.rpc('aero_open_shift')]).then(function (r) {
         if (!r[0].error && r[0].data) {
-          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true};
-          if (S.me && S.me.id === key && S.view === 'me') render();
+          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true, shift: !r[2].error && r[2].data && r[2].data.clock_in_at ? r[2].data : null};
+          if (!S.me || S.me.id !== key) return;
+          clockBtnPlace();
+          if ($('menu').open) openMenu(); else if (S.view === 'me') render();
         }
       }, function () {});
-      return '';
+      return false;
     }
+    return access;
+  }
+  function attendanceLinks() {
+    var access = attendanceState();
     if (!access) return '';
-    return '<div class="row-actions"><button class="btn brand" type="button" data-attendance="staff">Attendance</button>' +
-      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div>';
+    return '<div class="box pinbox att-me"><strong>Attendance</strong>' + clockBoxHtml(access) +
+      '<div class="row-actions"><button class="btn ghost" type="button" data-attendance="staff">Open Attendance</button>' +
+      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div></div>';
   }
   async function openAttendance(button) {
     button.disabled = true;
     try {
       var result = await callFunction('aero-access', {target: button.dataset.attendance}, true);
       if (!result.token_hash) throw new Error('Could not open Attendance.');
-      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
+      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1' + (button.dataset.clock ? '&clock=1&back=' + encodeURIComponent(location.origin) : '') + '#attendance_token=' + encodeURIComponent(result.token_hash));
     } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
   }
   function pinFormHtml() {
