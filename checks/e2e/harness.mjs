@@ -221,6 +221,7 @@ function rpc(db, fn, a) {
       Object.assign(k.session,{ status:'completed', finished_at:now(), finished_by_name:db.me.name, expected_count:cars.length, found_count:cars.length });return k.session;
     }
     case "me": return db.me;
+    case "clock_gate_status": if (db.noGatePart) throw new Error("Could not find the function public.clock_gate_status"); return db.gate || { gated: false, closed: false };
     case "i_am_here": db.hereCalls = (db.hereCalls || 0) + 1; return null;
     case "staff_seen": return db.seen || [];
     case "set_acting": { if (a.p_name && !(db.me.desk_names || []).includes(a.p_name)) throw new Error("That name isn't on this login."); db.me.acting = a.p_name; return db.me; }
@@ -319,7 +320,7 @@ function rpc(db, fn, a) {
       .filter(({ b, d }) => d && !db.bookings.some((x) => x.sheet_id === d.id && x.reg === b.reg))
       .map(({ b, d }) => ({ id: b.id, reg: b.reg, name: b.name, return_at: b.return_at, day: d.day, sheet_id: d.id }));
     case "add_pick_to_drops": { const p = db.bookings.find((x) => x.id === a.p_booking), d = db.sheets.find((s) => s.kind === "drops" && s.day === p.return_at.slice(0, 10)); const n = { ...p, id: "dn" + db.bookings.length, sheet_id: d.id, kind: "drops" }; db.bookings.push(n); return n; }
-    case "add_booking": { const n = { id: "new" + db.bookings.length, company_id: "c1", sheet_id: a.p_sheet, kind: db.sheets.find((x) => x.id === a.p_sheet).kind, ref: a.p.ref || "", reg: String(a.p.reg).toUpperCase(), name: a.p.name || "", num: 99, return_at: a.p.return_local ? new Date(a.p.return_local.replace(" ", "T") + ":00+01:00").toISOString() : null, note: a.p.note || "" };
+    case "add_booking": { const n = { id: "new" + db.bookings.length, company_id: "c1", sheet_id: a.p_sheet, kind: db.sheets.find((x) => x.id === a.p_sheet).kind, ref: a.p.ref || "", reg: String(a.p.reg).toUpperCase(), name: a.p.name || "", num: 99, return_at: a.p.return_local ? lonIso(a.p.return_local.slice(0, 10), a.p.return_local.slice(11, 16)) : null, note: a.p.note || "" };
       if (a.p.desk && n.kind === "picks") Object.assign(n, { pick_called: "New Booking", pick_called_at: now(), intake: a.p.taken_in ? "Collected" : "", intake_at: a.p.taken_in ? now() : null, yard: a.p.yard || "" });
       db.bookings.push(n); return n; }
     case "set_doc": { const b = row(a.p_booking); b.doc_path = a.p_path; b.doc_at = now(); return b; }
@@ -355,19 +356,19 @@ function rpc(db, fn, a) {
     case "remove_booking": { if (!["No show", "Cancelled", "Duplicate", "RTC", "Early return"].includes(a.p_reason)) throw new Error("Not a valid reason: " + a.p_reason); const b = row(a.p_booking); Object.assign(b, { removed_at: new Date().toISOString(), removed_reason: a.p_reason, removed_by: "s1" }); return b; }
     case "put_back_rebooked": { const b = row(a.p_booking); if (!b.removed_at) throw new Error("This car is not removed.");
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10)); if (!to) throw new Error("Import DROPS first.");
-      Object.assign(b, { sheet_id: to.id, removed_at: null, removed_reason: "", removed_by: null, return_at: new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString() }); return b; }
+      Object.assign(b, { sheet_id: to.id, removed_at: null, removed_reason: "", removed_by: null, return_at: lonIso(a.p_return_local.slice(0, 10), a.p_return_local.slice(11, 16)) }); return b; }
     case "restore_booking": { const b = db.bookings.find((x) => x.id === a.p_booking); Object.assign(b, { removed_at: null, removed_reason: "" }); return b; }
-    case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString();
+    case "set_return": { const b = row(a.p_booking); if (!b.orig_return_at) b.orig_return_at = b.return_at; b.return_at = lonIso(a.p_return_local.slice(0, 10), a.p_return_local.slice(11, 16));
       const to = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_return_local.slice(0, 10) && x.day > (db.sheets.find((y) => y.id === b.sheet_id) || {}).day); if (to) { b.sheet_id = to.id; b.overstay = false; } return b; }
     case "set_reg": { const b = row(a.p_booking); b.reg = a.p_reg; return b; }
     case "set_phone": { const b = row(a.p_booking); b.phone = a.p_phone; return b; }
     case "set_yard": { const b = row(a.p_booking); b.yard = a.p_yard; return b; }
     case "set_flight": { const b = row(a.p_booking); if (b.flight !== a.p_flight) Object.assign(b, { sched_at: null, sched_time: "", est_at: null, est_time: "", flight_status: a.p_flight === "NO FLIGHT" ? "noflight" : "", flight_note: "" }); b.flight = a.p_flight; return b; }
     case "set_pick_flight": { const b = row(a.p_booking); b.flight = a.p_flight; return b; }
-    case "set_pick_return": { const b = row(a.p_booking); b.return_at = new Date(a.p_return_local.replace(" ", "T") + ":00+01:00").toISOString(); return b; }
+    case "set_pick_return": { const b = row(a.p_booking); b.return_at = lonIso(a.p_return_local.slice(0, 10), a.p_return_local.slice(11, 16)); return b; }
     case "move_pick": { const b = row(a.p_booking); const day = a.p_drop_local.slice(0, 10), to = db.sheets.find((x) => x.kind === "picks" && x.day === day);
       if (!to) throw new Error("The PICKS sheet for " + day + " is not in yet. Import it first.");
-      b.drop_at = new Date(a.p_drop_local.replace(" ", "T") + ":00+01:00").toISOString(); if (to.id !== b.sheet_id) { b.sheet_id = to.id; b.num = 99; } return b; }
+      b.drop_at = lonIso(a.p_drop_local.slice(0, 10), a.p_drop_local.slice(11, 16)); if (to.id !== b.sheet_id) { b.sheet_id = to.id; b.num = 99; } return b; }
     case "set_sched_time": { const b = row(a.p_booking); b.sched_time = a.p_time; return db.schedEcho === false ? null : b; }
     case "early_return": { const b = row(a.p_booking); b.moved_from = b.sheet_id; b.sheet_id = earlySheet(a.p_day); b.early = true; b.early_at = now(); b.num = 105; return b; }
     case "early_return_from_picks": { const p = row(a.p_picks); const n = { ...p, id: "de" + db.bookings.length, sheet_id: earlySheet(a.p_day), kind: "drops", num: 106, early: true, early_at: now(), moved_from: "d1", intake: "", called_at: null, sent_at: null, cleared_at: null }; db.bookings.push(n); return n; }
@@ -491,7 +492,7 @@ async function backend(ctx, db) {
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const JWT = b64({ alg: "HS256" }) + "." + b64({ sub: "u1", role: "authenticated", exp: 4102444800 }) + ".sig";
 async function phone(browser, db, { signedIn = true, ua, width = 390, noBitmap = false, still = "", pdfLabels = false, stuckBlob = false, touch = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
+  const ctx = await browser.newContext({ viewport: { width, height: 844 }, timezoneId: "Europe/London", userAgent: ua, permissions: ["camera"], ...(touch ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
   await backend(ctx, db);
   await ctx.addInitScript(([jwt, signedIn, noBitmap, still, pdfLabels, stuckBlob]) => {
     // Every label the PDF button shows, however quickly it changes.
@@ -555,6 +556,7 @@ const pickKind = async (page, kind) => {
 // Each section stands alone: if one breaks part-way, it's reported and the rest still run.
 async function scenario(fn, tag) {
   if (process.env.LANES_ONLY && tag !== 'lanes') return;
+  if (process.env.GATE_ONLY && tag !== 'gate') return;
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;
@@ -569,7 +571,10 @@ async function scenario(fn, tag) {
   if (process.env.PHONE_ONLY && tag !== 'phone') return;
   if (process.env.STAYLONGER_ONLY && tag !== 'staylonger') return;
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
+  if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
+    if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);
+    console.error(e.stack || e);
     const at = (String(e.stack || "").match(/run\.mjs:(\d+)/) || [])[1];
     check("section finished without crashing", false, String(e.message || e).split("\n")[0] + (at ? " (run.mjs line " + at + ")" : ""));
   }

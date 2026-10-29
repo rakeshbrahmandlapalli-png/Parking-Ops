@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var CFG = {
+  var CFG = window.STAGING_CONFIG ? window.STAGING_CONFIG.client() : {
     url: "https://oioqjfrlwrjovnouhusp.supabase.co",
     // TAKEOFF's public (anon) key: safe in the page, it can only do what the
     // database rules allow a signed-in person to do.
@@ -275,7 +275,13 @@
       return;
     }
     S.bootFailed = false; clearTimeout(S.bootRetry);
-    if (!me.data || !me.data.id) { await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office."); }
+    if (!me.data || !me.data.id) {
+      // Clock-in access (part 137): a clocked-out person keeps their sign-in
+      // so they can open Attendance, and sees nothing else.
+      var gate = await sb.rpc("clock_gate_status");
+      if (!gate.error && gate.data && gate.data.closed) return clockedOut(gate.data);
+      await sb.auth.signOut(); return showSignIn("Your access is switched off. Speak to the office.");
+    }
     if (!S.me || S.me.id !== me.data.id || S.me.company_id !== me.data.company_id) resetNotificationCentre();
     S.me = me.data;
     sb.rpc("i_am_here").then(function () {}, function () {});
@@ -283,8 +289,12 @@
       sb.rpc("my_permissions"),
       sb.from("companies").select("*").eq("id", S.me.company_id).single(),
       sb.from("staff").select("*").order("name"),
-      loadSheets()
+      loadSheets(),
+      sb.rpc("clock_gate_status")
     ]);
+    // Before part 137 is installed the call fails: nobody is gated.
+    S.gated = !!(res[4] && !res[4].error && res[4].data && res[4].data.gated);
+    if (S.gated) snapForget();
     if (!res[1].data || res.some(function (x) { return x && x.error && isDown(x); })) { if (openFromSnap()) return; throw new Error("Couldn't load the company"); }
     S.offline = false;
     S.perms = res[0].data || {};
@@ -471,7 +481,7 @@
   // the phone and go through when the server answers again. Cleared on sign-out.
   var SNAP_KEY = "takeoff_snap", snapTimer = null;
   function snapSave() {
-    if (!S.me || !S.company || S.platform) return;
+    if (!S.me || !S.company || S.platform || S.gated) return;
     clearTimeout(snapTimer);
     snapTimer = setTimeout(function () {
       try {
@@ -508,6 +518,38 @@
     S.reconnectWait = Math.min(120000, (S.reconnectWait || 10000) * 1.5);
     S.reconnect = setTimeout(reconnect, S.reconnectWait);
   }
+
+  // ── clock in to see the board (part 137) ──
+  // Only for people the trial lists. Clocked out: the board, the saved offline
+  // copy and every open panel go; what stays is their name and a way to clock in.
+  function clockedOut(st) {
+    var was = !!S.me;
+    S.gateOn = st; S.gated = true;
+    if (S.me) { S.me = null; teardown(); }
+    snapForget();
+    try { $("panel").close(); } catch (e) {}
+    S.rows = []; S.removed = []; S.sheets = []; S.handArchived = []; S.staff = {}; S.company = null;
+    setMain("", "gate");
+    only("boot");
+    $("boot").innerHTML = '<div class="gatebox"><h2>Clocked out</h2><p>' + esc(st.name ? "Hi " + st.name + ". " : "") +
+      "Clock in on Attendance to see the board.</p>" +
+      (st.attendance ? '<p><button class="btn brand" type="button" id="gateAtt" data-attendance="staff">Open Attendance</button></p>' : "") +
+      '<p><button class="btn ghost" type="button" id="gateAgain">I\'ve clocked in</button></p>' +
+      '<p><button class="btn ghost" type="button" id="gateOut">Sign out</button></p></div>';
+    if ($("gateAtt")) $("gateAtt").onclick = function () { openAttendance(this); };
+    $("gateAgain").onclick = function () { gateCheck(true); };
+    $("gateOut").onclick = async function () { S.gateOn = null; await sb.auth.signOut(); showSignIn(); };
+    if (was) toast("You've clocked out, so the board is hidden.");
+  }
+  async function gateCheck(byHand) {
+    var r; try { r = await sb.rpc("clock_gate_status"); } catch (e) { r = { error: e }; }
+    if (r.error || !r.data) { if (byHand) toast(r.error ? r.error.message || String(r.error) : "Try again.", true); return; }
+    if (S.gateOn && !r.data.closed) { S.gateOn = null; return loadApp(); }
+    if (S.gateOn && byHand) toast("You're not clocked in yet.", true);
+    if (!S.gateOn && S.me && r.data.closed) clockedOut(r.data);
+  }
+  setInterval(function () { if ((S.gated || S.gateOn) && document.visibilityState === "visible") gateCheck(false); }, 30000);
+  document.addEventListener("visibilitychange", function () { if ((S.gated || S.gateOn) && document.visibilityState === "visible") gateCheck(false); });
 
   var redraw = null;
   function onChange(p) {
@@ -5643,6 +5685,7 @@
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clVoice"' + (b.voice ? " checked" : "") + "> Voice calls: caller menu and calls in the app (add-on, needs Calls)</label>" +
+      '<label class="check"><input type="checkbox" id="clAttendance"' + (b.attendance ? " checked" : "") + "> Attendance (add-on, currently in testing)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -5658,7 +5701,7 @@
     var was = id ? ((S.clients || []).filter(function (x) { return x.id === id; })[0] || {}).brand || {} : {};
     var p = { id: id, name: $("clName").value, slug: $("clSlug") ? $("clSlug").value.trim() : "", drops_day_end: $("clEnd").value,
       yards: $("clYards").value.split(/[\s,]+/).filter(Boolean),
-      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, topup: $("clTopup").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked } };
+      brand: { short: $("clShort").value, colour: colour, ink: $("clInk").value, soft: hexMix(colour, "#FFFFFF", 0.88), text: hexMix(colour, "#000000", 0.35), host: $("clHost").value.trim().toLowerCase(), theme: $("clLook").value, picks_yard: $("clPicksYard").checked, lane_planner: $("clLanes").checked, collections: $("clCollections").checked, topup: $("clTopup").checked, texts: $("clTexts").checked, calls: $("clCalls").checked, voice: $("clVoice").checked, attendance: $("clAttendance").checked } };
     // Same colour as before: keep their hand-picked tints rather than recalculating.
     if (was.colour && was.colour.toUpperCase() === colour) { p.brand.soft = was.soft || p.brand.soft; p.brand.text = was.text || p.brand.text; }
     $("clGo").disabled = true;
@@ -6558,11 +6601,12 @@
       '<button type="button" class="btn ghost" data-copy="' + esc(link) + '">Copy my link</button></div>';
   }
   function renderMe() {
+    var attendance = attendanceLinks();
     if (opsDesk() && !S.platform) {
       // A wide screen: you and your alerts, your PIN, and the tutorials side by side.
       var tuts = myTutorials();
       return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
-        '<div class="me-desk"><div class="me-col">' + notifyHtml() + discordSwitchHtml() + myLinkHtml() + "</div>" +
+        '<div class="me-desk"><div class="me-col">' + attendance + notifyHtml() + discordSwitchHtml() + myLinkHtml() + "</div>" +
         '<div class="me-col">' + pinFormHtml() + "</div>" +
         '<div class="me-col">' + opsPanel("Tutorials", tuts.length + (tuts.length === 1 ? " video" : " videos"), '<div class="me-tuts">' + tuts.map(function (x) {
           return '<button type="button" data-tutorial="' + x[0] + '"><span>' + esc(x[1]) + '<small class="num">' + x[2] + "</small></span><b>Play</b></button>";
@@ -6570,7 +6614,33 @@
     }
     return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
       (S.platform ? "" : notifyHtml() + discordSwitchHtml()) +
-      myLinkHtml() + pinFormHtml();
+      attendance + myLinkHtml() + pinFormHtml();
+  }
+  var attendanceAccess = {};
+  function attendanceLinks() {
+    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return '';
+    var key = S.me.id, access = attendanceAccess[key];
+    if (access === undefined) {
+      attendanceAccess[key] = false;
+      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager')]).then(function (r) {
+        if (!r[0].error && r[0].data) {
+          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true};
+          if (S.me && S.me.id === key && S.view === 'me') render();
+        }
+      }, function () {});
+      return '';
+    }
+    if (!access) return '';
+    return '<div class="row-actions"><button class="btn brand" type="button" data-attendance="staff">Attendance</button>' +
+      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div>';
+  }
+  async function openAttendance(button) {
+    button.disabled = true;
+    try {
+      var result = await callFunction('aero-access', {target: button.dataset.attendance}, true);
+      if (!result.token_hash) throw new Error('Could not open Attendance.');
+      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
+    } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
   }
   function pinFormHtml() {
     return '<form class="box pinbox" id="pinChange" novalidate><strong>Change my PIN</strong><p class="note">Your link stays the same.</p>' +
@@ -7613,6 +7683,7 @@
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
+    if (t.dataset.attendance) return openAttendance(t);
     if ((t.dataset.payfold !== undefined || t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
     if (t.dataset.payfold !== undefined) return togglePayFold();
     if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
@@ -7792,7 +7863,7 @@
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
     if (t.dataset.create !== undefined) return createSheet();
     if (t.dataset.reloadlog !== undefined) { S.activity = null; render(); return; }
-    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sb = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sb) sb.focus({ preventScroll: true }); return; }
+    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sectionButton = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sectionButton) sectionButton.focus({ preventScroll: true }); return; }
     if (t.dataset.dashjump) {
       var want = DASH_SEC_OF[t.dataset.dashjump];
       if (want && want !== (S.dashSec || "overview")) { S.dashSec = want; render(); }

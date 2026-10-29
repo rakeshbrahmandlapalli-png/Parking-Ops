@@ -489,9 +489,11 @@ await scenario(async () => {
 // 18a0. DROPS by hour: morning is up to 17:30, night from 17:31
 await scenario(async () => {
   const db = makeDb();
-  db.bookings.find((x) => x.id === "b1").return_at = new Date(TONIGHT + "T17:30:00+01:00").toISOString();
-  db.bookings.find((x) => x.id === "b2").return_at = new Date(TONIGHT + "T17:31:00+01:00").toISOString();
   const page = await phone(browser, db, { width: 1000 });
+  // Use the browser's Europe/London zone, including GMT after the clock change.
+  const times = await page.evaluate(day => ['17:30','17:31'].map(time => new Date(day+'T'+time+':00').toISOString()), TONIGHT);
+  db.bookings.find((x) => x.id === "b1").return_at = times[0];
+  db.bookings.find((x) => x.id === "b2").return_at = times[1];
   await open(page);
   await page.click("#psBtn");
   await sleep(500);

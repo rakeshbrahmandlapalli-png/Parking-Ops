@@ -1,29 +1,63 @@
-// TAKEOFF OPS — browser tests: the real app (public/) in Chromium, phone-sized,
-// against a pretend Supabase that behaves like the real one and records every
-// call. Nothing touches the live database.
-//
-//   cd checks/e2e && npm install playwright@1 && node run.mjs
-//   (Chromium: set CHROMIUM=/path/to/chrome if Playwright's own isn't installed)
-//
-// Every line prints PASS or FAIL; the run ends with the totals and exits 1 on
-// any failure. Run it before merging a change to public/.
-//
-// The sections live in checks/e2e/sections (run in file-name order), the shared
-// server, pretend Supabase and helpers in harness.mjs, STRESS=1 in stress.mjs and
-// SHOTS=dir in previews.mjs.
-import { fs, passed, check, cspBlocked, server, browser, failed } from "./harness.mjs";
-import { stressTests } from "./stress.mjs";
-import { shots } from "./previews.mjs";
+// Each section gets a fresh Chromium process. No live services are used.
+import { readdirSync } from 'node:fs';
+import { fork } from 'node:child_process';
 
-// STRESS=1 node run.mjs: only the stress tests (big sheets on a slow phone, bad
-// signal, big imports), in stress.mjs. The normal run skips them.
-// SHOTS=dir node run.mjs: only screenshots of the Operations look (SHOTS_THEME=stdplus for another), for previews.
-if (process.env.SHOTS) { await shots(process.env.SHOTS); await browser.close(); server.close(); process.exit(0); }
-if (process.env.STRESS) { await stressTests(); await browser.close(); server.close(); console.log("\n" + passed + " passed, " + failed + " failed"); process.exit(failed ? 1 : 0); }
-
-for (const f of fs.readdirSync(new URL("./sections/", import.meta.url)).filter((f) => /^\d\d-.+\.mjs$/.test(f)).sort()) await import("./sections/" + f);
-
-check("the security policy blocked nothing the app needs", cspBlocked.length === 0, cspBlocked.slice(0, 3));
-await browser.close(); server.close();
-console.log("\n" + passed + " passed, " + failed + " failed");
-process.exit(failed ? 1 : 0);
+if (!process.env.E2E_SECTION && !process.env.STRESS && !process.env.SHOTS) {
+  const allSections = readdirSync(new URL('./sections/', import.meta.url)).filter(f => /^\d\d-.+\.mjs$/.test(f)).sort();
+  // The 250ms tap benchmark must not compete with another browser section.
+  const performanceSections = allSections.filter(file => file === '07-office-and-key-check.mjs');
+  const sections = allSections.filter(file => !performanceSections.includes(file));
+  let passed = 0, failed = 0;
+  const active = new Set();
+  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+    console.error(`Regression run interrupted by ${signal}; incomplete run is a failure.`);
+    for (const child of active) child.kill(signal);
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  });
+  // Bounded parallelism keeps memory use predictable without one global timeout.
+  async function worker(queue = sections) {
+    while (queue.length) {
+      const section = queue.shift();
+      await new Promise(resolve => {
+        console.log(`\nSECTION ${section}`);
+        const child = fork(new URL('./run.mjs', import.meta.url), [], { env: { ...process.env, E2E_SECTION: section }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+        active.add(child);
+        let result;
+        child.on('message', message => { if (message.type === 'summary') result = message; });
+        child.on('error', error => console.error(`${section}: ${error.message}`));
+        child.on('exit', (code, signal) => {
+          active.delete(child);
+          if (result) { passed += result.passed; failed += result.failed; }
+          if (!result || signal || (code !== 0 && !result.failed)) {
+            failed++;
+            console.error(`FAIL ${section}: incomplete browser run (exit=${code}, signal=${signal}, summary=${!!result})`);
+          }
+          resolve();
+        });
+      });
+    }
+  }
+  await Promise.all([worker(), worker()]);
+  await worker(performanceSections);
+  console.log(`\nTOTAL ${passed} passed, ${failed} failed`);
+  process.exitCode = failed ? 1 : 0;
+} else {
+  const h = await import('./harness.mjs');
+  try {
+    if (process.env.SHOTS) await (await import('./previews.mjs')).shots(process.env.SHOTS);
+    else if (process.env.STRESS) await (await import('./stress.mjs')).stressTests();
+    else {
+      if (!/^\d\d-[\w-]+\.mjs$/.test(process.env.E2E_SECTION)) throw new Error('Invalid section');
+      await import('./sections/' + process.env.E2E_SECTION);
+    }
+    h.check('the security policy blocked nothing the app needs', h.cspBlocked.length === 0, h.cspBlocked.slice(0, 3));
+  } catch (error) {
+    h.check('browser section completed', false, String(error.stack || error));
+  } finally {
+    await h.browser.close();
+    h.server.close();
+  }
+  console.log(`\n${process.env.E2E_SECTION || 'special'}: ${h.passed} passed, ${h.failed} failed`);
+  if (process.send) await new Promise(resolve => process.send({ type: 'summary', passed: h.passed, failed: h.failed }, resolve));
+  process.exit(h.failed ? 1 : 0);
+}

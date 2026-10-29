@@ -1,0 +1,15 @@
+(async function(){
+ const base=window.STAGING_CONFIG.apiBase,headers={'Content-Type':'application/json',apikey:window.STAGING_CONFIG.publicKey};
+ const status=document.getElementById('error');
+ async function request(path,body,token){const response=await fetch(base+path,{method:body?'POST':'GET',headers:{...headers,...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(data.message||data.msg||data.error);return data;}
+ try{
+ const info=await request('/info');document.getElementById('info').textContent=JSON.stringify(info,null,2);
+ const accounts=await request('/accounts');
+ for(const a of accounts){const box=document.createElement('article');const title=document.createElement('h2');title.textContent=a.name+' · '+a.company;box.append(title);const text=document.createElement('pre');text.textContent='Email: '+a.email+'\nPassword: '+a.password+'\nParking PIN: '+a.pin+'\nUUID: '+a.id;box.append(text);const link=document.createElement('a');link.href='/#t='+a.link;link.textContent='Open fictional Parking account';box.append(link);document.getElementById('accounts').append(box);}
+ async function manager(){const a=accounts.find(a=>a.name===document.getElementById('manager').value);return (await request('/auth/v1/token?grant_type=password',{email:a.email,password:a.password})).access_token;}
+ document.getElementById('site').onclick=()=>navigator.geolocation.getCurrentPosition(async pos=>{try{await request('/control/site',{lat:pos.coords.latitude,lng:pos.coords.longitude,require_on_site:document.getElementById('strict').checked},await manager());status.textContent='Only this fictional tenant’s test site changed. Coordinates are ephemeral.';}catch(e){status.textContent=e.message;}},e=>{status.textContent=e.message;},{enableHighAccuracy:true,timeout:15000});
+ document.getElementById('revoke').onclick=async()=>{try{const a=accounts.find(a=>a.name===document.getElementById('staff').value);await request('/control/revoke',{user:a.id},await manager());status.textContent='Synthetic access revoked. Existing supported shifts may finish.';}catch(e){status.textContent=e.message;}};
+ document.getElementById('restore').onclick=async()=>{try{const a=accounts.find(a=>a.name===document.getElementById('staff').value);await request('/control/restore',{user:a.id},await manager());status.textContent='Synthetic access restored.';}catch(e){status.textContent=e.message;}};
+ document.getElementById('notice').onclick=async()=>{try{if(await Notification.requestPermission()!=='granted')throw Error('Notification permission not granted');const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;await reg.showNotification('Synthetic staging notification',{body:'Local display only — no remote delivery claim',data:{url:'/attendance/?pilot=1'}});status.textContent='Local OS notification requested; verify it on this device.';}catch(e){status.textContent=e.message;}};
+ }catch(e){status.textContent='Staging stopped: '+e.message;}
+})();

@@ -75,6 +75,7 @@
     if (t.dataset.copy === "stats") return putOnClipboard(copyText("stats"));
     if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast("Copied"); } catch (err) { toast("Couldn't copy: select the link and copy it", true); } return; }
     if (!S.me) return;
+    if (t.dataset.attendance) return openAttendance(t);
     if ((t.dataset.payfold !== undefined || t.dataset.payfilter !== undefined || t.dataset.paydetails || t.dataset.paybooking || t.dataset.payproof) && !boardPaymentsAvailable()) return;
     if (t.dataset.payfold !== undefined) return togglePayFold();
     if (t.dataset.payfilter !== undefined) { S.paymentFilter = t.dataset.payfilter; render(); return; }
@@ -254,7 +255,7 @@
     if (t.dataset.restart !== undefined) { S.imp = newImport(S.imp.kind); render(); return; }
     if (t.dataset.create !== undefined) return createSheet();
     if (t.dataset.reloadlog !== undefined) { S.activity = null; render(); return; }
-    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sb = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sb) sb.focus({ preventScroll: true }); return; }
+    if (t.dataset.dashsec) { S.dashSec = t.dataset.dashsec; render(); window.scrollTo(0, 0); var sectionButton = document.querySelector('[data-dashsec="' + S.dashSec + '"]'); if (sectionButton) sectionButton.focus({ preventScroll: true }); return; }
     if (t.dataset.dashjump) {
       var want = DASH_SEC_OF[t.dataset.dashjump];
       if (want && want !== (S.dashSec || "overview")) { S.dashSec = want; render(); }

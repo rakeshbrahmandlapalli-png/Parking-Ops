@@ -138,11 +138,12 @@
       '<button type="button" class="btn ghost" data-copy="' + esc(link) + '">Copy my link</button></div>';
   }
   function renderMe() {
+    var attendance = attendanceLinks();
     if (opsDesk() && !S.platform) {
       // A wide screen: you and your alerts, your PIN, and the tutorials side by side.
       var tuts = myTutorials();
       return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
-        '<div class="me-desk"><div class="me-col">' + notifyHtml() + discordSwitchHtml() + myLinkHtml() + "</div>" +
+        '<div class="me-desk"><div class="me-col">' + attendance + notifyHtml() + discordSwitchHtml() + myLinkHtml() + "</div>" +
         '<div class="me-col">' + pinFormHtml() + "</div>" +
         '<div class="me-col">' + opsPanel("Tutorials", tuts.length + (tuts.length === 1 ? " video" : " videos"), '<div class="me-tuts">' + tuts.map(function (x) {
           return '<button type="button" data-tutorial="' + x[0] + '"><span>' + esc(x[1]) + '<small class="num">' + x[2] + "</small></span><b>Play</b></button>";
@@ -150,7 +151,33 @@
     }
     return '<h2 class="title">' + esc(S.me.name) + '</h2><p class="note">' + esc(ROLE_LABEL[S.me.role] || S.me.role) + " · " + esc(S.company.name) + "</p>" +
       (S.platform ? "" : notifyHtml() + discordSwitchHtml()) +
-      myLinkHtml() + pinFormHtml();
+      attendance + myLinkHtml() + pinFormHtml();
+  }
+  var attendanceAccess = {};
+  function attendanceLinks() {
+    if (!S.company || !S.company.brand || S.company.brand.attendance !== true) return '';
+    var key = S.me.id, access = attendanceAccess[key];
+    if (access === undefined) {
+      attendanceAccess[key] = false;
+      Promise.all([sb.rpc('aero_current_company_id'), sb.rpc('aero_is_manager')]).then(function (r) {
+        if (!r[0].error && r[0].data) {
+          attendanceAccess[key] = {manager: !r[1].error && r[1].data === true};
+          if (S.me && S.me.id === key && S.view === 'me') render();
+        }
+      }, function () {});
+      return '';
+    }
+    if (!access) return '';
+    return '<div class="row-actions"><button class="btn brand" type="button" data-attendance="staff">Attendance</button>' +
+      (access.manager ? '<button class="btn ghost" type="button" data-attendance="manager">Attendance manager</button>' : '') + '</div>';
+  }
+  async function openAttendance(button) {
+    button.disabled = true;
+    try {
+      var result = await callFunction('aero-access', {target: button.dataset.attendance}, true);
+      if (!result.token_hash) throw new Error('Could not open Attendance.');
+      location.assign((window.STAGING_CONFIG ? '/attendance/' : 'https://aero-attendance.vercel.app/') + (button.dataset.attendance === 'manager' ? 'admin.html' : '') + '?pilot=1#attendance_token=' + encodeURIComponent(result.token_hash));
+    } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
   }
   function pinFormHtml() {
     return '<form class="box pinbox" id="pinChange" novalidate><strong>Change my PIN</strong><p class="note">Your link stays the same.</p>' +
