@@ -138,6 +138,48 @@
   }
   document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("#clockBtn")) clockSheet(); });
   setInterval(function () { if (document.visibilityState === "visible" && S.me) clockBtnPlace(); }, 60000);
+  // ── Settings → Attendance (part 141): an owner pauses the clock-in lock for the whole company ──
+  // Nobody's own lock switch changes, so Resume puts everyone back as they were.
+  var LP = { st: null, missing: false, ask: false, busy: false, loading: false };
+  function lockPauseHtml() {
+    if (!S.me || S.platform || S.me.role !== "owner" || !(S.company && S.company.brand && S.company.brand.attendance === true)) return "";
+    if (!LP.st && !LP.missing && !LP.loading) loadLockPause();
+    return setBox("attendance", "Attendance", LP.st ? (LP.st.paused ? "Lock paused" : LP.st.locked + " locked") : "", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">', '<div id="lpBox">' + lockPauseInner() + "</div>");
+  }
+  function lockPauseInner() {
+    if (LP.missing) return '<p class="note">Not available yet.</p>';
+    if (!LP.st) return '<p class="note">Loading…</p>';
+    var st = LP.st, n = +st.locked || 0;
+    if (st.paused) {
+      return '<p class="note"><b>The lock is paused.</b> Everyone can use Parking Ops without clocking in' + (st.by ? ". Paused by " + esc(st.by) : "") + '. Each person\'s own lock setting is kept.</p>' +
+        '<div class="row-actions"><button type="button" class="btn brand" data-lockpause="resume"' + (LP.busy ? " disabled" : "") + ">Resume the lock</button></div>";
+    }
+    if (LP.ask) {
+      return '<p class="note">Let all ' + n + " locked " + (n === 1 ? "person" : "people") + ' in without clocking in? Nobody\'s own setting changes, and you can resume at any time.</p>' +
+        '<div class="row-actions"><button type="button" class="btn ghost" data-lockpause="cancel">Cancel</button><button type="button" class="btn brand" data-lockpause="yes"' + (LP.busy ? " disabled" : "") + ">Yes, pause the lock</button></div>";
+    }
+    return '<p class="note">' + (n ? n + " " + (n === 1 ? "person has" : "people have") + " the lock on: clocked out, they see nothing." : "Nobody has the lock on.") + ' If clocking in stops working for someone, pause it here. Switch one person on or off in Staff &amp; access.</p>' +
+      '<div class="row-actions"><button type="button" class="btn ghost" data-lockpause="pause">Pause the lock for everyone</button></div>';
+  }
+  function lockPauseDraw() { var b = $("lpBox"); if (b) b.innerHTML = lockPauseInner(); }
+  async function loadLockPause() {
+    LP.loading = true;
+    var r = await sb.rpc("clock_gate_pause_status");
+    LP.loading = false;
+    if (r.error || !r.data) LP.missing = true; else { LP.missing = false; LP.st = r.data; }
+    lockPauseDraw();
+  }
+  async function lockPauseClick(what) {
+    if (what === "pause") { LP.ask = true; return lockPauseDraw(); }
+    if (what === "cancel") { LP.ask = false; return lockPauseDraw(); }
+    if (LP.busy) return;
+    LP.busy = true; lockPauseDraw();
+    var r = await sb.rpc("clock_gate_pause_set", { p_on: what === "yes" });
+    LP.busy = false; LP.ask = false;
+    if (r.error) { lockPauseDraw(); return toast(r.error.message, true); }
+    toast(what === "yes" ? "Lock paused for everyone" : "Lock resumed");
+    LP.st = null; LP.missing = false; await loadLockPause(); render();
+  }
   // ── who is on shift now (owners and managers of a client with Attendance) ──
   // Read from Attendance's own shift list; a failed read just shows nothing.
   var SHIFTS = { at: 0, by: null, people: null, sites: {}, busy: false };

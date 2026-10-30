@@ -267,6 +267,14 @@ function rpc(db, fn, a) {
       if (db.noAttPart) throw new Error("Could not find the function public.attendance_people");
       return db.staff.filter((p) => !p.removed_at && p.active !== false).map((p) => ({ staff_id: p.id, attendance: false, locked: false, on_shift: false, ...((db.att || {})[p.id] || {}) }));
     }
+    case "clock_gate_pause_status": {
+      if (db.noPausePart) throw new Error("Could not find the function public.clock_gate_pause_status");
+      return { paused: !!db.pause, by: db.pause ? "RAKESH" : null, locked: Object.values(db.att || {}).filter((x) => x.locked).length };
+    }
+    case "clock_gate_pause_set": {
+      if (db.me.role !== "owner") throw new Error("Only an owner can do this.");
+      db.pause = !!a.p_on; (db.pauseCalls = db.pauseCalls || []).push(a.p_on); return null;
+    }
     case "attendance_person_set": case "clock_gate_set": {
       if (db.me.role !== "owner") throw new Error("Only an owner can do this.");
       if (a.p_staff === db.me.id) throw new Error("Not allowed.");
