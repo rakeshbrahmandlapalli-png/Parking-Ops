@@ -189,5 +189,15 @@ await db.exec(fs.readFileSync(new URL("../setup/rollback/141-lock-pause-rollback
 await as("rakesh", () => q("select clock_gate_pause_set(true)"));
 check("141 rollback: the pause no longer opens the gate", (await sees("aashish")).length === 0);
 
+
+// Part 142: the lock belongs to the client; the platform no longer switches people.
+await db.exec(fs.readFileSync(new URL("../setup/142-lock-client-owners-only.sql", import.meta.url), "utf8"));
+await db.exec(fs.readFileSync(new URL("../setup/142-lock-client-owners-only.sql", import.meta.url), "utf8")); // safe to run again
+await clockIn("rakesh"); // back on shift (the owner must be clocked in to use anything)
+check("part 142: a platform admin can no longer switch the lock", await as("admin", () => fails("select clock_gate_set($1,true)", [staff.aashish], /Not allowed/)));
+check("part 142: a client owner still can, for their own people", await as("rakesh", () => q("select clock_gate_set($1,false)", [staff.anil])).then(() => true));
+check("part 142: still never themselves or another company", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.rakesh], /Not allowed/)) && await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.apb], /Not allowed/)));
+check("part 142: the line is logged under the owner's own name", (await q("select count(*)::int n from activity where value='Clock in to see the board: off for ANIL' and staff_name='RAKESH'"))[0].n === 1);
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
