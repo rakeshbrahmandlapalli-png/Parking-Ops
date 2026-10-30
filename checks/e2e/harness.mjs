@@ -497,8 +497,8 @@ async function backend(ctx, db) {
     if (p === "/rest/v1/customer_sms") return reply(200, (db.sms || []).filter(t => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")));
     if (p === "/rest/v1/customer_texts") return reply(200, (db.texts || []).filter((t) => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")).sort((x, y) => (x.at < y.at ? 1 : -1)));
     if (p === "/rest/v1/flight_runs") return reply(200, db.flightRuns || []);
-    if (p === "/rest/v1/aero_worksites") return reply(200, (db.aero && db.aero.sites) || []);
-    if (p === "/rest/v1/aero_shifts") return reply(200, (db.aero && db.aero.shifts) || []);
+    if (p === "/rest/v1/aero_worksites") return reply(200, (db.aeroSites && db.aeroSites.length ? db.aeroSites : (db.aero && db.aero.sites)) || []);
+    if (p === "/rest/v1/aero_shifts") return reply(200, q.clock_out_at === "is.null" ? ((db.aero && db.aero.openAll) || []) : ((db.aero && db.aero.shifts) || []));
     if (p === "/rest/v1/staff") return reply(200, db.staff);
     if (p === "/rest/v1/sheets") return reply(200, db.sheets);
     if (p === "/rest/v1/bookings") {

@@ -408,7 +408,7 @@
       '<label class="field">Role<select id="newRole">' + ["bongo", "terminal", "office", "view"].concat(S.me.role === "owner" || S.me.role === "manager" ? ["manager"] : [], S.me.role === "owner" ? ["owner"] : []).map(function (r) { return '<option value="' + r + '">' + ROLE_LABEL[r] + "</option>"; }).join("") + "</select></label>" +
       '<button class="btn brand" id="addGo">Add and get link</button></form>' +
       '<div class="box staffbox">' + people.map(function (p) {
-        return '<div class="rowline' + (p.active ? "" : " off") + '" data-initial="' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + '"><div class="grow"><strong>' + esc(p.name) + '</strong><div class="note">' + esc(ROLE_LABEL[p.role] || p.role) + (p.active ? "" : " · switched off") + "</div></div>" +
+        return '<div class="rowline' + (p.active ? "" : " off") + '" data-initial="' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + '"><div class="grow"><strong>' + esc(p.name) + '</strong><div class="note">' + esc(ROLE_LABEL[p.role] || p.role) + (p.active ? "" : " · switched off") + "</div>" + (p.active ? shiftChip(p) : "") + "</div>" +
           (p.id === S.me.id ? '<span class="note">You</span>' : '<div class="sbtns">' + (canManage(p) ? '<button type="button" class="btn ghost small" data-manage="' + p.id + '">PIN and access</button>' : "") +
             (canChange(p) ? '<button type="button" class="btn ghost small" data-reset="' + p.id + '">New link</button><button type="button" class="btn ghost small" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "") + "</div>") + "</div>";
       }).join("") + "</div>";
@@ -429,7 +429,7 @@
           (canChange(p) ? '<button type="button" data-reset="' + p.id + '">New link</button><button type="button" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "");
         return '<div class="ops-person' + (p.active ? "" : " off") + '"><i>' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + "</i>" +
           '<div class="grow"><strong>' + esc(p.name) + "</strong><small>" + (p.id === S.me.id ? "Your account" : "Staff member") + "</small><span>" + esc(ROLE_LABEL[p.role] || p.role) + "</span></div>" +
-          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") +
+          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") + (p.active ? shiftChip(p) : "") +
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }

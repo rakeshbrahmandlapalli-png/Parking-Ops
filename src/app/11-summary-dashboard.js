@@ -356,7 +356,7 @@
       (cap ? '<span><strong class="num' + (total > cap ? " bad" : "") + '">' + Math.abs(cap - total) + "</strong><small>" + (total > cap ? "over capacity" : "spaces free") + "</small></span>" : '<span><strong class="num' + (o.late ? " bad" : "") + '">' + o.late + "</strong><small>past their return</small></span>") + "</div>" +
       (cap ? '<div class="od-occ"><span>Occupancy <b class="num">' + pct + '%</b></span><span>of ' + cap + '</span></div><div class="od-bar ops-capbar' + (total > cap ? " over" : "") + '" role="img" aria-label="' + pct + '% full"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : "") +
       '<div class="od-sitedays"><span>Returning today <b class="num">' + o.countOn(x.today) + '</b></span><span>Tomorrow <b class="num">' + o.countOn(o.tomorrow) + "</b></span>" + (cap && o.late ? '<span class="bad">' + o.late + " past their return</span>" : "") + "</div></section>" +
-      handoverHtml(x.D.handover) + "</aside></section>";
+      onShiftHtml() + handoverHtml(x.D.handover) + "</aside></section>";
     return h;
   }
   async function saveHandover(btn) {

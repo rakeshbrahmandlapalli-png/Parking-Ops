@@ -4760,7 +4760,7 @@
       (cap ? '<span><strong class="num' + (total > cap ? " bad" : "") + '">' + Math.abs(cap - total) + "</strong><small>" + (total > cap ? "over capacity" : "spaces free") + "</small></span>" : '<span><strong class="num' + (o.late ? " bad" : "") + '">' + o.late + "</strong><small>past their return</small></span>") + "</div>" +
       (cap ? '<div class="od-occ"><span>Occupancy <b class="num">' + pct + '%</b></span><span>of ' + cap + '</span></div><div class="od-bar ops-capbar' + (total > cap ? " over" : "") + '" role="img" aria-label="' + pct + '% full"><i style="width:' + Math.min(100, pct) + '%"></i></div>' : "") +
       '<div class="od-sitedays"><span>Returning today <b class="num">' + o.countOn(x.today) + '</b></span><span>Tomorrow <b class="num">' + o.countOn(o.tomorrow) + "</b></span>" + (cap && o.late ? '<span class="bad">' + o.late + " past their return</span>" : "") + "</div></section>" +
-      handoverHtml(x.D.handover) + "</aside></section>";
+      onShiftHtml() + handoverHtml(x.D.handover) + "</aside></section>";
     return h;
   }
   async function saveHandover(btn) {
@@ -6021,7 +6021,7 @@
       '<label class="field">Role<select id="newRole">' + ["bongo", "terminal", "office", "view"].concat(S.me.role === "owner" || S.me.role === "manager" ? ["manager"] : [], S.me.role === "owner" ? ["owner"] : []).map(function (r) { return '<option value="' + r + '">' + ROLE_LABEL[r] + "</option>"; }).join("") + "</select></label>" +
       '<button class="btn brand" id="addGo">Add and get link</button></form>' +
       '<div class="box staffbox">' + people.map(function (p) {
-        return '<div class="rowline' + (p.active ? "" : " off") + '" data-initial="' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + '"><div class="grow"><strong>' + esc(p.name) + '</strong><div class="note">' + esc(ROLE_LABEL[p.role] || p.role) + (p.active ? "" : " · switched off") + "</div></div>" +
+        return '<div class="rowline' + (p.active ? "" : " off") + '" data-initial="' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + '"><div class="grow"><strong>' + esc(p.name) + '</strong><div class="note">' + esc(ROLE_LABEL[p.role] || p.role) + (p.active ? "" : " · switched off") + "</div>" + (p.active ? shiftChip(p) : "") + "</div>" +
           (p.id === S.me.id ? '<span class="note">You</span>' : '<div class="sbtns">' + (canManage(p) ? '<button type="button" class="btn ghost small" data-manage="' + p.id + '">PIN and access</button>' : "") +
             (canChange(p) ? '<button type="button" class="btn ghost small" data-reset="' + p.id + '">New link</button><button type="button" class="btn ghost small" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "") + "</div>") + "</div>";
       }).join("") + "</div>";
@@ -6042,7 +6042,7 @@
           (canChange(p) ? '<button type="button" data-reset="' + p.id + '">New link</button><button type="button" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "");
         return '<div class="ops-person' + (p.active ? "" : " off") + '"><i>' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + "</i>" +
           '<div class="grow"><strong>' + esc(p.name) + "</strong><small>" + (p.id === S.me.id ? "Your account" : "Staff member") + "</small><span>" + esc(ROLE_LABEL[p.role] || p.role) + "</span></div>" +
-          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") +
+          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") + (p.active ? shiftChip(p) : "") +
           (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
       }).join("") + "</div>");
   }
@@ -6848,7 +6848,7 @@
   function clockBtnPlace() {
     var b = $("clockBtn"); if (!b) return;
     var a = S.platform || !S.me ? false : attendanceState();
-    show("clockBtn", !!a); if (!a) return;
+    show("clockBtn", !!a); document.body.classList.toggle("has-clk", !!a); if (!a) return;
     var m = a.shift ? Math.max(0, Math.round((Date.now() - new Date(a.shift.clock_in_at)) / 60000)) : 0;
     b.className = "clkbtn" + (a.shift ? " on" : "");
     b.innerHTML = a.shift ? '<span class="att-dot" aria-hidden="true"></span><span class="num">' + Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m</span>" : "Clock in";
@@ -6863,6 +6863,64 @@
   }
   document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("#clockBtn")) clockSheet(); });
   setInterval(function () { if (document.visibilityState === "visible" && S.me) clockBtnPlace(); }, 60000);
+  // ── who is on shift now (owners and managers of a client with Attendance) ──
+  // Read from Attendance's own shift list; a failed read just shows nothing.
+  var SHIFTS = { at: 0, by: null, people: null, sites: {}, busy: false };
+  var FORGOT_HOURS = 13;
+  function shiftsOn() { return !!(S.me && !S.platform && S.company && S.company.brand && S.company.brand.attendance === true && (S.me.role === "owner" || S.me.role === "manager")); }
+  async function loadShifts(force) {
+    if (!shiftsOn() || SHIFTS.busy || (!force && SHIFTS.by && Date.now() - SHIFTS.at < 30000)) return;
+    SHIFTS.busy = true;
+    try {
+      var r = await Promise.all([
+        sb.from("aero_shifts").select("user_id,clock_in_at,worksite_id").is("clock_out_at", null),
+        sb.from("aero_worksites").select("id,name"),
+        S.me.role === "owner" ? sb.rpc("attendance_people") : Promise.resolve({ data: null })
+      ]);
+      if (r[0].error || !Array.isArray(r[0].data)) { SHIFTS.by = null; return; }
+      SHIFTS.sites = {}; (r[1].data || []).forEach(function (w) { SHIFTS.sites[w.id] = w.name; });
+      SHIFTS.by = {}; r[0].data.forEach(function (x) { SHIFTS.by[x.user_id] = x; });
+      SHIFTS.people = null;
+      if (Array.isArray(r[2].data)) { SHIFTS.people = {}; r[2].data.forEach(function (x) { SHIFTS.people[x.staff_id] = x; }); }
+      SHIFTS.at = Date.now();
+      if (S.view === "staff" && !$("panel").open && !document.querySelector(".ops-dd[open]") && document.activeElement !== $("newName")) render();
+      else if (S.view === "dashboard" && !$("panel").open) render();
+    } catch (e) { SHIFTS.by = null; }
+    finally { SHIFTS.busy = false; }
+  }
+  function shiftLen(x) {
+    var m = Math.max(0, Math.round((Date.now() - new Date(x.clock_in_at)) / 60000));
+    return { m: m, text: Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m", forgot: m >= FORGOT_HOURS * 60 };
+  }
+  function shiftChip(p) {
+    if (!shiftsOn()) return "";
+    loadShifts();
+    if (!SHIFTS.by) return "";
+    var x = p.user_id && SHIFTS.by[p.user_id], pp = SHIFTS.people && SHIFTS.people[p.id];
+    var h = "";
+    if (x) {
+      var s = shiftLen(x), site = SHIFTS.sites[x.worksite_id];
+      h += s.forgot ? '<span class="shiftchip bad">Still clocked in since ' + esc(hhmm(x.clock_in_at)) + " · " + s.text + "</span>"
+        : '<span class="shiftchip on"><i aria-hidden="true"></i>On shift ' + s.text + (site ? " · " + esc(site) : "") + "</span>";
+    } else if (pp && pp.attendance) h += '<span class="shiftchip"><i class="off" aria-hidden="true"></i>Clocked out</span>';
+    if (pp && pp.locked) h += '<span class="shiftchip lock">Lock on</span>';
+    return h ? '<span class="shiftchips">' + h + "</span>" : "";
+  }
+  // Dashboard, beside Site status.
+  function onShiftHtml() {
+    if (!shiftsOn()) return "";
+    loadShifts();
+    if (!SHIFTS.by) return "";
+    var people = Object.keys(S.staff).map(function (k) { return S.staff[k]; }).filter(function (p) { return p.active && !p.removed_at; });
+    var on = people.filter(function (p) { return p.user_id && SHIFTS.by[p.user_id]; }).sort(function (a, b) { return new Date(SHIFTS.by[a.user_id].clock_in_at) - new Date(SHIFTS.by[b.user_id].clock_in_at); });
+    var h = '<section class="od-onshift" aria-label="On shift now"><h2>On shift now <small class="num">' + on.length + " clocked in</small></h2>";
+    if (!on.length) return h + '<p class="od-hnote none">Nobody is clocked in.</p></section>';
+    return h + on.map(function (p) {
+      var x = SHIFTS.by[p.user_id], s = shiftLen(x), site = SHIFTS.sites[x.worksite_id];
+      return '<div class="od-shiftrow' + (s.forgot ? " bad" : "") + '"><i aria-hidden="true"></i><div><strong>' + esc(p.name) + "</strong><small>" +
+        (s.forgot ? "Still clocked in since " + esc(hhmm(x.clock_in_at)) : esc(site || "Clocked in")) + '</small></div><span class="num">' + s.text + "</span></div>";
+    }).join("") + "</section>";
+  }
   // Physical yard positions are shared, confirmed online, and independent of a shift.
   // An add-on: only clients given it on the platform page (Clients → Edit, brand.lane_planner).
   function lanePlanner() { return !!(S.company && S.company.brand && S.company.brand.lane_planner); }
