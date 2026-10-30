@@ -250,7 +250,7 @@ function rpc(db, fn, a) {
       db.company.yard_colours = yc; return { yard_colours: yc };
     }
     case "set_swipe_only": db.company.swipe_only = !!a.p_on; return !!a.p_on;
-    case "admin_clients": return [{ id: "c1", name: "TAKEOFF", slug: "takeoff", yards: ["NB", "S"], brand: { colour: "#F59E0B", host: "takeoff-ops.vercel.app" }, staff: 14, has_owner: true, sheets_7d: 18, cars_7d: 2074, last_activity: now() }];
+    case "admin_clients": return db.adminClients || [{ id: "c1", name: "TAKEOFF", slug: "takeoff", yards: ["NB", "S"], brand: { colour: "#F59E0B", host: "takeoff-ops.vercel.app" }, staff: 14, has_owner: true, sheets_7d: 18, cars_7d: 2074, last_activity: now() }];
     case "admin_health": return db.health === undefined ? healthData() : db.health;
     case "report_errors": return (a.p_list || []).length;
     case "admin_usage": return { db_bytes: 25709715, store_bytes: 0, store_files: 0, clients: [{ id: "c1", name: "TAKEOFF", cars_30d: 2074, sheets_30d: 18, pt_sets_30d: 134, pt_photos_30d: 4277, fr24_calls_30d: 209, fr24_calls_today: 46, timetable_runs_30d: 148, timetable_last_ok: now(), timetable_last_error: "", activity_30d: 5805 }] };
