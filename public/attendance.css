@@ -63,3 +63,5 @@ html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
 .st-row.st-edit input { width: 100%; box-sizing: border-box; min-height: 44px; font-size: 16px; }
 .st-row.st-edit input[type=number] { display: block; width: 140px; margin-top: 4px; }
 .st-row.st-edit input[type=text], .st-row.st-edit input:not([type]) { display: block; margin-top: 4px; }
+.od-shiftrow .btn{margin-left:8px;}
+.od-fix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;}

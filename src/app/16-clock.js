@@ -270,7 +270,7 @@
     SHIFTS.busy = true;
     try {
       var r = await Promise.all([
-        sb.from("aero_shifts").select("user_id,clock_in_at,worksite_id").is("clock_out_at", null),
+        sb.from("aero_shifts").select("id,user_id,clock_in_at,worksite_id").is("clock_out_at", null),
         sb.from("aero_worksites").select("id,name"),
         S.me.role === "owner" ? sb.rpc("attendance_people") : Promise.resolve({ data: null })
       ]);
@@ -303,6 +303,26 @@
     if (pp && pp.locked) h += '<span class="shiftchip lock">Lock on</span>';
     return h ? '<span class="shiftchips">' + h + "</span>" : "";
   }
+  // A manager closing a forgotten shift (Attendance's own aero_clock_out_for: it closes an open break and
+  // records who did it). Asks first; the shift ends at the moment of the tap.
+  var FIX = { id: "", busy: false };
+  async function fixShift(what, id) {
+    if (what === "ask") { FIX.id = id; return render(); }
+    if (what === "cancel") { FIX.id = ""; return render(); }
+    if (FIX.busy) return;
+    FIX.busy = true; render();
+    var r = await sb.rpc("aero_clock_out_for", { p_shift_id: id, p_reason: "Forgotten clock-out, closed from Parking Ops" });
+    FIX.busy = false;
+    if (r.error) { render(); return toast(r.error.message, true); }
+    FIX.id = ""; toast("Shift closed");
+    SHIFTS.at = 0; await loadShifts(true); render();
+  }
+  function fixButtons(x, name) {
+    if (FIX.id === x.id) {
+      return '<div class="od-fix"><span>Clock out ' + esc(name) + ' now?</span><button type="button" class="btn ghost small" data-fixshift="cancel">Cancel</button><button type="button" class="btn brand small" data-fixshift="yes" data-sid="' + esc(x.id) + '"' + (FIX.busy ? " disabled" : "") + ">Yes, clock out</button></div>";
+    }
+    return '<button type="button" class="btn ghost small" data-fixshift="ask" data-sid="' + esc(x.id) + '">Clock out</button>';
+  }
   // Dashboard, beside Site status.
   function onShiftHtml() {
     if (!shiftsOn()) return "";
@@ -315,6 +335,6 @@
     return h + on.map(function (p) {
       var x = SHIFTS.by[p.user_id], s = shiftLen(x), site = SHIFTS.sites[x.worksite_id];
       return '<div class="od-shiftrow' + (s.forgot ? " bad" : "") + '"><i aria-hidden="true"></i><div><strong>' + esc(p.name) + "</strong><small>" +
-        (s.forgot ? "Still clocked in since " + esc(hhmm(x.clock_in_at)) : esc(site || "Clocked in")) + '</small></div><span class="num">' + s.text + "</span></div>";
+        (s.forgot ? "Still clocked in since " + esc(hhmm(x.clock_in_at)) : esc(site || "Clocked in")) + '</small></div><span class="num">' + s.text + "</span>" + (s.forgot ? fixButtons(x, p.name) : "") + "</div>";
     }).join("") + "</section>";
   }
