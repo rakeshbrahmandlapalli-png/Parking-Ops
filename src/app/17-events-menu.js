@@ -89,6 +89,7 @@
     if (t.dataset.ptreg !== undefined) { if (pt) { pt.regSent = true; ptStore(); } setTimeout(function () { if (panelRow && pt) openPt(panelRow); }, 400); return; }
     if (t.dataset.savept !== undefined) return savePtNumber(t);
     if (t.dataset.backup !== undefined) return downloadBackup(t);
+    if (t.dataset.lockpause !== undefined) return lockPauseClick(t.dataset.lockpause);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);

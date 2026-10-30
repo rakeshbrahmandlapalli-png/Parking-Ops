@@ -161,5 +161,33 @@ check("Attendance off leaves the trial list, keeps the link and profile", (await
 check("Sam reads Attendance off again", byName(await people("rakesh")).sam.attendance === false);
 check("a platform admin can still switch the lock for anyone", await gate("anil", true).then(() => true));
 
+// Part 141: an owner pauses the lock for their whole company.
+const part3 = fs.readFileSync(new URL("../setup/141-lock-pause.sql", import.meta.url), "utf8");
+await db.exec(part3);
+await db.exec(part3); // safe to run again
+await clockOut("rakesh");
+await gate("aashish", true); await gate("rakesh", true); await gate("anil", true);
+check("141: before pausing, a locked clocked-out person sees nothing", (await sees("aashish")).length === 0);
+const pst = (who) => as(who, () => q("select clock_gate_pause_status() s")).then((r) => r[0].s);
+check("141: status says not paused and counts the locked", (await pst("rakesh")).paused === false && (await pst("rakesh")).locked >= 3, await pst("rakesh"));
+check("141: a clocked-out owner can still read the status", (await pst("rakesh")).paused === false);
+check("141: staff below manager read nothing", (await pst("wasim")).paused === false && (await pst("wasim")).locked === 0);
+check("141: a non-owner cannot pause", await as("aashish", () => fails("select clock_gate_pause_set(true)", [], /Only an owner/)));
+check("141: another company's manager cannot pause", await as("apb", () => fails("select clock_gate_pause_set(true)", [], /Only an owner/)));
+check("141: signed out cannot pause", await as(null, () => fails("select clock_gate_pause_set(true)", [], /Not allowed/)));
+await as("rakesh", () => q("select clock_gate_pause_set(true)"));
+check("141: paused, the locked and clocked-out see the board", (await sees("aashish")).length === 1 && (await sees("anil")).length === 1 && (await sees("rakesh")).length === 1);
+check("141: paused, status reads paused with who", (await pst("rakesh")).paused === true && (await pst("rakesh")).by === "RAKESH");
+check("141: paused, the gate status is open for a locked person", (await as("aashish", () => q("select clock_gate_status() s")))[0].s.closed === false);
+check("141: another company is not paused", (await sees("apb")).length === 1 && (await pst("apb")).paused === false);
+check("141: pausing is logged under the owner's name", (await q("select count(*)::int n from activity where value='Clock-in lock paused for everyone' and staff_name='RAKESH'"))[0].n === 1);
+check("141: nobody's own lock setting changed", (await q("select count(*)::int n from private.clock_gate where active and company_id=$1", [co.takeoff]))[0].n >= 3);
+await as("rakesh", () => q("select clock_gate_pause_set(false)"));
+check("141: resumed, the lock is back exactly as it was", (await sees("aashish")).length === 0 && (await sees("anil")).length === 0);
+check("141: resuming is logged", (await q("select count(*)::int n from activity where value='Clock-in lock resumed for everyone'"))[0].n === 1);
+await db.exec(fs.readFileSync(new URL("../setup/rollback/141-lock-pause-rollback.sql", import.meta.url), "utf8"));
+await as("rakesh", () => q("select clock_gate_pause_set(true)"));
+check("141 rollback: the pause no longer opens the gate", (await sees("aashish")).length === 0);
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
