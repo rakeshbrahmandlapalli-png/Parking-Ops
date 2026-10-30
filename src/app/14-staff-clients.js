@@ -11,6 +11,20 @@
   // The looks a client's app can wear (brand.theme): "pro" is pro.css, "cards" is cards.css, "premium" is premium.css, "board" is premium.css + board.css.
   var LOOKS = [["", "Standard"], ["pro", "Airport Parking Bay UI"], ["cards", "Cards (light and dark)"], ["premium", "Premium UI"], ["board", "Premium Board"], ["stdplus", "Standard with features"], ["ops", "Operations"], ["ops-refined", "Operations Refined"]];
   function lookName(b) { var l = LOOKS.filter(function (x) { return x[0] === ((b && b.theme) || ""); })[0]; return l ? l[1] : "Standard"; }
+  // One line per client: which add-ons it has, and what the Health numbers say about it (nothing new is read).
+  var ADDONS = [["attendance", "Attendance"], ["texts", "Texts"], ["calls", "Calls"], ["voice", "Voice calls"], ["topup", "SKIDATA top-up"], ["collections", "Collections"], ["lane_planner", "Yard planner"]];
+  function clientAddons(b) {
+    var on = ADDONS.filter(function (a) { return b[a[0]] === true; }).map(function (a) { return a[1]; });
+    return on.length ? "Add-ons: " + on.join(" · ") : "No add-ons";
+  }
+  function clientProblems(c) {
+    var h = ((S.health && S.health.clients) || []).filter(function (x) { return x.id === c.id; })[0], out = [];
+    if (!h) return out;
+    if (h.errors_24h > 0) out.push(h.errors_24h + (h.errors_24h === 1 ? " app error" : " app errors") + " in 24 hours");
+    if (h.live_error || h.timetable_error) out.push("flight checks failing");
+    if (h.auto_import && h.auto_import.last_error) out.push("import error");
+    return out;
+  }
   function renderClients() {
     if (S.clients === undefined) { S.clients = null; loadClients(); }
     var list = S.clients;
@@ -26,6 +40,7 @@
       var last = c.last_activity ? dayShort(c.last_activity) + " " + hhmm(c.last_activity) : "never";
       return '<div class="client' + (c.suspended_at ? " off" : "") + '"><div class="cl1"><span class="swatch" style="background:' + esc(b.colour || "#334155") + '"></span><strong>' + esc(c.name) + "</strong>" + status + "</div>" +
         '<div class="cmeta">' + esc(c.slug) + " · " + esc(host) + " · yards " + esc((c.yards || []).join(", ")) + " · " + esc(lookName(b)) + "</div>" +
+        '<div class="cmeta cadd">' + esc(clientAddons(b)) + (clientProblems(c).length ? ' · <span class="cprob">' + esc(clientProblems(c).join(", ")) + "</span>" : "") + "</div>" +
         '<div class="cnums"><div><b class="num">' + c.staff + "</b><span>staff</span></div><div><b class=\"num\">" + c.cars_7d + "</b><span>cars, last 7 days</span></div><div><b class=\"num\">" + c.sheets_7d + "</b><span>sheets, last 7 days</span></div><div><b>" + esc(last) + "</b><span>last activity</span></div></div>" +
         '<div class="row-actions">' + (c.suspended_at ? "" : '<button type="button" class="btn brand small" data-clientopen="' + c.id + '">Open board</button>') +
         '<button type="button" class="btn ghost small" data-clientedit="' + c.id + '">Edit</button>' +
