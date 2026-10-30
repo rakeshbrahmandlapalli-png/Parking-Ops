@@ -32,3 +32,25 @@
 .clkbtn.on{border-color:#0F7B4A;color:#0F7B4A;}
 .clkbtn.hidden{display:none;}
 html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
+/* Who is on shift: chips on Staff & access, a list on the Dashboard. */
+.shiftchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.ops-side .shiftchips{justify-content:flex-end}
+.shiftchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px;background:#eef1f5;color:#27323f;font-variant-numeric:tabular-nums}
+.shiftchip.on{background:#e8f5ee;color:#0F7B4A}
+.shiftchip.lock{background:#FFF3DD;color:#9A5200}
+.shiftchip.bad{background:#FEF1F0;color:#B42318}
+.shiftchip i{width:8px;height:8px;border-radius:50%;background:#0F7B4A;flex:none}
+.shiftchip i.off{background:#9aa1ad}
+.od-onshift{margin-top:16px;padding-top:16px;border-top:1px solid #eceef2}
+.od-onshift h2{margin:0 0 8px;font-size:18px}
+.od-onshift h2 small{font-size:13px;font-weight:500;color:#5b6676;margin-left:6px}
+.od-shiftrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #eceef2}
+.od-shiftrow:first-of-type{border-top:0}
+.od-shiftrow i{width:8px;height:8px;border-radius:50%;background:#0F7B4A;flex:none}
+.od-shiftrow>div{flex:1;min-width:0}
+.od-shiftrow strong,.od-shiftrow small{display:block}
+.od-shiftrow small{font-size:13px;color:#5b6676}
+.od-shiftrow.bad i{background:#B42318}
+.od-shiftrow.bad small,.od-shiftrow.bad .num{color:#B42318}
+/* The clock button shares the phone's top bar: let the day picker give way. */
+@media(max-width:560px){body.has-clk #sheetPick{flex:0 1 auto;min-width:0;max-width:100px;text-overflow:ellipsis}body.has-clk .who{display:none}body.has-clk .clkbtn{padding:0 6px;gap:4px;font-size:12px}body.has-clk .bar{gap:4px}}
