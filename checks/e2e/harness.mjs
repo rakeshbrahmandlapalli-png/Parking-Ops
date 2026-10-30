@@ -505,6 +505,15 @@ async function backend(ctx, db) {
     if (p === "/rest/v1/customer_sms") return reply(200, (db.sms || []).filter(t => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")));
     if (p === "/rest/v1/customer_texts") return reply(200, (db.texts || []).filter((t) => t.booking_id === String(q.booking_id || "").replace(/^eq\./, "")).sort((x, y) => (x.at < y.at ? 1 : -1)));
     if (p === "/rest/v1/flight_runs") return reply(200, db.flightRuns || []);
+    if (p === "/rest/v1/aero_worksites" && req.method() !== "GET") {
+      db.aeroSites = db.aeroSites || []; const body = JSON.parse(req.postData() || "{}"), id = String(q.id || "").replace(/^eq\./, "");
+      (db.siteCalls = db.siteCalls || []).push({ method: req.method(), id, body });
+      if (db.siteDeny) return reply(403, { message: "new row violates row-level security policy for table \"aero_worksites\"" });
+      if (req.method() === "POST") db.aeroSites.push({ id: "w" + (db.aeroSites.length + 10), ...body });
+      else if (req.method() === "PATCH") Object.assign(db.aeroSites.find((w) => w.id === id) || {}, body);
+      else if (req.method() === "DELETE") db.aeroSites = db.aeroSites.filter((w) => w.id !== id);
+      return reply(200, []);
+    }
     if (p === "/rest/v1/aero_worksites") return reply(200, (db.aeroSites && db.aeroSites.length ? db.aeroSites : (db.aero && db.aero.sites)) || []);
     if (p === "/rest/v1/aero_shifts") return reply(200, q.clock_out_at === "is.null" ? ((db.aero && db.aero.openAll) || []) : ((db.aero && db.aero.shifts) || []));
     if (p === "/rest/v1/staff") return reply(200, db.staff);
