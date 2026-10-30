@@ -1,0 +1,2 @@
+-- Rollback for part 142: put back part 139's clock_gate_set (platform admins may switch the lock for anyone).
+-- Re-run the clock_gate_set block from setup/139-attendance-switches.sql.
