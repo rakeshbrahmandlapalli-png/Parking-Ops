@@ -54,3 +54,12 @@ html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
 .od-shiftrow.bad small,.od-shiftrow.bad .num{color:#B42318}
 /* The clock button shares the phone's top bar: let the day picker give way. */
 @media(max-width:560px){body.has-clk #sheetPick{flex:0 1 auto;min-width:0;max-width:100px;text-overflow:ellipsis}body.has-clk .who{display:none}body.has-clk .clkbtn{padding:0 6px;gap:4px;font-size:12px}body.has-clk .bar{gap:4px}}
+
+/* Settings → Attendance → Clock-in sites */
+.lp-hr { border: 0; border-top: 1px solid #E5E8EE; margin: 16px 0; }
+.st-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid #EEF0F4; flex-wrap: wrap; }
+.st-row.st-edit { display: block; }
+.st-row.st-edit label { display: block; margin: 8px 0; }
+.st-row.st-edit input { width: 100%; box-sizing: border-box; min-height: 44px; font-size: 16px; }
+.st-row.st-edit input[type=number] { display: block; width: 140px; margin-top: 4px; }
+.st-row.st-edit input[type=text], .st-row.st-edit input:not([type]) { display: block; margin-top: 4px; }

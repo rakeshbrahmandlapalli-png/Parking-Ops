@@ -144,7 +144,7 @@
   function lockPauseHtml() {
     if (!S.me || S.platform || S.me.role !== "owner" || !(S.company && S.company.brand && S.company.brand.attendance === true)) return "";
     if (!LP.st && !LP.missing && !LP.loading) loadLockPause();
-    return setBox("attendance", "Attendance", LP.st ? (LP.st.paused ? "Lock paused" : LP.st.locked + " locked") : "", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">', '<div id="lpBox">' + lockPauseInner() + "</div>");
+    return setBox("attendance", "Attendance", LP.st ? (LP.st.paused ? "Lock paused" : LP.st.locked + " locked") : "", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">', '<div id="lpBox">' + lockPauseInner() + "</div>" + stHtml());
   }
   function lockPauseInner() {
     if (LP.missing) return '<p class="note">Not available yet.</p>';
@@ -179,6 +179,86 @@
     if (r.error) { lockPauseDraw(); return toast(r.error.message, true); }
     toast(what === "yes" ? "Lock paused for everyone" : "Lock resumed");
     LP.st = null; LP.missing = false; await loadLockPause(); render();
+  }
+  // ── Settings → Attendance → Clock-in sites: add, change or remove where people may clock in ──
+  // Managers already may change their own company's sites (row-level security); the clock-in check itself stays in the database.
+  var ST = { rows: null, missing: false, loading: false, edit: null, ask: null, busy: false, pos: null, err: "" };
+  function stHtml() {
+    if (!ST.rows && !ST.missing && !ST.loading) stLoad();
+    return '<hr class="lp-hr"><div id="stBox">' + stInner() + "</div>";
+  }
+  function stInner() {
+    if (ST.missing) return "";
+    if (!ST.rows) return '<p class="note">Loading sites…</p>';
+    var head = "<strong>Clock-in sites</strong><p class=\"note\">People can clock in within the radius of a site.</p>";
+    var rows = ST.rows.map(function (w) {
+      if (ST.edit === w.id) {
+        return '<div class="st-row st-edit"><label>Name<input id="stN" value="' + esc(w.name) + '" maxlength="60"></label><label>Radius (m)<input id="stR" type="number" inputmode="numeric" value="' + w.radius_m + '"></label>' +
+          '<div class="row-actions"><button type="button" class="btn ghost" data-site="cancel">Cancel</button><button type="button" class="btn brand" data-site="save" data-sid="' + esc(w.id) + '"' + (ST.busy ? " disabled" : "") + ">Save</button></div></div>";
+      }
+      if (ST.ask === w.id) {
+        return '<div class="st-row"><span>Remove <b>' + esc(w.name) + "</b>? Old shifts are kept.</span>" +
+          '<div class="row-actions"><button type="button" class="btn ghost" data-site="cancel">Cancel</button><button type="button" class="btn brand" data-site="remove" data-sid="' + esc(w.id) + '"' + (ST.busy ? " disabled" : "") + ">Yes, remove</button></div></div>";
+      }
+      return '<div class="st-row"><span><b>' + esc(w.name) + "</b> · " + w.radius_m + ' m</span><span><button type="button" class="btn ghost small" data-site="edit" data-sid="' + esc(w.id) + '">Edit</button> <button type="button" class="btn ghost small" data-site="ask" data-sid="' + esc(w.id) + '">Remove</button></span></div>';
+    }).join("");
+    var add = '<div class="st-row st-edit"><b>Add a site</b><label>Name<input id="stAN" maxlength="60" placeholder="e.g. Yard 3"></label><label>Radius (m)<input id="stAR" type="number" inputmode="numeric" value="200"></label>' +
+      '<div class="note" id="stPos">' + (ST.pos ? "Using your location (" + ST.pos.lat.toFixed(5) + ", " + ST.pos.lng.toFixed(5) + ", about " + Math.round(ST.pos.acc || 0) + " m)." : "Stand at the site and tap Use my location.") + "</div>" +
+      '<div class="row-actions"><button type="button" class="btn ghost" data-site="here">Use my location now</button><button type="button" class="btn brand" data-site="add"' + (ST.busy ? " disabled" : "") + ">Add site</button></div></div>";
+    return head + (rows || '<p class="note">No sites yet.</p>') + add + (ST.err ? '<p class="note" role="alert" style="color:#B42318">' + esc(ST.err) + "</p>" : "");
+  }
+  function stDraw() {
+    var b = $("stBox"); if (!b) return;
+    var keep = { n: $("stAN") && $("stAN").value, r: $("stAR") && $("stAR").value };
+    b.innerHTML = stInner();
+    if ($("stAN") && keep.n != null) { $("stAN").value = keep.n; $("stAR").value = keep.r; }
+  }
+  async function stLoad() {
+    ST.loading = true;
+    var r = await sb.from("aero_worksites").select("id,name,lat,lng,radius_m").order("name");
+    ST.loading = false;
+    if (r.error || !Array.isArray(r.data)) ST.missing = true; else { ST.missing = false; ST.rows = r.data; }
+    stDraw();
+  }
+  async function siteClick(what, id) {
+    ST.err = "";
+    if (what === "edit") { ST.edit = id; ST.ask = null; return stDraw(); }
+    if (what === "ask") { ST.ask = id; ST.edit = null; return stDraw(); }
+    if (what === "cancel") { ST.edit = ST.ask = null; return stDraw(); }
+    if (what === "here") {
+      var b = $("stPos"); if (b) b.textContent = "Finding you…";
+      var p = await clkHere(true);
+      if (!p) { ST.err = "Could not get your location. Turn location on and try again."; return stDraw(); }
+      ST.pos = p; return stDraw();
+    }
+    if (ST.busy) return;
+    var err = "", row;
+    if (what === "save") {
+      var nm = ($("stN").value || "").trim(), rd = parseInt($("stR").value, 10);
+      if (!nm) err = "Give the site a name."; else if (!(rd >= 50 && rd <= 1000)) err = "The radius must be between 50 and 1000 metres.";
+      if (err) { ST.err = err; return stDraw(); }
+      ST.busy = true; stDraw();
+      var r = await sb.from("aero_worksites").update({ name: nm, radius_m: rd }).eq("id", id);
+      ST.busy = false; if (r.error) { ST.err = r.error.message; return stDraw(); }
+      ST.edit = null;
+    } else if (what === "remove") {
+      ST.busy = true; stDraw();
+      var d = await sb.from("aero_worksites").delete().eq("id", id);
+      ST.busy = false; if (d.error) { ST.err = d.error.message; return stDraw(); }
+      ST.ask = null;
+    } else if (what === "add") {
+      var an = ($("stAN").value || "").trim(), ar = parseInt($("stAR").value, 10);
+      if (!an) err = "Give the site a name."; else if (!(ar >= 50 && ar <= 1000)) err = "The radius must be between 50 and 1000 metres."; else if (!ST.pos) err = "Tap Use my location while you are at the site.";
+      if (err) { ST.err = err; return stDraw(); }
+      ST.busy = true; stDraw();
+      var c = await sb.rpc("aero_current_company_id");
+      if (c.error || !c.data) { ST.busy = false; ST.err = c.error ? c.error.message : "Attendance is not set up for this company."; return stDraw(); }
+      var ins = await sb.from("aero_worksites").insert({ company_id: c.data, name: an, lat: ST.pos.lat, lng: ST.pos.lng, radius_m: ar });
+      ST.busy = false; if (ins.error) { ST.err = ins.error.message; return stDraw(); }
+      ST.pos = null; if ($("stAN")) { $("stAN").value = ""; }
+    } else return;
+    CLK.sites = null; ST.rows = null; toast(what === "remove" ? "Site removed" : what === "add" ? "Site added" : "Site saved");
+    await stLoad();
   }
   // ── who is on shift now (owners and managers of a client with Attendance) ──
   // Read from Attendance's own shift list; a failed read just shows nothing.
