@@ -267,6 +267,13 @@ function rpc(db, fn, a) {
       if (db.noAttPart) throw new Error("Could not find the function public.attendance_people");
       return db.staff.filter((p) => !p.removed_at && p.active !== false).map((p) => ({ staff_id: p.id, attendance: false, locked: false, on_shift: false, ...((db.att || {})[p.id] || {}) }));
     }
+    case "aero_clock_out_for": {
+      if (!["owner", "manager"].includes(db.me.role)) throw new Error("Manager access required.");
+      if (db.fixDeny) throw new Error("That shift is already closed.");
+      const open = (db.aero && db.aero.openAll) || [], i = open.findIndex((x) => x.id === a.p_shift_id);
+      if (i < 0) throw new Error("That shift is not one of yours.");
+      (db.fixCalls = db.fixCalls || []).push(a); open.splice(i, 1); return {};
+    }
     case "clock_gate_pause_status": {
       if (db.noPausePart) throw new Error("Could not find the function public.clock_gate_pause_status");
       return { paused: !!db.pause, by: db.pause ? "RAKESH" : null, locked: Object.values(db.att || {}).filter((x) => x.locked).length };
