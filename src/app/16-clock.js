@@ -369,10 +369,12 @@
     var st = LOC.st, a = S.me && attendanceState();
     if (!st || !st.on || st.shared_login || !a || !a.shift || document.visibilityState !== "visible" || !navigator.geolocation) return;
     if (Date.now() - LOC.sentAt < LOC_EVERY - 5000) return;
-    // Never ask for permission from a timer: only send when location is already allowed (it was, to clock in).
-    try { if (navigator.permissions && navigator.permissions.query) { var perm = await navigator.permissions.query({ name: "geolocation" }); if (perm.state !== "granted") return; } } catch (e) {}
-    LOC.sentAt = Date.now();
+    // Location is normally allowed already (it was, to clock in). iPhones often report "prompt" even then, so
+    // while it isn't "granted" ask at most once per app opening; after a fix, keep going; "denied" stops.
+    try { if (navigator.permissions && navigator.permissions.query) { var perm = await navigator.permissions.query({ name: "geolocation" }); if (perm.state === "denied") return; if (perm.state !== "granted" && !LOC.gotFix && LOC.asked) return; } } catch (e) {}
+    LOC.sentAt = Date.now(); LOC.asked = true;
     navigator.geolocation.getCurrentPosition(function (p) {
+      LOC.gotFix = true;
       sb.rpc("i_am_at", { p_lat: p.coords.latitude, p_lng: p.coords.longitude, p_acc: Math.round(p.coords.accuracy || 0) }).then(function (r) {
         if (!r.error && r.data === true) LOC.last = Date.now();
       }, function () {});
