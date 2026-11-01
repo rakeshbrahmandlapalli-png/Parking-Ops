@@ -295,7 +295,8 @@
     try { if (payFolded()) localStorage.removeItem(PAY_FOLD_KEY); else localStorage.setItem(PAY_FOLD_KEY, "1"); } catch (e) {}
     renderBoardPayments();
   }
-  // These are the existing
+  // Not recorded (user, 1 Nov; was Needs checking): a car handed back (CLEAR) with its exit fee
+  // still due, or an exit fee marked paid with no payment photo. These are the existing
   // payment records: a recorded charge settles it (a smaller payment can be
   // the agreed discount), and a waiver is never counted as cash received.
   function paymentPence(n) { return Math.max(0, Math.round((+n || 0) * 100)); }
@@ -308,7 +309,7 @@
     else if (r.charge_method) ch = { state: "paid", amount: paymentPence(r.charge_amount), paid: paymentPence(r.charge_amount), due: 0, word: "Collected" };
     else { var amount = paymentPence(due && due.amount); ch = { state: amount ? "due" : "free", amount: amount, paid: 0, due: amount, word: amount ? "Due" : "No charge" }; }
     var saving = S.queue.some(function (q) { return q.rowId === r.id && (q.fn === "set_exit_paid" || q.fn === "set_overstay_paid" || q.fn === "set_overstay_agreed"); });
-    return { exit: ex, charge: ch, due: ex.due + ch.due, paid: ex.paid + ch.paid, check: ex.state === "paid" && !r.exit_photo, saving: saving };
+    return { exit: ex, charge: ch, due: ex.due + ch.due, paid: ex.paid + ch.paid, check: ex.state === "paid" && !r.exit_photo || ex.state === "due" && !!r.cleared, noPhoto: ex.state === "paid" && !r.exit_photo, saving: saving };
   }
   function boardPaymentsAvailable() {
     var sh = sheet();
@@ -337,7 +338,7 @@
     // Collected counts the whole sheet (a paid car is usually done and off TO DO); Outstanding follows the cars shown.
     S.rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.saving = total.saving || p.saving; });
     rows.forEach(function (r) { total.due += paymentFacts(r).due; });
-    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
+    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Not recorded"]], folded = payFolded();
     var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
     el.classList.toggle("folded", folded);
     el.innerHTML = '<button type="button" class="bpay-caption" data-payfold aria-expanded="' + !folded + '"><strong>Collections</strong><span>' +
@@ -354,7 +355,7 @@
     var p = paymentFacts(r);
     function label(title, x) { return '<span class="bpay-status ' + x.state + '">' + title + (x.amount ? ' <b class="num">' + money(x.amount / 100) + "</b>" : "") + " · " + x.word + "</span>"; }
     var line = '<button type="button" class="bpay-row" data-paydetails="' + esc(r.id) + '" aria-label="Collection details for ' + esc(r.reg) + '">' + label("Exit", p.exit) + label("Overstay / charge", p.charge) +
-      (p.saving ? '<span class="bpay-check">Saving…</span>' : p.check ? '<span class="bpay-check">Needs checking</span>' : "") + '<span class="bpay-arrow" aria-hidden="true">›</span></button>';
+      (p.saving ? '<span class="bpay-check">Saving…</span>' : p.check ? '<span class="bpay-check">' + (p.noPhoto ? "No payment photo" : "Not recorded") + "</span>" : "") + '<span class="bpay-arrow" aria-hidden="true">›</span></button>';
     // Keep one outer element per booking for incremental redraws and swipes.
     html = html.replace('class="row', 'class="row with-payments');
     html = html.replace(chargeTag(r).replace(/^ · /, "") || "\u0000", "").replace(exitTag(r) || "\u0000", "").replace(/<div class="l2 l2t" data-open>\s*<\/div>/, "");
@@ -375,7 +376,7 @@
       '<div class="bpay-balance' + (p.due ? " due" : "") + '">' + (p.due ? money(p.due / 100) + " outstanding" : "No outstanding balance") + '</div><div class="bpay-summary"><span>Collected <b class="num">' + money(p.paid / 100) + '</b></span><span>Outstanding <b class="num">' + money(p.due / 100) + "</b></span></div>" +
       (p.saving ? '<p class="bpay-note" role="status">Payment changes are waiting to save.</p>' : "") +
       record("Exit fee", p.exit, r.exit_method, "exit_by", r.exit_at, "") +
-      (p.exit.state === "paid" ? '<div class="bpay-proof" id="boardPayProof">' + (r.exit_photo ? 'Loading payment proof…' : '<span class="bpay-check">Needs checking · no payment photo recorded</span>') + "</div>" : "") +
+      (p.exit.state === "paid" ? '<div class="bpay-proof" id="boardPayProof">' + (r.exit_photo ? 'Loading payment proof…' : '<span class="bpay-check">Not recorded · no payment photo recorded</span>') + "</div>" : "") +
       record("Overstay / additional charge", p.charge, r.charge_method, "charge_by", r.charge_at, r.charge_reason) +
       '<div class="bpay-footer"><button type="button" data-paybooking="' + esc(r.id) + '">Open booking</button><button type="button" data-close>Back to board</button></div></div>';
     if (!$("panel").open) $("panel").showModal();
