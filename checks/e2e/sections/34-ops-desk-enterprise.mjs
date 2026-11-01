@@ -58,3 +58,33 @@ await scenario(async () => {
   check("Desk: Standard with features at 1440 px has no side bar", !(r.w < 300 && r.h > 600), r);
   await page.context().close();
 });
+// 1 Nov fixes from the user's photos: the minimised Calls bar sat over the figures; open, the board's buttons ran off
+// screen; buttons with a time and name pushed CLEAR / PT out; the menu kept OPERATIONS / MENU.
+for (const theme of ["ops", "ops-refined"]) await scenario(async () => {
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+  const db = deskDb(theme); db.company.brand = { ...db.company.brand, calls: true }; db.company.calls = { on: true };
+  db.callsLog = [{ id: 91, company_id: "c1", at: ago(2), from_number: "+447700900123", booking_id: "w2", kind: "drops", reg: "CD34EFG", name: "X", status: "missed", handled_name: "", handled_by: null }];
+  for (const [width, sb] of [[1440, 224], [1600, 224], [1280, 64]]) {
+    const tag = "Desk calls (" + theme + " " + width + ")";
+    const page = await phone(browser, structuredClone(db), { width }); await page.setViewportSize({ width, height: 900 });
+    await open(page); await page.waitForSelector("#callQueueToggle"); await sleep(400);
+    const g = await page.evaluate(() => {
+      const q = document.getElementById("callQueue").getBoundingClientRect(), hits = [...document.querySelectorAll("#tally button, #colHead, #boardHead")].map((e) => e.getBoundingClientRect());
+      return { qTop: q.top, qBottom: q.bottom, h: innerHeight, over: hits.some((r) => r.width && !(r.bottom <= q.top || r.top >= q.bottom || r.right <= q.left || r.left >= q.right)) };
+    });
+    check(tag + ": the minimised Calls bar sits at the foot, over none of the figures or headings", g.qBottom >= g.h - 24 && !g.over, g);
+    await page.click("#callQueueToggle"); await page.waitForSelector("#callPop"); await sleep(400);
+    const o = await page.evaluate(() => {
+      const q = document.getElementById("callQueue").getBoundingClientRect(), nav = document.getElementById("bnav").getBoundingClientRect(), bar = document.querySelector(".bar").getBoundingClientRect();
+      const rows = [...document.querySelectorAll("#main .drow")].map((r) => r.querySelector(".acts").getBoundingClientRect().right);
+      return { qL: q.left, qT: q.top, navW: Math.round(nav.width), barB: bar.bottom, rows };
+    });
+    check(tag + ": open, the dock starts under the top bar, the side bar is the icon rail and every row's buttons stay clear of it", o.qT >= o.barB && o.navW === 64 && o.rows.length > 3 && o.rows.every((r) => r <= o.qL), o);
+    await page.context().close();
+  }
+  const page = await phone(browser, deskDb(theme), { width: 1440 }); await page.setViewportSize({ width: 1440, height: 900 }); await open(page); await sleep(400);
+  await page.evaluate(() => document.querySelector("#bnav [data-bn=menuBtn]").click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+  const e = await page.evaluate(() => getComputedStyle(document.querySelector("#menuBody > h2"), "::before").content);
+  check("Desk (" + theme + "): the menu has no OPERATIONS / MENU line", e === "none" || e === "normal", e);
+  await page.context().close();
+});
