@@ -631,6 +631,7 @@ const pickKind = async (page, kind) => {
 
 // Each section stands alone: if one breaks part-way, it's reported and the rest still run.
 async function scenario(fn, tag) {
+  if (process.env.TWEAKS_ONLY && tag !== 'tweaks') return;
   if (process.env.LANES_ONLY && tag !== 'lanes') return;
   if (process.env.GATE_ONLY && tag !== 'gate') return;
   if (process.env.KEYS_ONLY && tag !== 'keys') return;

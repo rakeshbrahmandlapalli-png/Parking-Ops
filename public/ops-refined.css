@@ -1130,3 +1130,35 @@ html.ops-refined .ops-strip > .tap[aria-pressed="true"]:not([data-fltile=""]){bo
 
 /* Booking import: the chosen date shortcut in white on navy (24 Oct: .btn.ghost kept navy text). */
 html.ops-refined .bi .bi-presets .btn[aria-pressed=true]{background:var(--op-deep);border-color:var(--op-deep);color:#fff;}
+
+/* Calm (user, 1 Nov: "doesn't need to look like AI made, needs to look enterprise level"): Menu, Activity
+   and Collections in quieter type, sentence-case labels, segmented filters, muted menu icons. */
+html.ops-refined #menuBody > h2::before{content:none!important;}
+html.ops-refined #menuBody > h2{font-size:20px!important;font-weight:600!important;letter-spacing:-.2px!important;}
+html.ops-refined #menuBody > .sub{font-size:13px;color:#5b6675;margin:2px 0 14px;}
+html.ops-refined #menuBody > label,html.ops-refined #menuBody > .mgrp > label{margin:20px 0 6px!important;padding:0 2px!important;border:0!important;background:none!important;font-size:12.5px!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important;color:#5b6675!important;}
+html.ops-refined #menuBody > label + .menu-list,html.ops-refined #menuBody > .mgrp > label + .menu-list{border:1px solid #e3e7ed!important;border-radius:8px!important;overflow:hidden;}
+html.ops-refined #menuBody .menu-list button{min-height:48px!important;padding:0 14px!important;gap:12px;font-size:14.5px!important;font-weight:500!important;color:#1d2733!important;border-top-color:#eef1f5!important;}
+html.ops-refined #menuBody .menu-list button svg.mi{display:block!important;width:18px;height:18px;flex:none;fill:none;stroke:#7a8594;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+html.ops-refined #menuBody .menu-list button::after{color:#a3acb8!important;font-size:16px!important;}
+html.ops-refined #menuBody .menu-list button[aria-current=page]{box-shadow:none!important;background:#f4f7fb!important;color:#0f1b2b!important;font-weight:600!important;}
+html.ops-refined #menuBody .menu-list button[aria-current=page] svg.mi{stroke:var(--brand,#1560BD);}
+html.ops-refined .rf-act .chips{flex-wrap:nowrap!important;gap:0!important;border:1px solid #dfe4ea;border-radius:7px;padding:2px;background:#f3f5f8;overflow:hidden;}
+html.ops-refined .rf-act .chips button{flex:1 1 auto;min-height:30px!important;padding:0 6px!important;border:0!important;border-radius:5px!important;background:none!important;color:#4a5565!important;font-size:12.5px!important;font-weight:500!important;}
+html.ops-refined .rf-act .chips button.on{background:#fff!important;color:#0f1b2b!important;font-weight:600!important;box-shadow:0 0 0 1px #dfe4ea;}
+html.ops-refined .rf-act #actQ{height:36px!important;font-size:14px!important;border-color:#dfe4ea!important;}
+html.ops-refined .rf-act .actday{font-size:12px!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important;color:#5b6675!important;}
+html.ops-refined .rf-act .actrow{padding-top:10px!important;padding-bottom:10px!important;}
+html.ops-refined .rf-act .actrow .at{font-size:12.5px!important;font-weight:500!important;color:#5b6675!important;}
+html.ops-refined .rf-act .actrow strong{font-size:14px!important;font-weight:600!important;}
+html.ops-refined .rf-act .actrow strong .aw{font-weight:400;color:#3c4654;}
+html.ops-refined .rf-act .actrow .note{font-size:12.5px!important;color:#5b6675!important;}
+html.ops-refined .bpay-caption strong{font-size:14px;font-weight:600;}
+html.ops-refined .bpay-totals span{font-size:12px!important;color:#5b6675!important;}
+html.ops-refined .bpay-totals b{font-size:18px!important;font-weight:600!important;}
+html.ops-refined .bpay-filters{gap:0!important;margin:6px 0 8px;padding:2px!important;border:1px solid #dfe4ea!important;border-radius:7px;background:#f3f5f8;}
+html.ops-refined .bpay-filters button{flex:1 1 auto;padding:0 4px!important;min-height:30px!important;border:0!important;border-radius:5px!important;background:none!important;color:#4a5565!important;font-size:12px!important;font-weight:500!important;white-space:nowrap;}
+html.ops-refined .bpay-filters button[aria-pressed=true]{background:#fff!important;color:#0f1b2b!important;font-weight:600!important;box-shadow:0 0 0 1px #dfe4ea;}
+html.ops-refined .bpay-filters button b{font-weight:600;color:inherit;margin-left:2px;}
+@media(max-width:374px){html.ops-refined .bpay-filters button{min-height:34px!important;padding:2px!important;font-size:11.5px!important;line-height:1.1;white-space:normal;}html.ops-refined .bpay-filters button b{display:block;margin:0;}}
+@media(max-width:400px){html.ops-refined .rf-act .chips button{padding:0 3px!important;font-size:12px!important;}}

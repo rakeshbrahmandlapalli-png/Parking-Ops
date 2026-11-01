@@ -124,7 +124,9 @@
     if (PICK_ACTIONS[a.action]) return "picks";
     return a.sheet_id || a.booking_id ? "drops" : "other";
   }
-  var ACT_FILTERS = [["all", "All"], ["drops", "Drops"], ["picks", "Picks"], ["staff", "Staff"], ["settings", "Settings"]];
+  // Yards (user, 1 Nov): yard changes, Yard planner moves and key checks, from DROPS and PICKS alike.
+  function actYard(a) { return a.action === "YARD" || a.action === "LANE MOVE" || /^KEY CHECK/.test(a.action || ""); }
+  var ACT_FILTERS = [["all", "All"], ["drops", "Drops"], ["picks", "Picks"], ["yards", "Yards"], ["staff", "Staff"], ["settings", "Settings"]];
   function activityPremiumHtml() {
     var f = S.actFilter || "all";
     return '<div class="actbar"><div class="chips" role="group" aria-label="Show">' + ACT_FILTERS.map(function (x) {
@@ -132,10 +134,16 @@
       }).join("") + '</div><input type="search" id="actQ" placeholder="Search reg or name" autocomplete="off" aria-label="Search activity" value="' + esc(S.actQ || "") + '"></div>' +
       '<div id="actList">' + activityListHtml() + '</div><div class="row-actions"><button type="button" class="btn ghost small" data-reloadlog>Refresh</button></div>';
   }
+  // Operations Refined (user, 1 Nov: calmer): the reg, then the action in plain words, "EJ71FJO Key check".
+  function actTitle(a) {
+    if (!isRefined()) return esc(a.reg ? a.reg + " · " : "") + esc(nice(a.action).replace(/\bPt\b/g, "PT"));
+    var w = String(a.action || "").toLowerCase().replace(/\bpt\b/g, "PT").replace(/\bsms\b/g, "SMS");
+    return (a.reg ? esc(a.reg) + " " : "") + '<span class="aw">' + esc(w.charAt(0).toUpperCase() + w.slice(1)) + "</span>";
+  }
   function activityListHtml() {
     var f = S.actFilter || "all", q = (S.actQ || "").trim().toUpperCase().replace(/\s+/g, "");
     var rows = S.activity.filter(function (a) {
-      if (f !== "all" && actKind(a) !== f) return false;
+      if (f === "yards" ? !actYard(a) : f !== "all" && actKind(a) !== f) return false;
       return !q || [a.reg, a.customer, a.staff_name, a.action, a.value].join(" ").toUpperCase().replace(/\s+/g, "").indexOf(q) >= 0;
     });
     if (!rows.length) return '<div class="empty">' + (S.activity.length ? "Nothing matches." : "Nothing yet.") + "</div>";
@@ -148,7 +156,7 @@
         h += '<div class="actday">' + (opsDesk() ? (near ? near + " · " : "") + esc(longDate(key)) : near || esc(longDay(key))) + '</div><div class="box actbox">';
         last = key;
       }
-      h += '<div class="actrow k-' + actKind(a) + '"><span class="num at">' + esc(hhmm(a.at)) + '</span><i class="adot d-' + actDot(a) + '" aria-hidden="true"></i><div class="grow"><strong>' + esc(a.reg ? a.reg + " · " : "") + esc(nice(a.action).replace(/\bPt\b/g, "PT")) + "</strong>" +
+      h += '<div class="actrow k-' + actKind(a) + '"><span class="num at">' + esc(hhmm(a.at)) + '</span><i class="adot d-' + actDot(a) + '" aria-hidden="true"></i><div class="grow"><strong>' + actTitle(a) + "</strong>" +
         '<div class="note">' + esc(a.staff_name || "System") + (a.value ? " · " + esc(a.value) : "") + "</div></div></div>";
     });
     return h + "</div>";
