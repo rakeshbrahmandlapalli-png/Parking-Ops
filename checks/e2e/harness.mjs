@@ -274,6 +274,14 @@ function rpc(db, fn, a) {
       if (i < 0) throw new Error("That shift is not one of yours.");
       (db.fixCalls = db.fixCalls || []).push(a); open.splice(i, 1); return {};
     }
+    // part 143: staff location while on shift (db.loc absent = part not applied: the app shows nothing).
+    case "location_status": return db.loc ? { on: !!db.loc.on, by: db.loc.on ? "RAKESH" : null, shared_login: false, on_shift: !!(db.aero && db.aero.open) } : null;
+    case "i_am_at": {
+      if (!db.loc || !db.loc.on || !(db.aero && db.aero.open)) return false;
+      (db.loc.sent = db.loc.sent || []).push(a); return true;
+    }
+    case "staff_locations": return db.loc && db.loc.on && ["owner", "manager"].includes(db.me.role) ? (db.loc.where || []) : [];
+    case "location_share_set": if (db.me.role !== "owner") throw new Error("Only an owner can do this."); db.loc = db.loc || {}; db.loc.on = !!a.p_on; (db.loc.sets = db.loc.sets || []).push(a.p_on); if (!a.p_on) db.loc.where = []; return null;
     case "clock_gate_pause_status": {
       if (db.noPausePart) throw new Error("Could not find the function public.clock_gate_pause_status");
       return { paused: !!db.pause, by: db.pause ? "RAKESH" : null, locked: Object.values(db.att || {}).filter((x) => x.locked).length };
