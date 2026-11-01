@@ -288,56 +288,102 @@
   }
   var staffEdit = null;
   // Attendance and the clock-in lock (part 139): an owner switches both for the other people at their company.
+  // The person panel (1 Nov, the user: "doesn't give the enterprise level feel"): sections of rows with switches,
+  // styles in public/staff-panel.css. The data hooks (data-attswitch, data-perm, #spRole …) are what the code uses.
   var attPeople = {}, attMissing = false;
+  function attShown(p) { return !!(S.company && S.company.brand && S.company.brand.attendance === true) && S.me.role === "owner" && p.id !== S.me.id && !(p.desk_names || []).length && !attMissing; }
+  function spSwitch(kind, on, disabled) {
+    return '<button type="button" class="sp-sw' + (on ? " on" : "") + '" role="switch" aria-checked="' + on + '" data-attswitch="' + kind + '" data-to="' + (on ? "off" : "on") + '"' + (disabled ? " disabled" : "") + "></button>";
+  }
   function attBoxHtml(p) {
-    if (!(S.company && S.company.brand && S.company.brand.attendance === true) || S.me.role !== "owner" || p.id === S.me.id || (p.desk_names || []).length || attMissing) return "";
-    var a = attPeople[p.id];
-    if (!a) return '<label>ATTENDANCE</label><p class="hint">Loading…</p>';
-    function seg(kind, on, off) {
-      return '<div class="pseg">' + [["on", "On", on], ["off", "Off", !on]].map(function (x) {
-        return '<button type="button" data-attswitch="' + kind + '" data-to="' + x[0] + '"' + (x[2] ? ' class="on" aria-pressed="true"' : "") + (kind === "lock" && x[0] === "on" && !a.attendance ? " disabled" : "") + ">" + x[1] + "</button>";
-      }).join("") + "</div>";
-    }
-    return '<label>ATTENDANCE</label>' + seg("attendance", a.attendance) +
-      '<label>PARKING OPS ONLY WHILE CLOCKED IN</label>' + seg("lock", a.locked) +
-      '<p class="hint">' + esc(a.on_shift ? "On shift now." : "Not clocked in now.") + (a.locked ? " Clocked out, they see nothing." : " Turn this on once they have clocked in once.") + "</p>";
+    if (!attShown(p)) return "";
+    var a = attPeople[p.id], h = '<section class="sp-sec sp-a"><h3>Attendance</h3><div class="sp-box">';
+    if (!a) return h + '<div class="sp-row"><div class="sp-t"><small>Loading…</small></div></div></div></section>';
+    return h + '<div class="sp-row"><div class="sp-t"><b id="spAttL">Uses Attendance</b><small>Clocks in and out on their phone</small></div>' + spSwitch("attendance", !!a.attendance, false) + "</div>" +
+      '<div class="sp-row"><div class="sp-t"><b>Lock Parking Ops when clocked out</b><small>' + (a.locked || !a.attendance ? "While clocked out they can't see any bookings or customers" : "Hides bookings and customers while clocked out. Turn on after their first clock-in.") + "</small></div>" +
+      spSwitch("lock", !!a.locked, !a.locked && !a.attendance) + "</div></div></section>";
+  }
+  function spShiftHtml(p) {
+    var a = attShown(p) && attPeople[p.id];
+    if (!a || !a.attendance) return "";
+    return '<span aria-hidden="true">·</span><i class="sp-dot' + (a.on_shift ? " on" : "") + '"></i>' + (a.on_shift ? "On shift now" : "Clocked out");
   }
   async function loadAttPeople(id) {
     if (!(S.company && S.company.brand && S.company.brand.attendance === true) || S.me.role !== "owner") return;
     var r = await sb.rpc("attendance_people");
     if (r.error || !Array.isArray(r.data)) { attMissing = true; } else { attMissing = false; attPeople = {}; r.data.forEach(function (x) { attPeople[x.staff_id] = x; }); }
-    var box = $("spAtt"); if (box && staffEdit === id && S.staff[id]) box.innerHTML = attBoxHtml(S.staff[id]);
+    var box = $("spAtt"); if (box && staffEdit === id && S.staff[id]) { box.innerHTML = attBoxHtml(S.staff[id]); var sh = $("spShift"); if (sh) sh.innerHTML = spShiftHtml(S.staff[id]); }
   }
+  // Permissions in groups; the words are PERMS' without the DROPS: / PICKS: in front.
+  var PERM_GROUPS = [["DROPS", ["sent", "called", "desk", "clear"]], ["PICKS", ["intake", "rtc"]], ["Board", ["yard", "note", "flights", "collections", "callpop", "topup"]],
+    ["Office", ["picksinfo", "summary", "log", "import", "staff", "settings"]]];
+  function permWords(a) { var x = PERMS.filter(function (y) { return y[0] === a; })[0]; return x ? x[1].replace(/^(DROPS|PICKS): p/, "P").replace(/^(DROPS|PICKS): /, "").replace("Hourly stats, and", "Hourly stats and") : a; }
+  function spPermsCount() {
+    var p = S.staff[staffEdit], n = 0; if (!p) return;
+    Array.prototype.forEach.call($("panelBody").querySelectorAll("[data-perm]"), function (c) {
+      var ch = c.checked !== roleCan(p.role, c.dataset.perm), tag = c.parentNode.querySelector(".sp-chg");
+      if (ch) n++; if (tag) tag.hidden = !ch;
+    });
+    var el = $("spPermN"); if (el) el.textContent = (ROLE_LABEL[p.role] || p.role) + " defaults" + (n ? " · " + n + " changed" : "");
+  }
+  document.addEventListener("change", function (e) {
+    var t = e.target; if (!staffEdit || !t || !$("panelBody").contains(t)) return;
+    if (t.dataset && t.dataset.perm) return spPermsCount();
+    if (t.id === "spRole") return setStaffRole(t.value, t);
+  });
   function openStaffPanel(id) {
     var p = S.staff[id]; if (!p) return;
     staffEdit = id;
     // Change role (part 138): an owner can also make an owner.
     var roles = ["office", "manager", "bongo", "terminal", "view"].concat(S.me.role === "owner" ? ["owner"] : []);
-    $("panelBody").innerHTML = '<h2 id="panelTitle">' + esc(p.name) + " <small>" + esc(ROLE_LABEL[p.role] || p.role) + "</small></h2>" +
-      '<label>ROLE</label><div class="pseg roles" style="flex-wrap:wrap">' + roles.map(function (x) {
-        return '<button type="button" style="flex:1 1 30%" data-setrole="' + x + '"' + (x === p.role ? ' class="on" aria-pressed="true"' : "") + ">" + esc(ROLE_LABEL[x]) + "</button>";
-      }).join("") + "</div>" +
-      '<div id="spAtt">' + attBoxHtml(p) + "</div>" +
-      '<label>WHAT ' + esc(p.name.toUpperCase()) + ' CAN DO</label><div class="acc">' + PERMS.filter(permShown).map(function (x) {
-        var d = roleCan(p.role, x[0]);
-        return '<label class="chk"><input type="checkbox" data-perm="' + x[0] + '"' + (personCan(p, x[0]) ? " checked" : "") + "><span>" + esc(x[1]) +
-          "<small>" + esc(ROLE_LABEL[p.role] || p.role) + " default: " + (d ? "yes" : "no") + "</small></span></label>";
-      }).join("") + '</div><div class="pseg" style="margin-top:8px"><button type="button" data-saveaccess>SAVE ACCESS</button><button type="button" data-roledefault>ROLE DEFAULTS</button></div>' +
-      '<label for="spPin">SET A NEW PIN</label><div class="when2"><input id="spPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="4 numbers"><button type="button" class="btn ghost" data-savepin>Set PIN</button></div>' +
-      '<p class="hint">Their link stays the same. Tell them the new PIN.</p>' +
-      '<label for="spNames">NAMES ON THIS LOGIN</label><textarea id="spNames" rows="3" placeholder="One per line, e.g. RAKESH.O">' + esc((p.desk_names || []).join("\n")) + "</textarea>" +
-      '<div class="pseg" style="margin-top:8px"><button type="button" data-savenames>SAVE NAMES</button></div>' +
-      '<p class="hint">For a shared login: whoever is working picks their name with Switch name.</p>' +
-      '<button type="button" class="link rmcar" data-removestaff>Remove ' + esc(p.name) + '</button>' +
-      '<div class="pbtns"><button type="button" data-close>Close</button></div>';
+    var shown = PERMS.filter(permShown).map(function (x) { return x[0]; });
+    var perms = PERM_GROUPS.map(function (g) {
+      var list = g[1].filter(function (a) { return shown.indexOf(a) !== -1; });
+      if (!list.length) return "";
+      return '<div class="sp-grp" role="presentation">' + esc(g[0]) + "</div>" + list.map(function (a) {
+        return '<label class="sp-perm"><span>' + esc(permWords(a)) + ' <em class="sp-chg" hidden>Changed</em></span><input type="checkbox" class="sp-sw" role="switch" data-perm="' + a + '"' + (personCan(p, a) ? " checked" : "") + "></label>";
+      }).join("");
+    }).join("") + PERMS.filter(permShown).filter(function (x) { return !PERM_GROUPS.some(function (g) { return g[1].indexOf(x[0]) !== -1; }); }).map(function (x) {
+      return '<label class="sp-perm"><span>' + esc(x[1]) + ' <em class="sp-chg" hidden>Changed</em></span><input type="checkbox" class="sp-sw" role="switch" data-perm="' + x[0] + '"' + (personCan(p, x[0]) ? " checked" : "") + "></label>";
+    }).join("");
+    $("panelBody").innerHTML = '<div class="sp">' +
+      '<header class="sp-head"><i class="sp-av" aria-hidden="true">' + esc((p.name || "?").charAt(0).toUpperCase()) + '</i><div><h2 id="panelTitle">' + esc(p.name) + "</h2>" +
+      '<p class="sp-meta">' + esc(ROLE_LABEL[p.role] || p.role) + '<span id="spShift">' + spShiftHtml(p) + "</span></p></div></header>" +
+      '<div class="sp-grid">' +
+      '<section class="sp-sec sp-r"><h3>Role</h3><div class="sp-box"><div class="sp-row"><div class="sp-t"><b>Role</b><small>Sets what they can do by default</small></div>' +
+      '<select id="spRole" class="sp-sel" aria-label="Role for ' + esc(p.name) + '">' + roles.map(function (x) {
+        return '<option value="' + x + '"' + (x === p.role ? " selected" : "") + ">" + esc(ROLE_LABEL[x]) + "</option>";
+      }).join("") + "</select></div></div></section>" +
+      '<div id="spAtt" class="sp-a">' + attBoxHtml(p) + "</div>" +
+      '<section class="sp-sec sp-p"><h3>Permissions <span id="spPermN"></span></h3><div class="sp-box">' + perms + "</div>" +
+      '<div class="sp-acts"><button type="button" class="sp-btn quiet" data-roledefault>Reset to ' + esc(ROLE_LABEL[p.role] || p.role) + ' defaults</button><button type="button" class="sp-btn pri" data-saveaccess>Save access</button></div></section>' +
+      '<section class="sp-sec sp-s"><h3>Sign-in</h3><div class="sp-box">' +
+      '<div class="sp-in"><label for="spPin">New PIN</label><input id="spPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="4 numbers"><button type="button" class="sp-btn" data-savepin>Set PIN</button></div>' +
+      '<p class="sp-note">Their link stays the same. Tell them the new PIN.</p>' +
+      '<div class="sp-in col"><label for="spNames">Names on this login</label><textarea id="spNames" rows="2" placeholder="One per line, e.g. RAKESH.O">' + esc((p.desk_names || []).join("\n")) + "</textarea>" +
+      '<p class="sp-note flush">For a shared login: whoever is working picks their name with Switch name.</p><div class="sp-acts flush"><button type="button" class="sp-btn" data-savenames>Save names</button></div></div>' +
+      "</div></section></div>" +
+      '<footer class="sp-foot"><button type="button" class="sp-rm" data-removestaff>Remove ' + esc(p.name) + '</button><button type="button" class="sp-btn" data-close>Close</button></footer></div>';
+    $("panel").classList.add("sp-panel");
+    spPermsCount();
     if (!$("panel").open) $("panel").showModal();
     loadAttPeople(id);
+  }
+  async function setStaffRole(to, el) {
+    var p = S.staff[staffEdit]; if (!p || to === p.role) return;
+    if (!confirm("Make " + p.name + " " + ROLE_LABEL[to] + "? What they can do changes to " + ROLE_LABEL[to] + "'s defaults, plus anything ticked for them by hand.")) { el.value = p.role; return; }
+    el.disabled = true;
+    var r = await sb.rpc("set_staff_role", { p_staff: p.id, p_role: to });
+    el.disabled = false;
+    if (r.error) { el.value = p.role; return toast(r.error.message, true); }
+    toast(p.name + " is now " + ROLE_LABEL[to] + ". It applies next time they open the app.");
+    await reloadStaff(); openStaffPanel(p.id); render();
   }
   async function staffPanelAction(t) {
     var p = S.staff[staffEdit]; if (!p) return;
     if (t.dataset.attswitch !== undefined) {
       var kind = t.dataset.attswitch, on = t.dataset.to === "on";
-      if (t.classList.contains("on")) return;
+      if (t.disabled) return;
       if (kind === "lock" && on && !confirm("Lock Parking Ops for " + p.name + "? Unless they are clocked in on Attendance, they will see nothing, not even customer names.")) return;
       Array.prototype.forEach.call($("panelBody").querySelectorAll("[data-attswitch]"), function (b) { b.disabled = true; });
       var r2 = await sb.rpc(kind === "lock" ? "clock_gate_set" : "attendance_person_set", { p_staff: p.id, p_on: on });
@@ -347,21 +393,10 @@
     }
     if (t.dataset.roledefault !== undefined) {
       Array.prototype.forEach.call($("panelBody").querySelectorAll("[data-perm]"), function (c) { c.checked = roleCan(p.role, c.dataset.perm); });
+      spPermsCount();
       return;
     }
     var r;
-    if (t.dataset.setrole !== undefined) {
-      var to = t.dataset.setrole;
-      if (to === p.role) return;
-      if (!confirm("Make " + p.name + " " + ROLE_LABEL[to] + "? What they can do changes to " + ROLE_LABEL[to] + "'s defaults, plus anything ticked for them by hand.")) return;
-      t.disabled = true;
-      r = await sb.rpc("set_staff_role", { p_staff: p.id, p_role: to });
-      t.disabled = false;
-      if (r.error) return toast(r.error.message, true);
-      toast(p.name + " is now " + ROLE_LABEL[to] + ". It applies next time they open the app.");
-      await reloadStaff(); openStaffPanel(p.id); render();
-      return;
-    }
     t.disabled = true;
     if (t.dataset.saveaccess !== undefined) {
       var extra = [];

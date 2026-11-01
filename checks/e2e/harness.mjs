@@ -649,6 +649,7 @@ async function scenario(fn, tag) {
   if (process.env.TOPUP_ONLY && tag !== 'topup') return;
   if (process.env.ROLE_ONLY && tag !== 'role') return;
   if (process.env.ATTSW_ONLY && tag !== 'attsw') return;
+  if (process.env.STAFFPANEL_ONLY && tag !== 'staffpanel') return;
   if (!browser.isConnected()) throw new Error("Chromium disconnected before scenario; aborting section");
   try { await fn(); } catch (e) {
     if (!browser.isConnected()) throw new Error("Chromium disconnected during scenario: " + e.message);
