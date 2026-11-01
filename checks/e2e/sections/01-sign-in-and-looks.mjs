@@ -307,7 +307,7 @@ await scenario(async () => {
     const m = await page.evaluate(() => ({ labels: [...document.querySelectorAll("#menuBody > label")].map((l) => l.textContent), swipe: (document.querySelector("[data-swipestep].on") || {}).textContent, danger: !!document.querySelector(".menu-danger [data-deletesheet]") }));
     check("Standard with features: the menu in sections, swipe choices, Delete on its own", m.labels.includes("TODAY") && m.labels.includes("SWIPE RIGHT ON DROPS") && m.swipe === "Sent" && m.danger, m);
     await page.click('#menuBody [data-view="summary"]'); await page.waitForSelector(".actbar");
-    check("Standard with features: Summary has the progress bar and activity chips", await page.evaluate(() => !!document.querySelector(".stat.big .pbar i") && document.querySelectorAll(".actbar [data-actf]").length === 5));
+    check("Standard with features: Summary has the progress bar and activity chips (Yards included)", await page.evaluate(() => !!document.querySelector(".stat.big .pbar i") && document.querySelectorAll(".actbar [data-actf]").length === 6));
     check("Standard with features (features): no errors", page.__errors.length === 0, page.__errors);
   });
   // Each person: Menu → Display → their swipe step, and buttons shown or hidden.

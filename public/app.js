@@ -1763,7 +1763,8 @@
     try { if (payFolded()) localStorage.removeItem(PAY_FOLD_KEY); else localStorage.setItem(PAY_FOLD_KEY, "1"); } catch (e) {}
     renderBoardPayments();
   }
-  // These are the existing
+  // Not recorded (user, 1 Nov; was Needs checking): a car handed back (CLEAR) with its exit fee
+  // still due, or an exit fee marked paid with no payment photo. These are the existing
   // payment records: a recorded charge settles it (a smaller payment can be
   // the agreed discount), and a waiver is never counted as cash received.
   function paymentPence(n) { return Math.max(0, Math.round((+n || 0) * 100)); }
@@ -1776,7 +1777,7 @@
     else if (r.charge_method) ch = { state: "paid", amount: paymentPence(r.charge_amount), paid: paymentPence(r.charge_amount), due: 0, word: "Collected" };
     else { var amount = paymentPence(due && due.amount); ch = { state: amount ? "due" : "free", amount: amount, paid: 0, due: amount, word: amount ? "Due" : "No charge" }; }
     var saving = S.queue.some(function (q) { return q.rowId === r.id && (q.fn === "set_exit_paid" || q.fn === "set_overstay_paid" || q.fn === "set_overstay_agreed"); });
-    return { exit: ex, charge: ch, due: ex.due + ch.due, paid: ex.paid + ch.paid, check: ex.state === "paid" && !r.exit_photo, saving: saving };
+    return { exit: ex, charge: ch, due: ex.due + ch.due, paid: ex.paid + ch.paid, check: ex.state === "paid" && !r.exit_photo || ex.state === "due" && !!r.cleared, noPhoto: ex.state === "paid" && !r.exit_photo, saving: saving };
   }
   function boardPaymentsAvailable() {
     var sh = sheet();
@@ -1805,7 +1806,7 @@
     // Collected counts the whole sheet (a paid car is usually done and off TO DO); Outstanding follows the cars shown.
     S.rows.forEach(function (r) { var p = paymentFacts(r); total.exit += p.exit.paid; total.charge += p.charge.paid; total.saving = total.saving || p.saving; });
     rows.forEach(function (r) { total.due += paymentFacts(r).due; });
-    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Needs checking"]], folded = payFolded();
+    var filters = [["", "All"], ["due", "Outstanding"], ["paid", "Collected"], ["check", "Not recorded"]], folded = payFolded();
     var shown = filters.filter(function (f) { return f[0] && f[0] === S.paymentFilter; })[0];
     el.classList.toggle("folded", folded);
     el.innerHTML = '<button type="button" class="bpay-caption" data-payfold aria-expanded="' + !folded + '"><strong>Collections</strong><span>' +
@@ -1822,7 +1823,7 @@
     var p = paymentFacts(r);
     function label(title, x) { return '<span class="bpay-status ' + x.state + '">' + title + (x.amount ? ' <b class="num">' + money(x.amount / 100) + "</b>" : "") + " · " + x.word + "</span>"; }
     var line = '<button type="button" class="bpay-row" data-paydetails="' + esc(r.id) + '" aria-label="Collection details for ' + esc(r.reg) + '">' + label("Exit", p.exit) + label("Overstay / charge", p.charge) +
-      (p.saving ? '<span class="bpay-check">Saving…</span>' : p.check ? '<span class="bpay-check">Needs checking</span>' : "") + '<span class="bpay-arrow" aria-hidden="true">›</span></button>';
+      (p.saving ? '<span class="bpay-check">Saving…</span>' : p.check ? '<span class="bpay-check">' + (p.noPhoto ? "No payment photo" : "Not recorded") + "</span>" : "") + '<span class="bpay-arrow" aria-hidden="true">›</span></button>';
     // Keep one outer element per booking for incremental redraws and swipes.
     html = html.replace('class="row', 'class="row with-payments');
     html = html.replace(chargeTag(r).replace(/^ · /, "") || "\u0000", "").replace(exitTag(r) || "\u0000", "").replace(/<div class="l2 l2t" data-open>\s*<\/div>/, "");
@@ -1843,7 +1844,7 @@
       '<div class="bpay-balance' + (p.due ? " due" : "") + '">' + (p.due ? money(p.due / 100) + " outstanding" : "No outstanding balance") + '</div><div class="bpay-summary"><span>Collected <b class="num">' + money(p.paid / 100) + '</b></span><span>Outstanding <b class="num">' + money(p.due / 100) + "</b></span></div>" +
       (p.saving ? '<p class="bpay-note" role="status">Payment changes are waiting to save.</p>' : "") +
       record("Exit fee", p.exit, r.exit_method, "exit_by", r.exit_at, "") +
-      (p.exit.state === "paid" ? '<div class="bpay-proof" id="boardPayProof">' + (r.exit_photo ? 'Loading payment proof…' : '<span class="bpay-check">Needs checking · no payment photo recorded</span>') + "</div>" : "") +
+      (p.exit.state === "paid" ? '<div class="bpay-proof" id="boardPayProof">' + (r.exit_photo ? 'Loading payment proof…' : '<span class="bpay-check">Not recorded · no payment photo recorded</span>') + "</div>" : "") +
       record("Overstay / additional charge", p.charge, r.charge_method, "charge_by", r.charge_at, r.charge_reason) +
       '<div class="bpay-footer"><button type="button" data-paybooking="' + esc(r.id) + '">Open booking</button><button type="button" data-close>Back to board</button></div></div>';
     if (!$("panel").open) $("panel").showModal();
@@ -4532,7 +4533,9 @@
     if (PICK_ACTIONS[a.action]) return "picks";
     return a.sheet_id || a.booking_id ? "drops" : "other";
   }
-  var ACT_FILTERS = [["all", "All"], ["drops", "Drops"], ["picks", "Picks"], ["staff", "Staff"], ["settings", "Settings"]];
+  // Yards (user, 1 Nov): yard changes, Yard planner moves and key checks, from DROPS and PICKS alike.
+  function actYard(a) { return a.action === "YARD" || a.action === "LANE MOVE" || /^KEY CHECK/.test(a.action || ""); }
+  var ACT_FILTERS = [["all", "All"], ["drops", "Drops"], ["picks", "Picks"], ["yards", "Yards"], ["staff", "Staff"], ["settings", "Settings"]];
   function activityPremiumHtml() {
     var f = S.actFilter || "all";
     return '<div class="actbar"><div class="chips" role="group" aria-label="Show">' + ACT_FILTERS.map(function (x) {
@@ -4540,10 +4543,16 @@
       }).join("") + '</div><input type="search" id="actQ" placeholder="Search reg or name" autocomplete="off" aria-label="Search activity" value="' + esc(S.actQ || "") + '"></div>' +
       '<div id="actList">' + activityListHtml() + '</div><div class="row-actions"><button type="button" class="btn ghost small" data-reloadlog>Refresh</button></div>';
   }
+  // Operations Refined (user, 1 Nov: calmer): the reg, then the action in plain words, "EJ71FJO Key check".
+  function actTitle(a) {
+    if (!isRefined()) return esc(a.reg ? a.reg + " · " : "") + esc(nice(a.action).replace(/\bPt\b/g, "PT"));
+    var w = String(a.action || "").toLowerCase().replace(/\bpt\b/g, "PT").replace(/\bsms\b/g, "SMS");
+    return (a.reg ? esc(a.reg) + " " : "") + '<span class="aw">' + esc(w.charAt(0).toUpperCase() + w.slice(1)) + "</span>";
+  }
   function activityListHtml() {
     var f = S.actFilter || "all", q = (S.actQ || "").trim().toUpperCase().replace(/\s+/g, "");
     var rows = S.activity.filter(function (a) {
-      if (f !== "all" && actKind(a) !== f) return false;
+      if (f === "yards" ? !actYard(a) : f !== "all" && actKind(a) !== f) return false;
       return !q || [a.reg, a.customer, a.staff_name, a.action, a.value].join(" ").toUpperCase().replace(/\s+/g, "").indexOf(q) >= 0;
     });
     if (!rows.length) return '<div class="empty">' + (S.activity.length ? "Nothing matches." : "Nothing yet.") + "</div>";
@@ -4556,7 +4565,7 @@
         h += '<div class="actday">' + (opsDesk() ? (near ? near + " · " : "") + esc(longDate(key)) : near || esc(longDay(key))) + '</div><div class="box actbox">';
         last = key;
       }
-      h += '<div class="actrow k-' + actKind(a) + '"><span class="num at">' + esc(hhmm(a.at)) + '</span><i class="adot d-' + actDot(a) + '" aria-hidden="true"></i><div class="grow"><strong>' + esc(a.reg ? a.reg + " · " : "") + esc(nice(a.action).replace(/\bPt\b/g, "PT")) + "</strong>" +
+      h += '<div class="actrow k-' + actKind(a) + '"><span class="num at">' + esc(hhmm(a.at)) + '</span><i class="adot d-' + actDot(a) + '" aria-hidden="true"></i><div class="grow"><strong>' + actTitle(a) + "</strong>" +
         '<div class="note">' + esc(a.staff_name || "System") + (a.value ? " · " + esc(a.value) : "") + "</div></div></div>";
     });
     return h + "</div>";
@@ -8600,6 +8609,8 @@
     "import": '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
     staff: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    stats: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
+    attendance: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
     me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6.5 8-6.5s7.2 2.5 8 6.5"/>',
     add: '<path d="M12 5v14M5 12h14"/>',
     removed: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
@@ -8615,12 +8626,14 @@
     var have = {}, o = isOps(); items.forEach(function (x) { if (x[2]) have[x[0]] = x[1]; });
     // Operations: a Menu page of panels, in the words of its other pages.
     if (o) { if (have.summary) have.stats = "Hourly stats"; Object.assign(have, { board: "Operations board", summary: have.summary && "Shift summary", archive: have.archive && "Archive", staff: have.staff && "Staff & access", me: "Me and sign out" }); }
-    var btn = function (k) { return '<button type="button" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : "") + ">" + menuIcon(k) + "<span>" + esc(have[k]) + "</span></button>"; };
+    // Attendance (user, 1 Nov): people with the add-on open it from Operations, as from Me.
+    if (attendanceState()) have.attendance = "Attendance";
+    var btn = function (k) { return '<button type="button" ' + (k === "attendance" ? 'data-attendance="staff"' : 'data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : "")) + ">" + menuIcon(k) + "<span>" + esc(have[k]) + "</span></button>"; };
     // A wide screen: each section in its own panel, side by side.
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() + menuClockHtml() +
-      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "attendance", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

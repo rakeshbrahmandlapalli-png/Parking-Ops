@@ -439,6 +439,8 @@
     "import": '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
     staff: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.7.8 2.8 2.6 3 5.2"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    stats: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
+    attendance: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
     me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6.5 8-6.5s7.2 2.5 8 6.5"/>',
     add: '<path d="M12 5v14M5 12h14"/>',
     removed: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
@@ -454,12 +456,14 @@
     var have = {}, o = isOps(); items.forEach(function (x) { if (x[2]) have[x[0]] = x[1]; });
     // Operations: a Menu page of panels, in the words of its other pages.
     if (o) { if (have.summary) have.stats = "Hourly stats"; Object.assign(have, { board: "Operations board", summary: have.summary && "Shift summary", archive: have.archive && "Archive", staff: have.staff && "Staff & access", me: "Me and sign out" }); }
-    var btn = function (k) { return '<button type="button" data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : "") + ">" + menuIcon(k) + "<span>" + esc(have[k]) + "</span></button>"; };
+    // Attendance (user, 1 Nov): people with the add-on open it from Operations, as from Me.
+    if (attendanceState()) have.attendance = "Attendance";
+    var btn = function (k) { return '<button type="button" ' + (k === "attendance" ? 'data-attendance="staff"' : 'data-view="' + k + '"' + (S.view === k ? ' aria-current="page"' : "")) + ">" + menuIcon(k) + "<span>" + esc(have[k]) + "</span></button>"; };
     // A wide screen: each section in its own panel, side by side.
     var W = function (x) { return x && o && opsDesk() ? '<div class="mgrp">' + x + "</div>" : x; };
     var group = function (title, keys) { keys = keys.filter(function (k) { return have[k]; }); return W(keys.length ? "<label>" + title + '</label><div class="menu-list">' + keys.map(btn).join("") + "</div>" : ""); };
     var h = (o ? "<h2>Menu</h2>" : "<h2>" + esc(S.company.name) + "</h2>") + whoSub() + menuClockHtml() +
-      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
+      group(o ? "Operations" : "TODAY", ["board", "notifications", "flights", "calls", "lanes", "topup", "attendance", "summary", "stats"]) + group(o ? "Office" : "OFFICE", ["dashboard", "archive", "import", "staff", "settings"]);
     if (sh && can("import")) {
       h += W("<label>" + (o ? "This sheet<small>" + esc(sheetLabel(sh)) + "</small>" : "THIS SHEET · " + esc(sheetLabel(sh))) + '</label><div class="menu-list">' +
         '<button type="button" data-addcar>' + menuIcon("add") + "<span>Add a car</span></button>" +

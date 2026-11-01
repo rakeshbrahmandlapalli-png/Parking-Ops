@@ -25,7 +25,7 @@ for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premi
   check("Collections (" + look + "): " + (theme === "ops-refined" ? "the middle label says just Overstays" : "the Overstays & charges tile stays"), JSON.stringify(await page.locator(".bpay-totals span").allTextContents()) === JSON.stringify(theme === "ops-refined" ? ["Exit fees collected", "Overstays", "Outstanding"] : ["Exit fees collected", "Overstays & charges collected", "Outstanding"]));
   check("Collections (" + look + "): each visible car has one details button", await page.locator("#main .bpay-row").count() === 4);
   check("Collections (" + look + "): exempt and waived are explicit", /Exempt/.test(await page.locator('[data-paydetails="b3"]').innerText()) && /Waived/.test(await page.locator('[data-paydetails="b3"]').innerText()));
-  check("Collections (" + look + "): missing proof is flagged separately from unpaid", /Needs checking/.test(await page.locator('[data-paydetails="b6"]').innerText()) && !/Due/.test(await page.locator('[data-paydetails="b6"]').innerText()));
+  check("Collections (" + look + "): missing proof is flagged separately from unpaid", /No payment photo/.test(await page.locator('[data-paydetails="b6"]').innerText()) && !/Due/.test(await page.locator('[data-paydetails="b6"]').innerText()));
   const todo = await page.locator("#tabTodo").innerText();
   await page.click('[data-payfilter="due"]');
   check("Collections (" + look + "): outstanding filter shows its cars; Outstanding follows them, collected stays the whole sheet", await page.locator("#main .row").count() === 1 && await page.locator('[data-paydetails="b2"]').count() === 1 && JSON.stringify(await totals()) === tot("£20", "£20", "£40"), await totals());
