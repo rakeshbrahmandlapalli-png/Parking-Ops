@@ -284,7 +284,11 @@ function rpc(db, fn, a) {
     }
     case "attendance_person_set": case "clock_gate_set": {
       if (db.me.role !== "owner") throw new Error("Only an owner can do this.");
-      if (a.p_staff === db.me.id) throw new Error("Not allowed.");
+      if (a.p_staff === db.me.id) {
+        // part 144: an owner may switch their own Attendance (never their own lock)
+        if (fn === "clock_gate_set") throw new Error("Not allowed.");
+        (db.selfAtt = db.selfAtt || []).push(a.p_on); if (a.p_on) db.aero = db.aero || { manager: true, sites: [], shifts: [], openAll: [] }; return null;
+      }
       db.att = db.att || {}; const x = db.att[a.p_staff] = db.att[a.p_staff] || { attendance: false, locked: false, on_shift: false };
       if (fn === "clock_gate_set") { if (a.p_on && !x.attendance) throw new Error("Give this person Attendance first, or they could never clock in."); x.locked = a.p_on; }
       else { if (!a.p_on && x.locked) throw new Error("Switch their lock off first, or they could never see Parking Ops again."); x.attendance = a.p_on; }
