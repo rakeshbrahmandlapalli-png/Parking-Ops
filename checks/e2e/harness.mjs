@@ -275,10 +275,9 @@ function rpc(db, fn, a) {
       (db.fixCalls = db.fixCalls || []).push(a); open.splice(i, 1); return {};
     }
     // part 143: staff location while on shift (db.loc absent = part not applied: the app shows nothing).
-    case "location_status": return db.loc ? { on: !!db.loc.on, by: db.loc.on ? "RAKESH" : null, notice_at: db.loc.notice_at || null, shared_login: false, on_shift: !!(db.aero && db.aero.open) } : null;
-    case "location_notice_ok": if (!db.loc) throw new Error("Could not find the function"); db.loc.notice_at = new Date().toISOString(); (db.loc.notices = db.loc.notices || []).push(1); return null;
+    case "location_status": return db.loc ? { on: !!db.loc.on, by: db.loc.on ? "RAKESH" : null, shared_login: false, on_shift: !!(db.aero && db.aero.open) } : null;
     case "i_am_at": {
-      if (!db.loc || !db.loc.on || !db.loc.notice_at || !(db.aero && db.aero.open)) return false;
+      if (!db.loc || !db.loc.on || !(db.aero && db.aero.open)) return false;
       (db.loc.sent = db.loc.sent || []).push(a); return true;
     }
     case "staff_locations": return db.loc && db.loc.on && ["owner", "manager"].includes(db.me.role) ? (db.loc.where || []) : [];

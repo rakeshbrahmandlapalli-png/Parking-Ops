@@ -1,6 +1,6 @@
 import { check, sleep, makeDb, deskDb, phone, open, scenario, browser, noSideScroll, BASE } from "../harness.mjs";
 
-// Staff location while on shift (part 143, user 1 Nov): owner switch, the person is told, the phone sends
+// Staff location while on shift (part 143, user 1 Nov): owner switch, the phone sends
 // only while on shift, owners and managers see the last position on the Dashboard.
 const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
 const SITES = [{ id: "w1", name: "Millfield Lane", lat: 51.8609617, lng: -0.4728942, radius_m: 200 }, { id: "w2", name: "Airport", lat: 51.877055, lng: -0.3737165, radius_m: 200 }];
@@ -17,23 +17,19 @@ for (const [theme, width] of [["ops", 1440], ["stdplus", 390]]) await scenario(a
   await page.click('#menuBody [data-view="settings"]'); await sleep(1200);
   if (width < 900) { const h = page.locator('[data-setsec="attendance"]'); if (await h.count()) { await h.click(); await sleep(300); } }
   let t = await page.locator("#locBox").innerText();
-  check(tag + ": says it is off", /Staff location while on shift/.test(t) && /Off\./.test(t), t);
   await page.locator("#locBox").scrollIntoViewIfNeeded(); await SHOT(page, "settings-off-" + width);
-  await page.click('[data-locshare="ask"]'); await sleep(200);
-  t = await page.locator("#locBox").innerText();
-  check(tag + ": asks first and says what staff are told", /Everyone is told/.test(t) && !db.loc.sets, t);
+  check(tag + ": just the name and a switch, no notes", /Staff location while on shift/.test(t) && /Switch on/.test(t) && !/\./.test(t), t);
   await page.click('[data-locshare="yes"]'); await sleep(1200);
   check(tag + ": switching on sends it", JSON.stringify(db.loc.sets) === "[true]", db.loc.sets);
-  t = await page.locator("#locBox").innerText();
   await SHOT(page, "settings-on-" + width);
-  check(tag + ": says it is on, by whom, and only while the app is open", /On\./.test(t) && /RAKESH/.test(t) && /open on their phone/.test(t), t);
+  check(tag + ": now offers Switch off", /Switch off/.test(await page.locator("#locBox").innerText()));
   await page.click('[data-locshare="off"]'); await sleep(1200);
   check(tag + ": switching off sends it", JSON.stringify(db.loc.sets) === "[true,false]", db.loc.sets);
   if (width < 900) check(tag + ": no sideways scrolling", await noSideScroll(page));
   check(tag + ": no errors", page.__errors.length === 0, page.__errors);
 }, "gate");
 
-// Someone on shift is told first; nothing is sent until they press OK, then the position goes.
+// Someone on shift: the position goes, with no notice on screen (user, 1 Nov).
 await scenario(async () => {
   const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", ink: "#172536", short: "TakeOff", attendance: true };
   db.me = { ...db.me, role: "office" };
@@ -42,18 +38,12 @@ await scenario(async () => {
   const page = await phone(browser, db, { width: 390 });
   await page.context().grantPermissions(["geolocation"], { origin: BASE }); await page.context().setGeolocation(HERE);
   await open(page); await sleep(1500);
-  await page.click("#clockBtn"); await sleep(800);
-  let t = await page.locator("#panel").innerText();
-  check("Staff location: the person on shift is told what is shared", /Your location is shared while you are on shift/.test(t) && /every 2 minutes/.test(t), t);
-  await SHOT(page, "phone-1-told");
-  check("Staff location: nothing is sent before OK", !(db.loc.sent || []).length);
-  await page.click("[data-locok]"); await sleep(2500);
-  check("Staff location: OK is recorded", (db.loc.notices || []).length === 1);
+  await sleep(2500);
   const s = (db.loc.sent || [])[0];
-  check("Staff location: the position is sent after OK", s && Math.abs(s.p_lat - 51.8611) < 1e-6 && s.p_acc === 12, db.loc.sent);
-  t = await page.locator("#panel").innerText();
-  await SHOT(page, "phone-2-sharing");
-  check("Staff location: the shift box says it is sharing", /Sharing your location with your managers/.test(t), t);
+  check("Staff location: the position is sent while on shift", s && Math.abs(s.p_lat - 51.8611) < 1e-6 && s.p_acc === 12, db.loc.sent);
+  await page.click("#clockBtn"); await sleep(800);
+  await SHOT(page, "phone-clock-box");
+  check("Staff location: no notice on the clock box", !/location/i.test(await page.locator("#panel .clk-box").innerText()));
   check("Staff location: no sideways scrolling", await noSideScroll(page));
   check("Staff location: no errors", page.__errors.length === 0, page.__errors);
 }, "gate");
@@ -62,7 +52,7 @@ await scenario(async () => {
 await scenario(async () => {
   const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", ink: "#172536", short: "TakeOff", attendance: true };
   db.aero = { manager: false, sites: SITES, open: { id: "sh1", clock_in_at: ago(60), worksite_id: "w1" }, shifts: [] };
-  db.loc = { on: false, notice_at: ago(600) };
+  db.loc = { on: false };
   const page = await phone(browser, db, { width: 390 });
   await page.context().grantPermissions(["geolocation"], { origin: BASE }); await page.context().setGeolocation(HERE);
   await open(page); await sleep(1500); await page.click("#clockBtn"); await sleep(2000);

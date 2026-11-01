@@ -3,8 +3,7 @@
 -- * Off until a client owner switches it on (Settings -> Attendance). Needs the Attendance add-on.
 -- * A phone sends its position only while that person has an open Attendance shift and
 --   Parking Ops is open on screen (a web app cannot track in the background).
--- * The person is shown what is shared before the first send (notice_at); the app shows
---   "Sharing your location" on their shift box the whole time.
+-- * No notice in the app (user, 1 Nov: "Don't need those comments"): the client tells its staff.
 -- * Only the latest position is kept: one row per person, overwritten. Clocking out (by hand,
 --   by a manager or the 14-hour auto close) and switching the setting off blank it.
 -- * Owners and managers of the same company read it, and only for people on shift now.
@@ -26,13 +25,12 @@ create table if not exists private.staff_location (
   lat double precision,
   lng double precision,
   acc_m integer,
-  at timestamptz,
-  notice_at timestamptz
+  at timestamptz
 );
 alter table private.staff_location enable row level security;
 revoke all on private.staff_location from public, anon, authenticated;
 
--- Is sharing on for the caller's company, have they seen the notice, are they on shift.
+-- Is sharing on for the caller's company, are they on shift.
 create or replace function public.location_status() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare s public.staff := public.me(); c public.companies;
@@ -45,21 +43,7 @@ begin
     'by', (select z.changed_by from private.location_share z where z.company_id = s.company_id),
     'since', (select z.changed_at from private.location_share z where z.company_id = s.company_id),
     'shared_login', coalesce(cardinality(s.desk_names), 0) > 0,
-    'notice_at', (select l.notice_at from private.staff_location l where l.staff_id = s.id),
     'on_shift', exists (select 1 from public.aero_shifts a where a.user_id = s.user_id and a.company_id = s.company_id and a.clock_out_at is null));
-end $$;
-
--- The person has been shown what is shared. Logged once.
-create or replace function public.location_notice_ok() returns void
-language plpgsql security definer set search_path = '' as $$
-declare s public.staff := public.me();
-begin
-  if s.id is null then raise exception 'Not allowed.'; end if;
-  if exists (select 1 from private.staff_location where staff_id = s.id and notice_at is not null) then return; end if;
-  insert into private.staff_location(staff_id, company_id, notice_at) values (s.id, s.company_id, now())
-  on conflict (staff_id) do update set notice_at = now(), company_id = excluded.company_id;
-  insert into public.activity(company_id, staff_id, staff_name, action, value)
-  values (s.company_id, s.id, s.name, 'STAFF', 'Was told their location is shared while on shift');
 end $$;
 
 -- The phone's position. Kept only when everything above holds; otherwise ignored (returns false).
@@ -72,9 +56,10 @@ begin
   if not exists (select 1 from public.companies c join private.location_share z on z.company_id = c.id
                  where c.id = s.company_id and z.on_ and coalesce((c.brand->>'attendance')::boolean, false)) then return false; end if;
   if not exists (select 1 from public.aero_shifts a where a.user_id = s.user_id and a.company_id = s.company_id and a.clock_out_at is null) then return false; end if;
-  update private.staff_location set lat = p_lat, lng = p_lng, acc_m = least(greatest(round(coalesce(p_acc, 0)), 0), 100000)::int, at = now()
-   where staff_id = s.id and notice_at is not null;
-  return found;
+  insert into private.staff_location(staff_id, company_id, lat, lng, acc_m, at)
+  values (s.id, s.company_id, p_lat, p_lng, least(greatest(round(coalesce(p_acc, 0)), 0), 100000)::int, now())
+  on conflict (staff_id) do update set company_id = excluded.company_id, lat = excluded.lat, lng = excluded.lng, acc_m = excluded.acc_m, at = excluded.at;
+  return true;
 end $$;
 
 -- Owners and managers: the latest position of everyone at their company who is on shift now,
@@ -122,12 +107,10 @@ create or replace trigger aero_shifts_location_off after update of clock_out_at 
   for each row execute function private.location_on_clock_out();
 
 revoke all on function public.location_status() from public, anon;
-revoke all on function public.location_notice_ok() from public, anon;
 revoke all on function public.i_am_at(double precision, double precision, double precision) from public, anon;
 revoke all on function public.staff_locations() from public, anon;
 revoke all on function public.location_share_set(boolean) from public, anon;
 grant execute on function public.location_status() to authenticated;
-grant execute on function public.location_notice_ok() to authenticated;
 grant execute on function public.i_am_at(double precision, double precision, double precision) to authenticated;
 grant execute on function public.staff_locations() to authenticated;
 grant execute on function public.location_share_set(boolean) to authenticated;

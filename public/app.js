@@ -6757,10 +6757,10 @@
   // The shift box on Menu and Me: on shift with a slide to clock out, or a slide to clock in.
   function clockBoxHtml(access) {
     var shift = access.shift;
-    if (!shift) return '<div class="clk-box"><p class="clk-state">Not clocked in</p>' + locLine(false) + clockSlideHtml("in") + "</div>";
+    if (!shift) return '<div class="clk-box"><p class="clk-state">Not clocked in</p>' + clockSlideHtml("in") + "</div>";
     var mins = Math.max(0, Math.round((Date.now() - new Date(shift.clock_in_at)) / 60000));
     return '<div class="clk-box"><p class="clk-state"><span class="att-dot" aria-hidden="true"></span>On shift since ' + esc(hhmm(shift.clock_in_at)) +
-      ' <span class="num">· ' + Math.floor(mins / 60) + "h " + String(mins % 60).padStart(2, "0") + "m</span></p>" + locLine(true) + clockSlideHtml("out") + "</div>";
+      ' <span class="num">· ' + Math.floor(mins / 60) + "h " + String(mins % 60).padStart(2, "0") + "m</span></p>" + clockSlideHtml("out") + "</div>";
   }
   function clkZone(text, state) {
     document.querySelectorAll("[data-clkzone]").forEach(function (el) { el.textContent = text; el.className = "clk-zone" + (state ? " " + state : ""); });
@@ -6831,8 +6831,7 @@
         if (check.error || !!(check.data && check.data.clock_in_at) !== (kind === "in")) { clkZone(r.error.message, "warn"); clkSlide(kind); return; }
       }
       clkSlide(kind, "done", kind === "in" ? "Clocked in" : "Clocked out");
-      if (kind === "in" && LOC.st && LOC.st.on && !LOC.st.notice_at && !LOC.st.shared_login) locNoticeOk(true);
-      if (kind === "out") LOC.sentAt = 0;
+      LOC.sentAt = 0;
       attendanceAccess = {};
       setTimeout(function () {
         if (S.gateOn || S.gated) gateCheck(false);
@@ -6874,6 +6873,7 @@
     b.className = "clkbtn" + (a.shift ? " on" : "");
     b.innerHTML = a.shift ? '<span class="att-dot" aria-hidden="true"></span><span class="num">' + Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m</span>" : "Clock in";
     b.setAttribute("aria-label", a.shift ? "On shift " + Math.floor(m / 60) + " hours " + (m % 60) + " minutes. Clock out" : "Clock in");
+    if (a.shift) { locLoad(); locTick(); }
   }
   function clockSheet() {
     var a = attendanceState(); if (!a) return;
@@ -7090,6 +7090,7 @@
   // ── where people are while clocked in (part 143) ──
   // Off until a client owner switches it on. A phone sends its position every 2 minutes, only while that person
   // is clocked in and Parking Ops is open on screen (a web app can't follow anyone in the background).
+  // No notice in the app (user, 1 Nov: "Don't need those comments"); the client tells its staff.
   // Only the latest position is kept; clocking out blanks it. Owners and managers see it on the Dashboard.
   var LOC = { st: null, missing: false, loading: false, at: 0, sentAt: 0, busy: false, last: null };
   var LOC_EVERY = 120000;
@@ -7106,69 +7107,37 @@
   }
   function locRedraw() {
     var b = $("locBox"); if (b) b.innerHTML = locShareInner();
-    if ($("panel").open && $("panelTitle") && /^Clock/.test($("panelTitle").textContent)) clockSheet();
-    else if ($("menu").open && document.querySelector("#menu .clk-box")) openMenu();
-    else if ((S.view === "me" || S.view === "dashboard") && !$("panel").open) render();
-  }
-  // What the person on shift is told, on their clock box.
-  function locLine(onShift) {
-    locLoad();
-    var st = LOC.st; if (!st || !st.on || st.shared_login) return "";
-    if (!onShift) return '<p class="loc-note">Clocking in shares your location with your managers while Parking Ops is open on your phone, until you clock out.</p>';
-    if (!st.notice_at) {
-      return '<div class="loc-ask" role="note"><p><b>Your location is shared while you are on shift.</b> While Parking Ops is open on your phone, it sends where you are every 2 minutes to your managers. It stops when you clock out, and only the latest position is kept.</p>' +
-        '<button type="button" class="btn brand small" data-locok' + (LOC.busy ? " disabled" : "") + ">OK</button></div>";
-    }
-    return '<p class="loc-note on"><span aria-hidden="true">◉</span> Sharing your location with your managers while on shift' + (LOC.last ? " · sent " + esc(hhmm(new Date(LOC.last).toISOString())) : "") + ".</p>";
-  }
-  async function locNoticeOk(quiet) {
-    if (LOC.busy) return;
-    LOC.busy = true; if (!quiet) locRedraw();
-    var r = await sb.rpc("location_notice_ok");
-    LOC.busy = false;
-    if (r.error) { if (!quiet) toast(r.error.message, true); return locRedraw(); }
-    if (LOC.st) LOC.st.notice_at = new Date().toISOString();
-    if (!quiet) locRedraw();
-    LOC.sentAt = 0; locTick();
+    if (S.view === "dashboard" && !$("panel").open) render();
   }
   async function locTick() {
     var st = LOC.st, a = S.me && attendanceState();
-    if (!st || !st.on || !st.notice_at || st.shared_login || !a || !a.shift || document.visibilityState !== "visible" || !navigator.geolocation) return;
+    if (!st || !st.on || st.shared_login || !a || !a.shift || document.visibilityState !== "visible" || !navigator.geolocation) return;
     if (Date.now() - LOC.sentAt < LOC_EVERY - 5000) return;
     // Never ask for permission from a timer: only send when location is already allowed (it was, to clock in).
     try { if (navigator.permissions && navigator.permissions.query) { var perm = await navigator.permissions.query({ name: "geolocation" }); if (perm.state !== "granted") return; } } catch (e) {}
     LOC.sentAt = Date.now();
     navigator.geolocation.getCurrentPosition(function (p) {
       sb.rpc("i_am_at", { p_lat: p.coords.latitude, p_lng: p.coords.longitude, p_acc: Math.round(p.coords.accuracy || 0) }).then(function (r) {
-        if (!r.error && r.data === true) { var first = !LOC.last; LOC.last = Date.now(); if (first) locRedraw(); }
+        if (!r.error && r.data === true) LOC.last = Date.now();
       }, function () {});
     }, function () {}, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
   }
   setInterval(function () { if (S.me) { locLoad(); locTick(); } }, 30000);
   document.addEventListener("visibilitychange", function () { if (S.me && document.visibilityState === "visible") { locLoad(true); setTimeout(locTick, 1500); } });
   // Settings → Attendance, owners only.
-  var LS = { ask: false, busy: false };
+  var LS = { busy: false };
   function locShareHtml() { locLoad(); return '<hr class="lp-hr"><div id="locBox">' + locShareInner() + "</div>"; }
   function locShareInner() {
     if (LOC.missing) return "";
     if (!LOC.st) return '<p class="note">Loading…</p>';
-    var on = !!LOC.st.on, head = "<strong>Staff location while on shift</strong>";
-    if (on) {
-      return head + '<p class="note"><b>On.</b> Owners and managers see where each person on shift was last, on the Dashboard' + (LOC.st.by ? ". Switched on by " + esc(LOC.st.by) : "") +
-        '. It only updates while Parking Ops is open on their phone, and stops when they clock out.</p><div class="row-actions"><button type="button" class="btn ghost" data-locshare="off"' + (LS.busy ? " disabled" : "") + ">Switch off</button></div>";
-    }
-    if (LS.ask) {
-      return head + '<p class="note">Everyone is told before their location is first shared, and sees that it is being shared while on shift. Only the latest position is kept, and it is cleared when they clock out. Switch on?</p>' +
-        '<div class="row-actions"><button type="button" class="btn ghost" data-locshare="cancel">Cancel</button><button type="button" class="btn brand" data-locshare="yes"' + (LS.busy ? " disabled" : "") + ">Yes, switch on</button></div>";
-    }
-    return head + '<p class="note">Off. When on, owners and managers see where each person on shift was last, while Parking Ops is open on their phone.</p><div class="row-actions"><button type="button" class="btn ghost" data-locshare="ask">Switch on</button></div>';
+    var on = !!LOC.st.on;
+    return '<div class="st-row"><strong>Staff location while on shift</strong><button type="button" class="btn ' + (on ? "ghost" : "brand") + ' small" data-locshare="' + (on ? "off" : "yes") + '"' + (LS.busy ? " disabled" : "") + ">" + (on ? "Switch off" : "Switch on") + "</button></div>";
   }
   async function locShareClick(what) {
-    if (what === "ask" || what === "cancel") { LS.ask = what === "ask"; return locRedraw(); }
     if (LS.busy) return;
     LS.busy = true; locRedraw();
     var r = await sb.rpc("location_share_set", { p_on: what === "yes" });
-    LS.busy = false; LS.ask = false;
+    LS.busy = false;
     if (r.error) { locRedraw(); return toast(r.error.message, true); }
     toast(what === "yes" ? "Staff location switched on" : "Staff location switched off");
     locLoad(true); SHIFTS.at = 0;
@@ -8235,7 +8204,6 @@
     if (t.dataset.site !== undefined) return siteClick(t.dataset.site, t.dataset.sid);
     if (t.dataset.lockpause !== undefined) return lockPauseClick(t.dataset.lockpause);
     if (t.dataset.locshare !== undefined) return locShareClick(t.dataset.locshare);
-    if (t.dataset.locok !== undefined) return locNoticeOk(false);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
