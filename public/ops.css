@@ -958,8 +958,9 @@ html.ops body.ops-desk main #archQ{height:34px!important;min-height:34px!importa
  html.ops body.ops-desk.has-call-dock .bnav #bnDash::before{display:none;}
  html.ops body.ops-desk.has-call-dock main .drow .acts button :is(small,em.by){display:none;}
  html.ops body.ops-desk.picks main .drow .acts button em.by{display:none;}
- html.ops body.ops-desk main .drow .acts button small{display:inline-block;max-width:9ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
- html.ops body.ops-desk main .drow .acts button em.by{display:inline-block;max-width:7ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
+ html.ops body.ops-desk main .drow .acts button small{display:none!important;}
+ html.ops body.ops-desk main .drow .acts button em.by{display:none!important;}
+ html.ops body.ops-desk main .drow .st-by{font-weight:400;color:var(--en-mut);}
  html.ops body.ops-desk #menuBody > h2::before{content:none!important;display:none;}
  html.ops body.ops-desk #menuBody > h2{font-size:20px;font-weight:600;}
  html.ops body.ops-desk #panelBody:has([data-copy="returns"]) > label{display:block;text-transform:lowercase;letter-spacing:0;font-size:12.5px;font-weight:500;color:var(--en-mut);}
@@ -968,4 +969,59 @@ html.ops body.ops-desk main #archQ{height:34px!important;min-height:34px!importa
 }
 @media(min-width:900px) and (max-width:1679px){
  html.ops body.ops-desk main .drow .acts button small{display:none;}
+}
+/* Selected PICKS figure (Short left etc.): the old look's white text stayed on the now-white tile, so the
+   number vanished after a click. Selected = light grey tile, ink text, a brand line underneath. */
+@media(min-width:900px){
+ html.ops body.ops-desk #catTally button.on{background:var(--en-soft)!important;color:var(--en-ink)!important;box-shadow:inset 0 -2px 0 var(--brand);}
+ html.ops body.ops-desk #catTally button.on span{color:var(--en-ink)!important;}
+ html.ops body.ops-desk #catTally button.on b{color:var(--en-ink)!important;}
+ html.ops body.ops-desk #tally button.on{background:var(--en-soft)!important;box-shadow:inset 0 -2px 0 var(--brand);}
+ html.ops body.ops-desk #tally button.on span,html.ops body.ops-desk #tally button.on b{color:var(--en-ink)!important;}
+}
+/* Desktop, second pass from the user's photos (1 Nov): the Dashboard and Settings had a second side list
+   beside the app's own side bar ("looks odd"); on a desk their sections are now one row of tabs along the
+   top. Returns: a plain report box. Menu: no swipe settings (touch only), a compact clock-out, and plain
+   lists in columns instead of phone-style boxes. */
+@media(min-width:900px){
+ html.ops body.ops-desk .od-wrap{display:block!important;}
+ html.ops body.ops-desk .od-side{position:static!important;display:flex!important;flex-direction:row!important;gap:0!important;margin:0 0 16px!important;padding:0!important;border:0!important;border-bottom:1px solid var(--en-line)!important;border-radius:0!important;background:none!important;overflow-x:auto;scrollbar-width:none;}
+ html.ops body.ops-desk .od-side button{flex:none!important;flex-direction:row!important;align-items:baseline!important;gap:6px!important;min-height:40px!important;padding:0 14px!important;border-radius:0!important;background:none!important;color:var(--en-mut)!important;font-size:13.5px!important;font-weight:500!important;}
+ html.ops body.ops-desk .od-side button small{font-size:12px!important;font-weight:400!important;color:var(--en-mut)!important;}
+ html.ops body.ops-desk .od-side button:hover{color:var(--en-ink)!important;}
+ html.ops body.ops-desk .od-side button.on{color:var(--en-ink)!important;}
+ html.ops body.ops-desk .od-side button.on::before{left:10px!important;right:10px!important;top:auto!important;bottom:0!important;width:auto!important;height:2px!important;border-radius:0!important;}
+ html.ops body.ops-desk .set-desk{display:block!important;}
+ html.ops body.ops-desk .set-nav{position:sticky!important;top:var(--en-top)!important;z-index:5;display:flex!important;flex-direction:row!important;flex-wrap:nowrap;gap:0!important;margin:0 0 16px!important;padding:0!important;border-bottom:1px solid var(--en-line);background:#fff;overflow-x:auto;scrollbar-width:none;}
+ html.ops body.ops-desk .set-nav button,html.ops body.ops-desk .set-nav a{flex:none;min-height:40px!important;padding:0 12px!important;border:0!important;border-radius:0!important;background:none!important;color:var(--en-mut)!important;font-size:13.5px!important;font-weight:500!important;white-space:nowrap;}
+ html.ops body.ops-desk .set-nav button:hover,html.ops body.ops-desk .set-nav a:hover{color:var(--en-ink)!important;box-shadow:inset 0 -2px 0 var(--en-line);}
+ html.ops body.ops-desk .set-desk > :not(.set-nav){max-width:880px;}
+ html.ops body.ops-desk #panel:has([data-copy="returns"]){width:min(460px,calc(100vw - 48px));border:1px solid var(--en-line);border-radius:8px;box-shadow:0 12px 32px rgb(16 24 40 / .14);}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) > h2{font-size:18px;font-weight:600;margin-bottom:8px;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) > h2 small{font-size:13px;font-weight:400;color:var(--en-mut);}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) > label{margin:16px 0 4px!important;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) .sumlist{border:1px solid var(--en-line);border-radius:6px;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) .sumrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px;margin:0;padding:0 12px;border-color:var(--en-soft)!important;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) .sumrow b{font-size:13.5px;font-weight:500;letter-spacing:0;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) .sumrow span{font-size:13px;color:var(--en-mut);font-variant-numeric:tabular-nums;}
+ html.ops body.ops-desk #panelBody:has([data-copy="returns"]) .hint{font-size:12.5px;color:var(--en-mut);}
+ html.ops body.ops-desk #menuBody .mgrp:has(.swipestep){display:none!important;}
+ html.ops body.ops-desk #menu .clk-box{max-width:360px;}
+ html.ops body.ops-desk #menu .clk-slide{height:40px!important;}
+ html.ops body.ops-desk #menu .clk-knob{height:32px!important;width:36px!important;}
+ html.ops body.ops-desk #menuBody > .mgrp > label{margin:0!important;padding:0 0 8px!important;border:0!important;border-bottom:1px solid var(--en-line)!important;border-radius:0!important;background:none!important;font-size:12.5px!important;font-weight:600!important;color:var(--en-ink)!important;}
+ html.ops body.ops-desk #menuBody > .mgrp > label small{font-weight:400!important;}
+ html.ops body.ops-desk #menuBody > .mgrp > label + .menu-list{border:0!important;border-radius:0!important;background:none!important;}
+ html.ops body.ops-desk #menuBody .menu-list button{min-height:36px!important;padding:0 8px!important;border:0!important;border-radius:6px!important;background:none!important;box-shadow:none!important;color:var(--en-ink)!important;font-weight:400!important;}
+ html.ops body.ops-desk #menuBody .menu-list button:hover{background:var(--en-soft)!important;}
+ html.ops body.ops-desk #menuBody .menu-list button::after{content:none!important;}
+ html.ops body.ops-desk #menuBody .menu-list button[aria-current=page]{background:var(--en-soft)!important;font-weight:500!important;}
+ html.ops body.ops-desk #menuBody .menu-list button + button{border-top:0!important;}
+ html.ops body.ops-desk #menuBody .menu-danger{border:0!important;}
+ html.ops body.ops-desk #menuBody .menu-danger button{min-height:36px;border:0!important;background:none!important;padding:0 8px!important;font-size:13.5px;font-weight:400;}
+}
+/* 900–1199 px: the narrow Actions column fits SENT · OVERSTAY · CLEAR too. */
+@media(min-width:900px) and (max-width:1199px){
+ html.ops body.ops-desk main .drow .acts{gap:4px!important;}
+ html.ops body.ops-desk main .drow .acts button{padding-left:8px!important;padding-right:8px!important;}
 }
