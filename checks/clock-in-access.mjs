@@ -199,5 +199,31 @@ check("part 142: a client owner still can, for their own people", await as("rake
 check("part 142: still never themselves or another company", await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.rakesh], /Not allowed/)) && await as("rakesh", () => fails("select clock_gate_set($1,true)", [staff.apb], /Not allowed/)));
 check("part 142: the line is logged under the owner's own name", (await q("select count(*)::int n from activity where value='Clock in to see the board: off for ANIL' and staff_name='RAKESH'"))[0].n === 1);
 
+// Part 144: the add-on is the full version (no trial list), an owner switches their own Attendance, no lock without a site.
+await db.exec("create table aero_worksites (id uuid primary key default gen_random_uuid(), company_id uuid, name text)");
+const part144 = fs.readFileSync(new URL("../setup/144-attendance-full-version.sql", import.meta.url), "utf8");
+await db.exec(part144); await db.exec(part144); // safe to run again
+user.apbowner = crypto.randomUUID();
+staff.apbowner = (await q("insert into staff(company_id,user_id,name,role) values($1,$2,'CHANDRU','owner') returning id", [co.apb, user.apbowner]))[0].id;
+const allowed = (slug, who) => q("select private.attendance_pilot_allowed($1,$2) ok", [co[slug], user[who]]).then((r) => r[0].ok);
+check("part 144: anyone at a company with the add-on passes, trial list or not", await allowed("apb", "apb") === true && await allowed("takeoff", "sam") === true);
+await q("update companies set brand='{}' where id=$1", [co.apb]);
+check("part 144: a company without the add-on does not", await allowed("apb", "apb") === false);
+await q("update companies set brand='{\"attendance\":true}' where id=$1", [co.apb]);
+check("part 144: signed out never passes", (await q("select private.attendance_pilot_allowed($1,null) ok", [co.apb]))[0].ok === false);
+await as("apbowner", () => q("select attendance_person_set($1,true)", [staff.apbowner]));
+const own = (await q("select p.role, p.company_id, l.active la from aero_profiles p join attendance_staff_links l on l.attendance_user_id=p.id where p.id=$1", [user.apbowner]))[0];
+check("part 144: an owner switches their own Attendance on and is its owner", own && own.role === "owner" && own.company_id === co.apb && own.la === true, own);
+await q("insert into private.attendance_release(company_id,pilot) values($1,false) on conflict (company_id) do update set pilot=false", [co.apb]);
+check("part 144: no 'left the private trial' refusal", await as("apbowner", () => q("select attendance_person_set($1,true)", [staff.apb])).then(() => true, (e) => e.message));
+check("part 144: the lock is refused while the company has no clock-in site", await as("apbowner", () => fails("select clock_gate_set($1,true)", [staff.apb], /clock-in site first/)));
+await q("insert into aero_worksites(company_id,name) values($1,'Yard')", [co.apb]);
+check("part 144: with a site, the lock goes on", await as("apbowner", () => q("select clock_gate_set($1,true)", [staff.apb])).then(() => true, (e) => e.message));
+await as("apbowner", () => q("select clock_gate_set($1,false)", [staff.apb]));
+await as("apbowner", () => q("select attendance_person_set($1,false)", [staff.apb]));
+check("part 144: Off switches the link off too (shifts and profile kept)", (await q("select (select active from attendance_staff_links where staff_id=$1) la, (select count(*)::int from aero_profiles where id=$2) pr", [staff.apb, user.apb]))[0].la === false);
+check("part 144: still never their own lock", await as("apbowner", () => fails("select clock_gate_set($1,true)", [staff.apbowner], /Not allowed/)));
+check("part 144: a manager still can't switch Attendance", await as("apb", () => fails("select attendance_person_set($1,true)", [staff.apb], /Only an owner/)));
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

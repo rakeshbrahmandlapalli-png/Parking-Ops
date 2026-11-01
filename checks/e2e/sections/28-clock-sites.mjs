@@ -52,3 +52,21 @@ await scenario(async () => {
   await page.click('[data-sid="w2"][data-site="edit"]'); await page.fill("#stR", "300"); await page.click('[data-site="save"]'); await sleep(900);
   check("Sites: the real error is shown", /row-level security/.test(await page.locator("#stBox").innerText()));
 }, "gate");
+
+// Part 144 (1 Nov, Airport Parking Bay: "still on testing, make it full version"): an owner not on
+// Attendance yet gets one button to put themselves on, then can add sites.
+for (const [theme, width] of [["ops", 1440], ["stdplus", 390], ["", 390]]) await scenario(async () => {
+  const tag = "Sites, owner not on Attendance (" + (theme || "standard") + " " + width + ")";
+  const db = build(theme); db.aero = null; db.aeroSites = [];
+  const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height: width < 900 ? 844 : 1000 });
+  await toSettings(page, width);
+  let t = await page.locator("#stBox").innerText().catch(() => "");
+  check(tag + ": says they are not on Attendance, no add form", /not on Attendance yet/.test(t) && await page.locator("#stAN").count() === 0, t);
+  await page.click('[data-site="me"]'); await sleep(900);
+  check(tag + ": Turn on sends their own Attendance on", JSON.stringify(db.selfAtt) === "[true]", db.selfAtt);
+  t = await page.locator("#stBox").innerText();
+  check(tag + ": then the add form shows", !/not on Attendance yet/.test(t) && await page.locator("#stAN").count() === 1, t);
+  if (process.env.SITES_SHOTS) await page.screenshot({ path: process.env.SITES_SHOTS + "/sites-me-" + (theme || "standard") + "-" + width + ".png" });
+  if (width < 900) check(tag + ": no sideways scrolling", await noSideScroll(page));
+  check(tag + ": no errors", page.__errors.length === 0, page.__errors);
+}, "gate");

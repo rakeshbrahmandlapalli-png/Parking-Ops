@@ -5718,7 +5718,7 @@
       '<label class="check"><input type="checkbox" id="clTexts"' + (b.texts ? " checked" : "") + "> Customer texts (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clCalls"' + (b.calls ? " checked" : "") + "> Calls (add-on)</label>" +
       '<label class="check"><input type="checkbox" id="clVoice"' + (b.voice ? " checked" : "") + "> Voice calls: caller menu and calls in the app (add-on, needs Calls)</label>" +
-      '<label class="check"><input type="checkbox" id="clAttendance"' + (b.attendance ? " checked" : "") + "> Attendance (add-on, currently in testing)</label>" +
+      '<label class="check"><input type="checkbox" id="clAttendance"' + (b.attendance ? " checked" : "") + "> Attendance (add-on)</label>" +
       f("clHost", "WEB ADDRESS", b.host, 'autocapitalize="off" placeholder="e.g. clientname-ops.vercel.app"', "Add the same address in Vercel (Settings, Domains) or it won't open.") +
       '<div class="pbtns"><button type="button" data-close>Cancel</button><button class="save" id="clGo">' + (c ? "Save" : "Add client") + "</button></div></form>";
     if (!$("panel").open) $("panel").showModal();
@@ -6937,6 +6937,10 @@
     if (ST.missing) return "";
     if (!ST.rows) return '<p class="note">Loading sites…</p>';
     var head = "<strong>Clock-in sites</strong><p class=\"note\">People can clock in within the radius of a site.</p>";
+    // Part 144: an owner not on Attendance yet can't add sites (the database only lets Attendance managers); one tap puts them on.
+    if (ST.mine === false) return head + '<p class="note">You are not on Attendance yet. Turn it on for yourself to add clock-in sites.</p>' +
+      '<div class="row-actions"><button type="button" class="btn brand" data-site="me"' + (ST.busy ? " disabled" : "") + ">Turn Attendance on for me</button></div>" +
+      (ST.err ? '<p class="note" role="alert" style="color:#B42318">' + esc(ST.err) + "</p>" : "");
     var rows = ST.rows.map(function (w) {
       if (ST.edit === w.id) {
         return '<div class="st-row st-edit"><label>Name<input id="stN" value="' + esc(w.name) + '" maxlength="60"></label><label>Radius (m)<input id="stR" type="number" inputmode="numeric" value="' + w.radius_m + '"></label>' +
@@ -6961,8 +6965,9 @@
   }
   async function stLoad() {
     ST.loading = true;
-    var r = await sb.from("aero_worksites").select("id,name,lat,lng,radius_m").order("name");
+    var both = await Promise.all([sb.from("aero_worksites").select("id,name,lat,lng,radius_m").order("name"), sb.rpc("aero_current_company_id")]), r = both[0];
     ST.loading = false;
+    ST.mine = both[1].error ? null : !!both[1].data;
     if (r.error || !Array.isArray(r.data)) ST.missing = true; else { ST.missing = false; ST.rows = r.data; }
     stDraw();
   }
@@ -6971,6 +6976,14 @@
     if (what === "edit") { ST.edit = id; ST.ask = null; return stDraw(); }
     if (what === "ask") { ST.ask = id; ST.edit = null; return stDraw(); }
     if (what === "cancel") { ST.edit = ST.ask = null; return stDraw(); }
+    if (what === "me") {
+      ST.busy = true; stDraw();
+      var on = await sb.rpc("attendance_person_set", { p_staff: S.me.id, p_on: true });
+      ST.busy = false;
+      if (on.error) { ST.err = on.error.message; return stDraw(); }
+      delete attendanceAccess[S.me.id]; ST.rows = null; toast("Attendance on for you");
+      return stLoad();
+    }
     if (what === "here") {
       var b = $("stPos"); if (b) b.textContent = "Finding you…";
       var p = await clkHere(true);
@@ -6998,7 +7011,7 @@
       if (err) { ST.err = err; return stDraw(); }
       ST.busy = true; stDraw();
       var c = await sb.rpc("aero_current_company_id");
-      if (c.error || !c.data) { ST.busy = false; ST.err = c.error ? c.error.message : "Attendance is not set up for this company."; return stDraw(); }
+      if (c.error || !c.data) { ST.busy = false; ST.err = c.error ? c.error.message : "Turn Attendance on for yourself first (Staff, your name)."; return stDraw(); }
       var ins = await sb.from("aero_worksites").insert({ company_id: c.data, name: an, lat: ST.pos.lat, lng: ST.pos.lng, radius_m: ar });
       ST.busy = false; if (ins.error) { ST.err = ins.error.message; return stDraw(); }
       ST.pos = null; if ($("stAN")) { $("stAN").value = ""; }
