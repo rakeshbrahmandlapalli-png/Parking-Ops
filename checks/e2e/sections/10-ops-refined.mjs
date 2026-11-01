@@ -290,7 +290,7 @@ await scenario(async () => {
   // Desktop: the Operations tables and tabs.
   await page.setViewportSize({ width: 1440, height: 1000 }); await sleep(400);
   const d = await page.evaluate(() => ({ desk: document.body.classList.contains("ops-desk"), drow: document.querySelectorAll("#main .row.drow").length, tabs: getComputedStyle(document.getElementById("bnav")).position, head: !!document.querySelector("#opsHead h1") }));
-  check("Operations Refined desktop: the DROPS table, tabs under the top bar", d.desk && d.drow > 10 && d.tabs === "relative" && d.head, d);
+  check("Operations Refined desktop: the DROPS table, the sections in a side bar", d.desk && d.drow > 10 && d.tabs === "fixed" && d.head, d);
   check("Operations Refined desktop: Key check in words, To do / All with their counts, buttons in words", /^Key check( \d+\/\d+)?$/.test((await text(page, "#keyBtn")).replace(/\s+/g, " ")) && /^To do \d+$/.test(await text(page, "#tabTodo")) &&
     await page.evaluate(() => [...document.querySelectorAll('#main .row.drow[data-id="w1"] .acts button')].map((b) => b.textContent).join("|") === "Sent|Called|Clear"));
   await page.click('.row[data-id="w6"] .reg'); await page.waitForSelector("#panel[open] .rf-2col");
