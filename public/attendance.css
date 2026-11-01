@@ -65,3 +65,12 @@ html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
 .st-row.st-edit input[type=text], .st-row.st-edit input:not([type]) { display: block; margin-top: 4px; }
 .od-shiftrow .btn{margin-left:8px;}
 .od-fix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;}
+/* Staff location while on shift (part 143) */
+.loc-note{margin:6px 0 0;font-size:13px;color:#5b6676}
+.loc-note.on{color:#0F7B4A}
+.loc-ask{margin:8px 0;padding:10px 12px;border:1px solid #F0D9A8;background:#FFF8EA;border-radius:8px;font-size:14px}
+.loc-ask p{margin:0 0 8px}
+.od-shiftrow small.od-where{color:#344054}
+.od-shiftrow small.od-where.old{color:#9A5200}
+.od-shiftrow small.od-where.none{color:#9aa1ad}
+.od-shiftrow small.od-where a{color:inherit;text-decoration:underline}

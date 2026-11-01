@@ -92,6 +92,8 @@
     if (t.dataset.fixshift !== undefined) return fixShift(t.dataset.fixshift === "yes" ? "yes" : t.dataset.fixshift, t.dataset.sid);
     if (t.dataset.site !== undefined) return siteClick(t.dataset.site, t.dataset.sid);
     if (t.dataset.lockpause !== undefined) return lockPauseClick(t.dataset.lockpause);
+    if (t.dataset.locshare !== undefined) return locShareClick(t.dataset.locshare);
+    if (t.dataset.locok !== undefined) return locNoticeOk(false);
     if (t.dataset.saverate !== undefined) return saveOverstayRate(t);
     if (t.dataset.saveexit !== undefined) return saveExitFee(t);
     if (t.dataset.savetexts !== undefined) return saveTexts(t);
