@@ -87,6 +87,7 @@
         if (check.error || !!(check.data && check.data.clock_in_at) !== (kind === "in")) { clkZone(r.error.message, "warn"); clkSlide(kind); return; }
       }
       clkSlide(kind, "done", kind === "in" ? "Clocked in" : "Clocked out");
+      LOC.sentAt = 0;
       attendanceAccess = {};
       setTimeout(function () {
         if (S.gateOn || S.gated) gateCheck(false);
@@ -128,6 +129,7 @@
     b.className = "clkbtn" + (a.shift ? " on" : "");
     b.innerHTML = a.shift ? '<span class="att-dot" aria-hidden="true"></span><span class="num">' + Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m</span>" : "Clock in";
     b.setAttribute("aria-label", a.shift ? "On shift " + Math.floor(m / 60) + " hours " + (m % 60) + " minutes. Clock out" : "Clock in");
+    if (a.shift) { locLoad(); locTick(); }
   }
   function clockSheet() {
     var a = attendanceState(); if (!a) return;
@@ -144,7 +146,7 @@
   function lockPauseHtml() {
     if (!S.me || S.platform || S.me.role !== "owner" || !(S.company && S.company.brand && S.company.brand.attendance === true)) return "";
     if (!LP.st && !LP.missing && !LP.loading) loadLockPause();
-    return setBox("attendance", "Attendance", LP.st ? (LP.st.paused ? "Lock paused" : LP.st.locked + " locked") : "", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">', '<div id="lpBox">' + lockPauseInner() + "</div>" + stHtml());
+    return setBox("attendance", "Attendance", LP.st ? (LP.st.paused ? "Lock paused" : LP.st.locked + " locked") : "", '<div class="box" style="padding:14px;margin-top:14px;max-width:560px">', '<div id="lpBox">' + lockPauseInner() + "</div>" + locShareHtml() + stHtml());
   }
   function lockPauseInner() {
     if (LP.missing) return '<p class="note">Not available yet.</p>';
@@ -284,11 +286,13 @@
     try {
       var r = await Promise.all([
         sb.from("aero_shifts").select("id,user_id,clock_in_at,worksite_id").is("clock_out_at", null),
-        sb.from("aero_worksites").select("id,name"),
-        S.me.role === "owner" ? sb.rpc("attendance_people") : Promise.resolve({ data: null })
+        sb.from("aero_worksites").select("id,name,lat,lng,radius_m"),
+        S.me.role === "owner" ? sb.rpc("attendance_people") : Promise.resolve({ data: null }),
+        sb.rpc("staff_locations").then(function (x) { return x; }, function () { return { data: null }; })
       ]);
       if (r[0].error || !Array.isArray(r[0].data)) { SHIFTS.by = null; return; }
-      SHIFTS.sites = {}; (r[1].data || []).forEach(function (w) { SHIFTS.sites[w.id] = w.name; });
+      SHIFTS.sites = {}; SHIFTS.siteList = r[1].data || []; SHIFTS.siteList.forEach(function (w) { SHIFTS.sites[w.id] = w.name; });
+      SHIFTS.where = {}; if (Array.isArray(r[3].data)) r[3].data.forEach(function (x) { SHIFTS.where[x.staff_id] = x; });
       SHIFTS.by = {}; r[0].data.forEach(function (x) { SHIFTS.by[x.user_id] = x; });
       SHIFTS.people = null;
       if (Array.isArray(r[2].data)) { SHIFTS.people = {}; r[2].data.forEach(function (x) { SHIFTS.people[x.staff_id] = x; }); }
@@ -348,6 +352,76 @@
     return h + on.map(function (p) {
       var x = SHIFTS.by[p.user_id], s = shiftLen(x), site = SHIFTS.sites[x.worksite_id];
       return '<div class="od-shiftrow' + (s.forgot ? " bad" : "") + '"><i aria-hidden="true"></i><div><strong>' + esc(p.name) + "</strong><small>" +
-        (s.forgot ? "Still clocked in since " + esc(hhmm(x.clock_in_at)) : esc(site || "Clocked in")) + '</small></div><span class="num">' + s.text + "</span>" + (s.forgot ? fixButtons(x, p.name) : "") + "</div>";
+        (s.forgot ? "Still clocked in since " + esc(hhmm(x.clock_in_at)) : esc(site || "Clocked in")) + "</small>" + whereHtml(p) + '</div><span class="num">' + s.text + "</span>" + (s.forgot ? fixButtons(x, p.name) : "") + "</div>";
     }).join("") + "</section>";
+  }
+
+  // ── where people are while clocked in (part 143) ──
+  // Off until a client owner switches it on. A phone sends its position every 2 minutes, only while that person
+  // is clocked in and Parking Ops is open on screen (a web app can't follow anyone in the background).
+  // No notice in the app (user, 1 Nov: "Don't need those comments"); the client tells its staff.
+  // Only the latest position is kept; clocking out blanks it. Owners and managers see it on the Dashboard.
+  var LOC = { st: null, missing: false, loading: false, at: 0, sentAt: 0, busy: false, last: null };
+  var LOC_EVERY = 120000;
+  function locLoad(force) {
+    if (LOC.loading || !S.me || S.platform || !(S.company && S.company.brand && S.company.brand.attendance === true)) return;
+    if (!force && (LOC.st || LOC.missing) && Date.now() - LOC.at < 300000) return;
+    LOC.loading = true;
+    sb.rpc("location_status").then(function (r) {
+      LOC.loading = false; LOC.at = Date.now();
+      if (r.error || !r.data) { LOC.missing = true; LOC.st = null; return; }
+      var was = JSON.stringify(LOC.st); LOC.missing = false; LOC.st = r.data;
+      if (was !== JSON.stringify(LOC.st)) { locRedraw(); locTick(); }
+    }, function () { LOC.loading = false; });
+  }
+  function locRedraw() {
+    var b = $("locBox"); if (b) b.innerHTML = locShareInner();
+    if (S.view === "dashboard" && !$("panel").open) render();
+  }
+  async function locTick() {
+    var st = LOC.st, a = S.me && attendanceState();
+    if (!st || !st.on || st.shared_login || !a || !a.shift || document.visibilityState !== "visible" || !navigator.geolocation) return;
+    if (Date.now() - LOC.sentAt < LOC_EVERY - 5000) return;
+    // Location is normally allowed already (it was, to clock in). iPhones often report "prompt" even then, so
+    // while it isn't "granted" ask at most once per app opening; after a fix, keep going; "denied" stops.
+    try { if (navigator.permissions && navigator.permissions.query) { var perm = await navigator.permissions.query({ name: "geolocation" }); if (perm.state === "denied") return; if (perm.state !== "granted" && !LOC.gotFix && LOC.asked) return; } } catch (e) {}
+    LOC.sentAt = Date.now(); LOC.asked = true;
+    navigator.geolocation.getCurrentPosition(function (p) {
+      LOC.gotFix = true;
+      sb.rpc("i_am_at", { p_lat: p.coords.latitude, p_lng: p.coords.longitude, p_acc: Math.round(p.coords.accuracy || 0) }).then(function (r) {
+        if (!r.error && r.data === true) LOC.last = Date.now();
+      }, function () {});
+    }, function () {}, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  }
+  setInterval(function () { if (S.me) { locLoad(); locTick(); } }, 30000);
+  document.addEventListener("visibilitychange", function () { if (S.me && document.visibilityState === "visible") { locLoad(true); setTimeout(locTick, 1500); } });
+  // Settings → Attendance, owners only.
+  var LS = { busy: false };
+  function locShareHtml() { locLoad(); return '<hr class="lp-hr"><div id="locBox">' + locShareInner() + "</div>"; }
+  function locShareInner() {
+    if (LOC.missing) return "";
+    if (!LOC.st) return '<p class="note">Loading…</p>';
+    var on = !!LOC.st.on;
+    return '<div class="st-row"><strong>Staff location while on shift</strong><button type="button" class="btn ' + (on ? "ghost" : "brand") + ' small" data-locshare="' + (on ? "off" : "yes") + '"' + (LS.busy ? " disabled" : "") + ">" + (on ? "Switch off" : "Switch on") + "</button></div>";
+  }
+  async function locShareClick(what) {
+    if (LS.busy) return;
+    LS.busy = true; locRedraw();
+    var r = await sb.rpc("location_share_set", { p_on: what === "yes" });
+    LS.busy = false;
+    if (r.error) { locRedraw(); return toast(r.error.message, true); }
+    toast(what === "yes" ? "Staff location switched on" : "Staff location switched off");
+    locLoad(true); SHIFTS.at = 0;
+  }
+  // Dashboard: under each person on shift.
+  function whereHtml(p) {
+    locLoad();
+    var w = SHIFTS.where && SHIFTS.where[p.id];
+    if (!w) return LOC.st && LOC.st.on ? '<small class="od-where none">No location yet</small>' : "";
+    var near = null; (SHIFTS.siteList || []).forEach(function (x) { if (x.lat == null) return; var m = clkMetres(w, x); if (!near || m - x.radius_m < near.m - near.w.radius_m) near = { w: x, m: m }; });
+    var place = !near ? "Location" : near.m <= near.w.radius_m + Math.min(w.acc || 0, 50) ? "At " + near.w.name : (near.m < 1000 ? near.m + " m" : (near.m / 1000).toFixed(1) + " km") + " from " + near.w.name;
+    var mins = Math.round((Date.now() - new Date(w.at)) / 60000), old = mins > 10;
+    var when = mins < 1 ? "just now" : mins < 60 ? mins + " min ago" : "at " + hhmm(w.at);
+    return '<small class="od-where' + (old ? " old" : "") + '">' + esc(place) + " · " + esc(when) + (old ? " (app closed?)" : "") +
+      ' · <a href="https://www.google.com/maps?q=' + (+w.lat).toFixed(6) + "," + (+w.lng).toFixed(6) + '" target="_blank" rel="noopener">Map</a></small>';
   }
