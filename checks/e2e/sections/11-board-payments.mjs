@@ -47,7 +47,7 @@ for (const theme of ["", "stdplus", "ops", "ops-refined", "pro", "cards", "premi
   for (const width of [360, 900, 1440]) {
     await page.setViewportSize({ width, height: 900 }); await sleep(120);
     check("Collections (" + look + "): " + width + " px has no sideways scroll", await noSideScroll(page));
-    check("Collections (" + look + "): " + width + " px, fee controls stay below the operational actions", await page.locator("#main .row.with-payments").evaluateAll((rows) => rows.every((r) => { const p = r.querySelector(".bpay-row").getBoundingClientRect(), a = r.querySelector(".acts")?.getBoundingClientRect(); return !a || p.top >= a.bottom - 1; })));
+    check("Collections (" + look + "): " + width + " px, fee controls never overlap the operational actions (below them, or left of them on a wide screen)", await page.locator("#main .row.with-payments").evaluateAll((rows) => rows.every((r) => { const p = r.querySelector(".bpay-row").getBoundingClientRect(), a = r.querySelector(".acts")?.getBoundingClientRect(); return !a || p.top >= a.bottom - 1 || (document.body.classList.contains("ops-desk") && p.right <= a.left + 1); })));
   }
   await pickKind(page, "picks");
   check("Collections (" + look + "): PICKS does not show return-day fees or retain their filter", !await page.locator("#boardPayments").isVisible() && await page.locator("#main .bpay-row").count() === 0);

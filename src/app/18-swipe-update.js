@@ -128,8 +128,8 @@
   function opsMenuPlace() {
     if (!isOps()) return;
     var top = document.querySelector(".bar").getBoundingClientRect().bottom, nav = $("bnav").classList.contains("hidden") ? 0 : $("bnav").getBoundingClientRect().height;
-    // Wide screen: the tabs are under the top bar, so the menu starts below them and runs to the bottom.
-    if (opsDesk() && !$("bnav").classList.contains("hidden")) { top = $("bnav").getBoundingClientRect().bottom; nav = 0; }
+    // Wide screen: the sections are a side bar on the left, so the menu starts under the top bar and runs to the bottom.
+    if (opsDesk() && !$("bnav").classList.contains("hidden")) nav = 0;
     document.documentElement.style.setProperty("--ops-menu-top", Math.max(0, Math.round(top)) + "px");
     document.documentElement.style.setProperty("--ops-menu-bottom", Math.round(nav) + "px");
   }

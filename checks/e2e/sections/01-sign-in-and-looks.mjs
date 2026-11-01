@@ -404,10 +404,10 @@ await scenario(async () => {
   check("Operations: navy TO DO, grey page, numbers in a panel", chrome.tab === "rgb(24, 40, 59)" && chrome.bg === "rgb(245, 247, 250)" && chrome.tally === "6px", chrome);
   check("Operations: Standard itself keeps its own chrome", await std.evaluate(() => getComputedStyle(document.body).backgroundColor === "rgb(255, 255, 255)" && getComputedStyle(document.querySelector(".tabs button.on")).backgroundColor === "rgb(255, 255, 255)"));
   await plus.setViewportSize({ width: 1280, height: 900 }); await sleep(200);
-  check("Operations: wide screen, PICKS gets the table too", await plus.evaluate(() => document.body.classList.contains("picks") && !!document.querySelector("#main .row.drow .dc-b") && Math.round(document.getElementById("main").getBoundingClientRect().width) === document.documentElement.clientWidth));
+  check("Operations: wide screen, PICKS gets the table too", await plus.evaluate(() => document.body.classList.contains("picks") && !!document.querySelector("#main .row.drow .dc-b") && Math.round(document.getElementById("main").getBoundingClientRect().width) === document.documentElement.clientWidth - Math.round(document.getElementById("bnav").getBoundingClientRect().width)));
   await pickKind(plus, "drops"); await sleep(200);
-  { const w = await plus.evaluate(() => ({ main: Math.round(document.getElementById("main").getBoundingClientRect().width), page: document.documentElement.clientWidth, desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .row.drow") }));
-  check("Operations: wide screen, the board uses the width (the table layout)", w.main === w.page && w.desk && w.drow, w); }
+  { const w = await plus.evaluate(() => ({ main: Math.round(document.getElementById("main").getBoundingClientRect().width), page: document.documentElement.clientWidth - Math.round(document.getElementById("bnav").getBoundingClientRect().width), desk: document.body.classList.contains("ops-desk"), drow: !!document.querySelector("#main .row.drow") }));
+  check("Operations: wide screen, the board uses the width beside the side bar (the table layout)", w.main === w.page && w.desk && w.drow, w); }
   check("Operations: no errors", plus.__errors.length === 0, plus.__errors);
   // As many jobs on the screen as Standard with features: the first row starts no lower.
   await plus.setViewportSize({ width: 390, height: 844 }); await sleep(150);
@@ -535,10 +535,10 @@ await scenario(async () => {
   const db = deskDb(), page = await phone(browser, db, { width: 1440 }); await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page); await sleep(400);
   const lay = await page.evaluate(() => { const nav = document.getElementById("bnav"), bar = document.querySelector(".top .bar");
-    return { desk: document.body.classList.contains("ops-desk"), navUnder: nav.previousElementSibling === bar && nav.getBoundingClientRect().top >= bar.getBoundingClientRect().bottom - 1, pos: getComputedStyle(nav).position,
+    return { desk: document.body.classList.contains("ops-desk"), navUnder: nav.getBoundingClientRect().left === 0 && Math.abs(nav.getBoundingClientRect().top - bar.getBoundingClientRect().bottom) < 1 && nav.getBoundingClientRect().height > 600, pos: getComputedStyle(nav).position,
       tabs: [...nav.querySelectorAll("button")].filter((b) => b.offsetParent).map((b) => b.textContent.trim()), on: [...nav.querySelectorAll("button[aria-current=page]")].map((b) => b.textContent.trim()),
       head: document.getElementById("opsHead").innerText.replace(/\s+/g, " "), cols: [...document.querySelectorAll("#colHead.dhead > span")].map((x) => x.textContent), side: document.documentElement.scrollWidth <= innerWidth + 1 }; });
-  check("Ops wide: the bottom bar is the tabs under the top bar", lay.desk && lay.navUnder && lay.pos !== "fixed", lay);
+  check("Ops wide: the bottom bar is a side bar on the left, under the top bar", lay.desk && lay.navUnder && lay.pos === "fixed", lay);
   check("Ops wide: tabs map to existing pages (owner sees Dashboard and Settings), Board marked", lay.tabs.join("|") === "Board|Flights|Stats|Summary|Dashboard|Settings|Menu" && lay.on.join() === "Board", lay.tabs);
   const night = new Date(TONIGHT + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }), wd = (k) => new Date(k + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
   check("Ops wide: title, the sheet, its full date and the shift's hours", lay.head === "Operations board DROPS · " + night + " · 06:00 " + wd(TONIGHT) + " to 05:59 " + wd(TOMORROW) + " Current shift", lay.head);
@@ -601,7 +601,7 @@ await scenario(async () => {
   check("Flights wide: Add flight opens the flight number form", await page.evaluate(() => document.getElementById("panel").open && !!document.getElementById("quickFlight")));
   await page.keyboard.press("Escape"); await sleep(250);
   await page.click('#bnav [data-bn="menuBtn"]'); await sleep(300);
-  check("Ops wide: Menu opens under the tabs", await page.evaluate(() => Math.round(document.getElementById("menu").getBoundingClientRect().top) === Math.round(document.getElementById("bnav").getBoundingClientRect().bottom)));
+  check("Ops wide: Menu opens under the top bar, beside the side bar", await page.evaluate(() => Math.round(document.getElementById("menu").getBoundingClientRect().top) === Math.round(document.querySelector(".top .bar").getBoundingClientRect().bottom) && Math.round(document.getElementById("menu").getBoundingClientRect().left) === Math.round(document.getElementById("bnav").getBoundingClientRect().right)));
   await page.keyboard.press("Escape"); await sleep(250);
   // PICKS on a wide screen: its own columns and its own buttons
   await page.click('#bnav [data-view="board"]'); await sleep(300);
@@ -670,7 +670,7 @@ await scenario(async () => {
   // Dashboard
   await go("dashboard");
   const dsh0 = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, sd = r(".od-side"), a = r(".od-desk"), m = r(".od-dmain"), p = r(".od-dside");
-    return sd && a && m && p && sd.right <= a.left && a.width > innerWidth - 360 && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1; });
+    return sd && a && m && p && sd.right <= a.left && a.width > innerWidth - 360 - document.getElementById("bnav").getBoundingClientRect().width && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1; });
   await page.click('[data-dashsec="workload"]'); await sleep(300);
   const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
     return { attnFull: true, three: w && q && Math.abs(w.top - q.top) < 2 && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
