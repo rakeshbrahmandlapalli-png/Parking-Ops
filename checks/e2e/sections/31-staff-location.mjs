@@ -48,6 +48,20 @@ await scenario(async () => {
   check("Staff location: no errors", page.__errors.length === 0, page.__errors);
 }, "gate");
 
+// iPhone: location is allowed but the browser still reports "prompt" (Safari's "Ask" setting): it still sends.
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", ink: "#172536", short: "TakeOff", attendance: true };
+  db.me = { ...db.me, role: "office" };
+  db.aero = { manager: false, sites: SITES, open: { id: "sh1", clock_in_at: ago(60), worksite_id: "w1" }, shifts: [] };
+  db.loc = { on: true };
+  const page = await phone(browser, db, { width: 390 });
+  await page.context().grantPermissions(["geolocation"], { origin: BASE }); await page.context().setGeolocation(HERE);
+  await page.addInitScript(() => { const q = navigator.permissions.query.bind(navigator.permissions); navigator.permissions.query = (d) => d && d.name === "geolocation" ? Promise.resolve({ state: "prompt" }) : q(d); });
+  await open(page); await sleep(3500);
+  check("Staff location (iPhone, permission says prompt): the position is still sent", (db.loc.sent || []).length === 1, db.loc.sent);
+  check("Staff location (iPhone): no errors", page.__errors.length === 0, page.__errors);
+}, "gate");
+
 // Switched off: nothing is shown to staff and nothing is sent.
 await scenario(async () => {
   const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", ink: "#172536", short: "TakeOff", attendance: true };
