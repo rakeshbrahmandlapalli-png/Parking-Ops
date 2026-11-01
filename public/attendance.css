@@ -32,15 +32,29 @@
 .clkbtn.on{border-color:#0F7B4A;color:#0F7B4A;}
 .clkbtn.hidden{display:none;}
 html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
-/* Who is on shift: chips on Staff & access, a list on the Dashboard. */
-.shiftchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.ops-side .shiftchips{justify-content:flex-end}
-.shiftchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px;background:#eef1f5;color:#27323f;font-variant-numeric:tabular-nums}
-.shiftchip.on{background:#e8f5ee;color:#0F7B4A}
-.shiftchip.lock{background:#FFF3DD;color:#9A5200}
-.shiftchip.bad{background:#FEF1F0;color:#B42318}
+/* Who is on shift: a status line on Staff & access, a list on the Dashboard. */
+/* Plain status text with a dot, as the Online column (1 Nov, user: no "AI-made" pills). */
+.shiftchips{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;min-width:0}
+.shiftchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;box-sizing:border-box;font-size:12px;font-weight:600;line-height:1.35;color:#5b6676;font-variant-numeric:tabular-nums}
+.shiftchip.on{color:#0F7B4A}
+.shiftchip.lock{color:#9A5200}
+.shiftchip.bad{color:#B42318}
 .shiftchip i{width:8px;height:8px;border-radius:50%;background:#0F7B4A;flex:none}
 .shiftchip i.off{background:#9aa1ad}
+.shiftchip.bad::before{content:"";width:8px;height:8px;border-radius:50%;background:#B42318;flex:none}
+/* Where the chips sit (1 Nov: on Operations Refined they fell into the avatar column, one word per line;
+   on Standard, Cards, APB UI and Standard with features the buttons covered them on a phone). */
+/* Standard, APB UI, Cards, Standard with features: the buttons go under the person when they don't fit beside. */
+html:not(.premium):not(.ops):not(.ops-refined) .staffbox .rowline{flex-wrap:wrap}
+html:not(.premium):not(.ops):not(.ops-refined) .staffbox .rowline > .grow{flex:1 1 150px}
+html:not(.premium):not(.ops):not(.ops-refined) .staffbox .rowline > .sbtns{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
+/* Operations, phone: the chips are the row's last line, under the name, after the avatar. */
+html.ops .ops-person{flex-wrap:wrap}
+html.ops .ops-person > .shiftchips{flex:1 1 100%;margin:-4px 0 0 44px}
+/* Operations and Operations Refined, desktop table: a second line under Person, left of Actions. */
+html.ops body.ops-desk .ops-person > .shiftchips,html.ops-refined body.ops-desk .ops-person > .shiftchips{grid-column:2 / 7;grid-row:2;margin:6px 0 0}
+/* Operations Refined, phone: under Active / Online, after the avatar. */
+@media(max-width:899px){html.ops-refined .ops-person > .shiftchips{grid-column:2 / -1;grid-row:3;margin:0}}
 .od-onshift{margin-top:16px;padding-top:16px;border-top:1px solid #eceef2}
 .od-onshift h2{margin:0 0 8px;font-size:18px}
 .od-onshift h2 small{font-size:13px;font-weight:500;color:#5b6676;margin-left:6px}
@@ -70,3 +84,5 @@ html.cards .clkbtn{height:38px;border:0;border-radius:10px;}
 .od-shiftrow small.od-where.old{color:#9A5200}
 .od-shiftrow small.od-where.none{color:#9aa1ad}
 .od-shiftrow small.od-where a{color:inherit;text-decoration:underline}
+/* Operations at 360 px: the Clock in button pushed refresh off the screen while "Connecting" showed; it becomes a dot, as on the board's other busy bars. */
+@media(max-width:430px){html.ops body.has-clk .bar #sync.on{font-size:0;padding:0;width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#b58520;}html.ops body.has-clk .bar #sheetPick{min-width:0;flex-shrink:1;}}

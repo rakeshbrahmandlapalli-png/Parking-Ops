@@ -517,6 +517,7 @@ table.usage.health th{white-space:normal;}
 .herr .note{display:block;margin-top:2px;}
 .hwarnline{display:block;width:100%;text-align:left;margin:0 0 12px;padding:10px 12px;border:1px solid #f1b5ae;background:#fdf1ef;color:#7a1a12;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;}
 .clienthead .title{margin-right:auto;}
+.clienthead{flex-wrap:wrap;}.clienthead .btn{white-space:nowrap;}
 /* Bottom of the menu: this phone's app version, or "New version ready". */
 .appver{margin:14px 0 2px;text-align:center;font-size:12px;color:#80868b;}
 .appver .link{min-height:32px;font-size:13px;font-weight:700;color:var(--brand-text);text-decoration:underline;}

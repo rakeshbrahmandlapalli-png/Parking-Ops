@@ -444,8 +444,10 @@
           (canChange(p) ? '<button type="button" data-reset="' + p.id + '">New link</button><button type="button" data-onoff="' + p.id + '">' + (p.active ? "Switch off" : "Switch on") + "</button>" : "");
         return '<div class="ops-person' + (p.active ? "" : " off") + '"><i>' + esc((p.name || "?").trim().charAt(0).toUpperCase()) + "</i>" +
           '<div class="grow"><strong>' + esc(p.name) + "</strong><small>" + (p.id === S.me.id ? "Your account" : "Staff member") + "</small><span>" + esc(ROLE_LABEL[p.role] || p.role) + "</span></div>" +
-          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") + (p.active ? shiftChip(p) : "") +
-          (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div></div>";
+          '<div class="ops-side"><em class="' + (p.active ? "on" : "") + '">' + (p.active ? "Active" : "Inactive") + "</em>" + (p.active ? seenHtml(p) : "") +
+          (acts ? '<details class="ops-dd"><summary>Actions</summary><div>' + acts + "</div></details>" : "") + "</div>" +
+          // Attendance chips are the row's own line (1 Nov): inside .ops-side they fell into the avatar column.
+          (p.active ? shiftChip(p) : "") + "</div>";
       }).join("") + "</div>");
   }
   // An Actions menu that would open under the bottom bar (the last people on a phone) opens upward,
