@@ -1457,3 +1457,40 @@ html.ops-refined body.ops-desk main #archQ{height:34px!important;min-height:34px
  html.ops-refined body.ops-desk main .drow .acts button small{display:none;}
  html.ops-refined body.ops-desk .ops-person{grid-template-columns:26px minmax(120px,1.3fr) minmax(90px,1fr) minmax(90px,1fr) 80px 120px 100px;gap:0 12px;}
 }
+
+/* ── Fixes from the user's photos (1 Nov 2026) ──
+   Calls: the minimised bar sat over the figures and column heads; on a desk it now
+   sits at the foot on the right, "+ New booking" moves left of it and the board
+   leaves room under the last row. Open, the dock starts under the top bar and the
+   side bar folds to the icon rail so the board keeps its columns.
+   Row buttons: the time and name inside a pressed button (SENT 08:37 SHIBBY) pushed
+   CLEAR / PT out of the window; the time is already in Status, so the button shows
+   just the word below 1680 px and while the call dock is open, and is capped above.
+   Menu: no OPERATIONS / MENU line. Returns: sentence-case headings. */
+@media(min-width:900px){
+ html.ops-refined body.ops-desk #callQueue:not(:has(#callPop)){top:auto;bottom:16px;right:16px;width:300px;}
+ html.ops-refined body.ops-desk.has-call-queue .deskbtn{right:332px!important;bottom:16px!important;}
+ html.ops-refined body.ops-desk.has-call-queue #main::after{content:"";display:block;height:72px;}
+ html.ops-refined body.ops-desk #callQueue:has(#callPop){top:calc(var(--en-top) + 8px);}
+ html.ops-refined body.ops-desk.has-call-dock #callPop{max-height:calc(100dvh - var(--en-top) - 24px);}
+ html.ops-refined body.ops-desk.has-call-dock #bnav{right:auto;}
+ html.ops-refined body.ops-desk.has-call-dock{--sb:64px;}
+ html.ops-refined body.ops-desk.has-call-dock .tobrand{width:40px;margin-right:6px;padding:0 8px;font-size:0;gap:0;}
+ html.ops-refined body.ops-desk.has-call-dock .bnav:not(.hidden){padding:12px 10px;}
+ html.ops-refined body.ops-desk.has-call-dock .bnav button{justify-content:center;padding:0;font-size:0;gap:0;min-height:40px;}
+ html.ops-refined body.ops-desk.has-call-dock .bnav button svg{width:18px;height:18px;}
+ html.ops-refined body.ops-desk.has-call-dock .bnav #bnDash{margin-top:14px;}
+ html.ops-refined body.ops-desk.has-call-dock .bnav #bnDash::before{display:none;}
+ html.ops-refined body.ops-desk.has-call-dock main .drow .acts button :is(small,em.by){display:none;}
+ html.ops-refined body.ops-desk.picks main .drow .acts button em.by{display:none;}
+ html.ops-refined body.ops-desk main .drow .acts button small{display:inline-block;max-width:9ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
+ html.ops-refined body.ops-desk main .drow .acts button em.by{display:inline-block;max-width:7ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
+ html.ops-refined body.ops-desk #menuBody > h2::before{content:none!important;display:none;}
+ html.ops-refined body.ops-desk #menuBody > h2{font-size:20px;font-weight:600;}
+ html.ops-refined body.ops-desk #panelBody:has([data-copy="returns"]) > label{display:block;text-transform:lowercase;letter-spacing:0;font-size:12.5px;font-weight:500;color:var(--en-mut);}
+ html.ops-refined body.ops-desk #panelBody:has([data-copy="returns"]) > label::first-letter{text-transform:uppercase;}
+ html.ops-refined body.ops-desk #panelBody:has([data-copy="returns"]) .pbtns button{min-height:36px;height:36px;font-size:13.5px;}
+}
+@media(min-width:900px) and (max-width:1679px){
+ html.ops-refined body.ops-desk main .drow .acts button small{display:none;}
+}
