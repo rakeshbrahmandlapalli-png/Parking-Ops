@@ -119,8 +119,10 @@ for (const role of ["office", "manager", "bongo", "terminal", "view"]) await sce
   await page.click('#bnav [data-bn="menuBtn"]'); await page.click('#menuBody [data-view="staff"]');
   await page.click("#main .ops-dd summary"); await page.click('[data-manage="s2"]');
   const access = page.locator('[data-perm="collections"]');
-  check("Collections access editor (" + role + "): default is labelled and selected correctly", await access.isChecked() === byDefault && /View board collections/.test(await access.locator("..").innerText()) && (await access.locator("..").innerText()).includes("default: " + (byDefault ? "yes" : "no")));
-  await access.setChecked(!byDefault); await page.click("[data-saveaccess]");
+  check("Collections access editor (" + role + "): default is labelled and selected correctly", await access.isChecked() === byDefault && /View board collections/.test(await access.locator("..").innerText()) && !(await access.locator("..").locator(".sp-chg").isVisible()));
+  await access.setChecked(!byDefault);
+  check("Collections access editor (" + role + "): a change from the role's default says Changed", await access.locator("..").locator(".sp-chg").isVisible());
+  await page.click("[data-saveaccess]");
   await page.waitForFunction(() => !!document.querySelector('[data-saveaccess]:not([disabled])'));
   check("Collections access editor (" + role + "): save persists the grant or removal", JSON.stringify(target.extra) === JSON.stringify([byDefault ? "-collections" : "collections"]));
   const owner = db.me; db.me = { ...target, company_id: "c1" }; db.perms = {};
