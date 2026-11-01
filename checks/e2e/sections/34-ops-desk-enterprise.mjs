@@ -9,14 +9,14 @@ const toView = async (page, view) => {
   await page.click('#menuBody [data-view="' + view + '"]'); await sleep(900);
 };
 for (const theme of ["ops-refined", "ops"]) await scenario(async () => {
-  for (const [width, sb] of [[1600, 224], [1440, 224], [1366, 64], [1280, 64], [1024, 64], [900, 64]]) {
+  for (const [width, sb] of [[1920, 224], [1680, 224], [1600, 224], [1440, 224], [1366, 64], [1280, 64], [1024, 64], [900, 64]]) {
     const tag = "Desk (" + theme + " " + width + ")";
     const page = await phone(browser, deskDb(theme), { width }); await page.setViewportSize({ width, height: 900 });
     await open(page); await sleep(500);
     const g = await page.evaluate(() => {
       const nav = document.getElementById("bnav").getBoundingClientRect(), bar = document.querySelector(".bar").getBoundingClientRect();
       const main = document.getElementById("main").getBoundingClientRect(), brand = document.getElementById("menuBtn").getBoundingClientRect();
-      const rows = [...document.querySelectorAll("#main .drow")].slice(0, 6).map((r) => { const b = r.getBoundingClientRect(), a = r.querySelector(".acts").getBoundingClientRect(); return { right: b.right, actsRight: a.right }; });
+      const rows = [...document.querySelectorAll("#main .drow")].map((r) => { const b = r.getBoundingClientRect(), a = r.querySelector(".acts").getBoundingClientRect(), last = [...r.querySelectorAll(".acts button")].pop(); return { right: b.right, actsRight: Math.max(a.right, last ? last.getBoundingClientRect().right : 0) }; });
       return { navL: nav.left, navW: Math.round(nav.width), navTop: Math.round(nav.top), navH: nav.height, barBottom: Math.round(bar.bottom), mainL: main.left, brandL: brand.left, brandW: brand.width,
         pos: getComputedStyle(document.getElementById("bnav")).position, rows, vw: innerWidth };
     });
@@ -86,5 +86,22 @@ for (const theme of ["ops", "ops-refined"]) await scenario(async () => {
   await page.evaluate(() => document.querySelector("#bnav [data-bn=menuBtn]").click()); await page.waitForSelector("#menu[open]"); await sleep(300);
   const e = await page.evaluate(() => getComputedStyle(document.querySelector("#menuBody > h2"), "::before").content);
   check("Desk (" + theme + "): the menu has no OPERATIONS / MENU line", e === "none" || e === "normal", e);
+  await page.context().close();
+});
+// Second pass (1 Nov): a selected PICKS figure kept its number visible; the menu has no swipe settings on a desk;
+// Settings and the Dashboard have their sections as tabs along the top, not a second side list.
+for (const theme of ["ops", "ops-refined"]) await scenario(async () => {
+  const page = await phone(browser, deskDb(theme), { width: 1440 }); await page.setViewportSize({ width: 1440, height: 900 }); await open(page); await sleep(500);
+  await page.click('#kindBar [data-kind="picks"]'); await sleep(700);
+  await page.click('#catTally [data-cat="shortleft"]'); await sleep(500);
+  const c = await page.evaluate(() => { const b = document.querySelector('#catTally [data-cat="shortleft"]'), n = b.querySelector(".num"); return { on: b.classList.contains("on"), num: getComputedStyle(n).color, bg: getComputedStyle(b).backgroundColor }; });
+  check("Desk (" + theme + "): a selected PICKS figure keeps its number readable", c.on && c.num !== "rgb(255, 255, 255)" && c.bg !== "rgba(0, 0, 0, 0)", c);
+  await page.click('#kindBar [data-kind="drops"]'); await sleep(600);
+  await page.evaluate(() => document.querySelector("#bnav [data-bn=menuBtn]").click()); await page.waitForSelector("#menu[open]"); await sleep(300);
+  const sw = await page.evaluate(() => { const g = document.querySelector("#menuBody .swipestep"); return g ? g.getBoundingClientRect().height : 0; });
+  check("Desk (" + theme + "): no swipe settings in the desk menu", sw === 0, sw);
+  await page.click('#menuBody [data-view="settings"]'); await sleep(900);
+  const st = await page.evaluate(() => { const n = document.querySelector(".set-nav").getBoundingClientRect(), b = document.querySelector(".set-desk .box").getBoundingClientRect(); return { navW: n.width, navB: n.bottom, boxT: b.top }; });
+  check("Desk (" + theme + "): Settings sections are tabs along the top", st.navW > 600 && st.navB <= st.boxT, st);
   await page.context().close();
 });

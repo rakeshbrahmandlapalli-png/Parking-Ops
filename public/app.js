@@ -3808,13 +3808,15 @@
     return ["Return", "Registration · vehicle", "Flight", "Customer · ref", "Yard", "Status", swipeOnly() ? "Done" : "Actions"].map(function (x) { return "<span>" + x + "</span>"; }).join("");
   }
   // What's happening to the car, in words, from the same times the buttons show.
+  // Who pressed it, after the time (the desktop row buttons show just the word, so the name lives here).
+  function opsWho(r, col) { var n = byName(r, col); return n ? ' <span class="st-by">· ' + esc(nice(n)) + "</span>" : ""; }
   function opsDropState(r, overWord, cmpl) {
-    if (r.cleared_at) return ['<b class="st-x">' + (cmpl ? "Complaint" : "Cleared") + ' <span class="num">' + esc(hhmm(r.cleared_at)) + "</span></b>"];
-    if (atDesk(r)) { var dw = Math.max(0, Math.floor(minsSince(r.desk_at))); return ['<b class="st-d">At desk <span class="num">' + esc(hhmm(r.desk_at)) + " · " + dw + " min</span></b>",
-      r.sent_at ? 'Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span>" : '<span class="num">waiting ' + Math.max(0, Math.floor(minsSince(r.called_at))) + " min</span>"]; }
-    if (r.sent_at) return ['<b class="st-s">Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span></b>"];
+    if (r.cleared_at) return ['<b class="st-x">' + (cmpl ? "Complaint" : "Cleared") + ' <span class="num">' + esc(hhmm(r.cleared_at)) + "</span></b>" + opsWho(r, "cleared_by")];
+    if (atDesk(r)) { var dw = Math.max(0, Math.floor(minsSince(r.desk_at))); return ['<b class="st-d">At desk <span class="num">' + esc(hhmm(r.desk_at)) + " · " + dw + " min</span></b>" + opsWho(r, "desk_by"),
+      r.sent_at ? 'Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span>" + opsWho(r, "sent_by") : '<span class="num">waiting ' + Math.max(0, Math.floor(minsSince(r.called_at))) + " min</span>"]; }
+    if (r.sent_at) return ['<b class="st-s">Sent <span class="num">' + esc(hhmm(r.sent_at)) + "</span></b>" + opsWho(r, "sent_by")];
     if (overWord || inOverstayBlock(r)) return ['<b class="st-o">Overstay' + (r.called_at ? ' <span class="num">' + esc(hhmm(r.called_at)) + "</span>" : "") + "</b>"];
-    if (r.called_at) { var w = Math.max(0, Math.floor(minsSince(r.called_at))); return ['<b class="st-c">Called <span class="num">' + esc(hhmm(r.called_at)) + "</span></b>", '<span class="num">waiting ' + w + " min</span>"]; }
+    if (r.called_at) { var w = Math.max(0, Math.floor(minsSince(r.called_at))); return ['<b class="st-c">Called <span class="num">' + esc(hhmm(r.called_at)) + "</span></b>" + opsWho(r, "called_by"), '<span class="num">waiting ' + w + " min</span>"]; }
     return ['<span class="st-n">Not called</span>'];
   }
   // The flight's own state, from the flight check only.

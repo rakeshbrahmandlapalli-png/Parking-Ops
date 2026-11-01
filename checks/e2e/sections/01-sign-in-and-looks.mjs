@@ -547,11 +547,11 @@ await scenario(async () => {
   await page.click("#tabAll"); await sleep(300);
   const cell = (id, c) => page.evaluate(([id, c]) => { const e = document.querySelector('.row[data-id="' + id + '"] .' + c); return e ? e.innerText.replace(/\s+/g, " ").trim() : null; }, [id, c]);
   check("Ops wide: booked return, timetable and estimate kept apart", (await cell("w2", "dc-t")) === "12:05" && (await cell("w2", "dc-f")) === "FR2002" && /Sch 12:05 · Est 12:03$/.test(await cell("w2", "dc-s")), [await cell("w2", "dc-t"), await cell("w2", "dc-f"), await cell("w2", "dc-s")]);
-  check("Ops wide: the flight's times in Status, landed with its time", /^Sent \d\d:\d\d Landed \d\d:\d\d/.test(await cell("w6", "dc-s")) && !/Landed/.test(await cell("w6", "dc-f")), [await cell("w6", "dc-s"), await cell("w6", "dc-f")]);
+  check("Ops wide: the flight's times in Status, landed with its time", /^Sent \d\d:\d\d · SUGU Landed \d\d:\d\d/.test(await cell("w6", "dc-s")) && !/Landed/.test(await cell("w6", "dc-f")), [await cell("w6", "dc-s"), await cell("w6", "dc-f")]);
   check("Ops wide: no flight number: the collection time staff typed, named", (await cell("w9", "dc-t")) === "14:10 Collect 14:30" && (await cell("w9", "dc-f")) === "No flight", [await cell("w9", "dc-t"), await cell("w9", "dc-f")]);
   check("Ops wide: overnight car keeps its own time (00:40), estimate after midnight", (await cell("w15", "dc-t")) === "00:40" && /Delayed \+45 min/.test(await cell("w15", "dc-s")), await cell("w15", "dc-s"));
   check("Ops wide: customer and long reference in their column", (await cell("w5", "dc-c")) === "BROWN AGENT-REF-PARK-AND-RIDE-0000001046-LONG" && (await cell("w5", "dc-r")) === "IJ90MNO #5 No vehicle details", [await cell("w5", "dc-c"), await cell("w5", "dc-r")]);
-  check("Ops wide: status in words (called and waiting, sent, cleared, overstay, not called)", /^Called \d\d:\d\d waiting 1[45] min Sch 12:05 · Est 12:03$/.test(await cell("w2", "dc-s")) && /^Sent \d\d:\d\d Landed 12:41 Sch 12:40$/.test(await cell("w6", "dc-s")) && /^Cleared \d\d:\d\d$/.test(await cell("w13", "dc-s")) && /^Overstay/.test(await cell("w16", "dc-s")) && /^Not called( |$)/.test(await cell("w14", "dc-s")),
+  check("Ops wide: status in words (called and waiting, sent, cleared, overstay, not called)", /^Called \d\d:\d\d · SUGU waiting 1[45] min Sch 12:05 · Est 12:03$/.test(await cell("w2", "dc-s")) && /^Sent \d\d:\d\d · SUGU Landed 12:41 Sch 12:40$/.test(await cell("w6", "dc-s")) && /^Cleared \d\d:\d\d · SUGU$/.test(await cell("w13", "dc-s")) && /^Overstay/.test(await cell("w16", "dc-s")) && /^Not called( |$)/.test(await cell("w14", "dc-s")),
     [await cell("w2", "dc-s"), await cell("w6", "dc-s"), await cell("w13", "dc-s"), await cell("w16", "dc-s"), await cell("w14", "dc-s")]);
   check("Ops wide: flight problems on the row", (await cell("w4", "dc-s")) === "Not called Delayed Sch 12:20" && /^Not called Flight cancelled/.test(await cell("w10", "dc-s")) && /CHECK FLIGHT NO\./.test(await cell("w7", "dc-s")) && /CHECK MANUALLY/.test(await cell("w8", "dc-s")), [await cell("w4", "dc-s"), await cell("w7", "dc-s"), await cell("w10", "dc-s")]);
   const yc = await page.evaluate(() => getComputedStyle(document.querySelector('.row[data-id="w2"] .dc-y .code')).backgroundColor);
@@ -670,11 +670,11 @@ await scenario(async () => {
   // Dashboard
   await go("dashboard");
   const dsh0 = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, sd = r(".od-side"), a = r(".od-desk"), m = r(".od-dmain"), p = r(".od-dside");
-    return sd && a && m && p && sd.right <= a.left && a.width > innerWidth - 360 - document.getElementById("bnav").getBoundingClientRect().width && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1; });
+    return sd && a && m && p && sd.bottom <= a.top && sd.width > 500 && a.width > innerWidth - 120 - document.getElementById("bnav").getBoundingClientRect().width && Math.abs(m.top - p.top) < 2 && m.right <= p.left + 1; });
   await page.click('[data-dashsec="workload"]'); await sleep(300);
   const dsh = await page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }, w = r(".od-work"), q = r(".od-queues"), t = r(".od-tools");
     return { attnFull: true, three: w && q && Math.abs(w.top - q.top) < 2 && w.right <= q.left, tools: t && t.top > 0 && document.elementFromPoint(t.left + 10, t.top + t.height / 2).closest(".od-tools") !== null }; });
-  check("Ops wide Dashboard: side list on the left, What needs doing beside it with Site status beside Priority work", dsh0);
+  check("Ops wide Dashboard: sections as tabs along the top, What needs doing under them with Site status beside Priority work", dsh0);
   check("Ops wide Dashboard: Workload, Upcoming and Live queues in one row", dsh.three, dsh);
   check("Ops wide Dashboard: Refresh and the period buttons visible and clickable", dsh.tools, dsh);
   check("Ops wide Dashboard: no sideways scrolling", await noSide());

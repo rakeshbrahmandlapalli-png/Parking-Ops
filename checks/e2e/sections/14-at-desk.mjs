@@ -45,7 +45,8 @@ await scenario(async () => {
   await open(page);
   const st = (await page.locator('.row[data-id="b1"] .dc-s').innerText()).replace(/\s+/g, " ");
   check("At desk (ops desktop): Status says At desk with the minutes", /At desk \d\d:\d\d · 3 min/.test(st) && /waiting 12 min/.test(st), st);
-  check("At desk (ops desktop): the button reads AT DESK and SUGU", /^AT DESK/.test(await word(page, "b1")) && /SUGU/.test(await word(page, "b1")));
+  // 1 Nov: desktop buttons show just the word; who pressed it is in Status.
+  check("At desk (ops desktop): the button reads AT DESK, Status names SUGU", /^AT DESK/.test(await word(page, "b1")) && /At desk \d\d:\d\d · 3 min · SUGU/.test(st), st);
   await btn(page, "b2").click(); await sleep(300);
   const c = db.calls.filter((x) => x.fn === "tap_drop").pop();
   check("At desk (ops desktop): OVERSTAY taps off as before", c.args.p_action === "called" && c.args.p_on === false, c.args);
