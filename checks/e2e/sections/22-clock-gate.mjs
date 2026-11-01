@@ -47,3 +47,18 @@ await scenario(async () => {
   check("Clock gate: without the database part the board loads as before", await page.locator(".row[data-id]").count() > 0);
   check("Clock gate: without the database part the offline copy is kept", await page.evaluate(() => localStorage.getItem("takeoff_snap")) !== null);
 }, "gate");
+
+// The lock switched on while the app is open (31 Oct, SUGU on an iPhone): the server
+// starts answering with no sheets. The board must say Clocked out, not "No day sheets yet".
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "stdplus", colour: "#F9A01B", short: "TakeOff", attendance: true };
+  const page = await phone(browser, db);
+  await open(page); await sleep(2600);
+  check("Clock gate: not locked, the board shows", await page.locator(".row[data-id]").count() > 0);
+  db.meSaved = db.me; db.me = null; db.sheets.splice(0); db.gate = { gated: true, closed: true, name: "SUGU", company: "TAKEOFF", attendance: true };
+  await page.click("#refreshBtn"); await sleep(1500);
+  const boot = (await page.locator("#boot").innerText().catch(() => "")).replace(/\s+/g, " ");
+  check("Clock gate: lock switched on while open shows Clocked out after a refresh", /Clocked out Hi SUGU/.test(boot) && await page.locator("#app").isHidden(), boot);
+  check("Clock gate: never says No day sheets yet", !/No day sheets yet/.test(await page.evaluate(() => document.body.innerText)));
+  check("Clock gate: no errors after the lock switched on", page.__errors.length === 0, page.__errors);
+}, "gate");

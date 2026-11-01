@@ -324,6 +324,10 @@
     if (!r.error) {
       S.sheets = (r.data || []).filter(function (x) { return !x.archived_at; });
       S.handArchived = (r.data || []).filter(function (x) { return x.archived_at; });
+      // The clock-in lock switched on while the app was open (31 Oct, SUGU): the
+      // server answers with no sheets at all, and the board said "No day sheets yet".
+      // Ask whether this person is clocked out, and show that screen instead.
+      if (!r.data || !r.data.length) { if (S.me && !S.gateOn && !S.platform) gateCheck(false); }
     }
     return r;
   }
