@@ -131,6 +131,13 @@
     // Before part 137 is installed the call fails: nobody is gated.
     S.gated = !!(res[4] && !res[4].error && res[4].data && res[4].data.gated);
     if (S.gated) snapForget();
+    // The sign-in ended between "me" and the rest (2 Nov, RAIHAN: the server cancelled a sign-in
+    // whose old key was used again, and every read came back 401). Not the signal: ask for the PIN.
+    if (res.some(function (x) { return x && x.error && (x.status === 401 || isAuth(x.error)); })) {
+      S.me = null; snapForget();
+      try { await sb.auth.signOut({ scope: "local" }); } catch (e) {}
+      return showSignIn("Your sign-in ended. Enter your PIN to sign in again.");
+    }
     if (!res[1].data || res.some(function (x) { return x && x.error && isDown(x); })) { if (openFromSnap()) return; throw new Error("Couldn't load the company"); }
     S.offline = false;
     S.perms = res[0].data || {};
