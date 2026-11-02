@@ -437,6 +437,10 @@ function rpc(db, fn, a) {
     case "set_sched_time": { const b = row(a.p_booking); b.sched_time = a.p_time; return db.schedEcho === false ? null : b; }
     case "early_return": { const b = row(a.p_booking); b.moved_from = b.sheet_id; b.sheet_id = earlySheet(a.p_day); b.early = true; b.early_at = now(); b.num = 105; return b; }
     case "early_return_from_picks": { const p = row(a.p_picks); const n = { ...p, id: "de" + db.bookings.length, sheet_id: earlySheet(a.p_day), kind: "drops", num: 106, early: true, early_at: now(), moved_from: "d1", intake: "", called_at: null, sent_at: null, cleared_at: null }; db.bookings.push(n); return n; }
+    case "put_pick_on_drops": { const p = row(a.p_picks); (db.pickAdds = db.pickAdds || []).push(a);
+      if (db.bookings.some((b) => b.kind === "drops" && b.ref === p.ref && !b.removed_at)) throw new Error("Already on DROPS.");
+      const t = db.sheets.find((x) => x.kind === "drops" && x.day === a.p_day); if (!t) throw new Error("The DROPS sheet for that night isn't in yet.");
+      const n = { ...p, id: "da" + db.bookings.length, sheet_id: t.id, kind: "drops", num: 107, overstay: true, intake: "", called_at: null, sent_at: null, cleared_at: null }; db.bookings.push(n); return n; }
     case "undo_early_return": { const b = row(a.p_booking); b.sheet_id = b.moved_from; b.moved_from = null; b.early = false; return b; }
     case "pt_link_save": {
       let l = db.ptLinks.find((x) => x.token === a.p_token);
@@ -548,6 +552,7 @@ async function backend(ctx, db) {
       if (q.id && q.id.startsWith("eq.")) rows = rows.filter((b) => b.id === q.id.slice(3));
       if (q.id && q.id.startsWith("neq.")) rows = rows.filter((b) => b.id !== q.id.slice(4));
       if (q.ref && q.ref.startsWith("eq.")) rows = rows.filter((b) => b.ref === q.ref.slice(3));
+      if (q.kind && q.kind.startsWith("eq.")) rows = rows.filter((b) => b.kind === q.kind.slice(3));
       if (q.ref && q.ref.startsWith("in.(")) { const refs = q.ref.slice(4, -1).split(",").map((x) => x.replace(/^"|"$/g, "")); rows = db.bookings.filter((b) => refs.includes(b.ref)); }
       (db.bookingGets = db.bookingGets || []).push(q);
       if (q.updated_at && q.updated_at.startsWith("gte.")) { const t = q.updated_at.slice(4); rows = rows.filter((b) => (b.updated_at || "") >= t); }
