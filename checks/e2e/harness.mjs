@@ -450,6 +450,8 @@ async function backend(ctx, db) {
     if (p.startsWith("/realtime/")) return route.abort();
     if (p.startsWith("/auth/")) return reply(200, {});
     if (db.down) return route.fulfill({ status: 503, contentType: "text/plain", body: "upstream connect error" });
+    // The sign-in ended after "me" answered: every other read is refused as a signed-out caller.
+    if (db.authGone && p.startsWith("/rest/v1/") && p !== "/rest/v1/rpc/me" && p !== "/rest/v1/rpc/public_brand") return reply(401, { code: "42501", message: "permission denied for function" });
     if (p.startsWith("/rest/v1/rpc/")) {
       const fn = p.slice(13), args = JSON.parse(req.postData() || "{}");
       db.calls.push({ fn, args });
