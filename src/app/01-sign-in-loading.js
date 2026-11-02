@@ -384,7 +384,7 @@
       '<p class="gate-note">Customer details stay hidden until you clock in.</p>' +
       '<div class="gate-more"><button class="btn ghost" type="button" id="gateAgain">Check again</button>' +
       '<button class="btn ghost" type="button" id="gateOut">Sign out</button></div></div>';
-    $("gateAgain").onclick = function () { gateCheck(true); };
+    $("gateAgain").onclick = function () { gateCheck(true); if (st.attendance) clockLocate(); };
     $("gateOut").onclick = async function () { S.gateOn = null; await sb.auth.signOut(); showSignIn(); };
     gateWhen();
     if (st.attendance) clockLocate();
