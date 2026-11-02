@@ -3086,6 +3086,47 @@
     await loadSheets(); await loadRows(); flashId = x.data.id; render();
     toast((r.reg || "Car") + " added to " + earlyWhen(day) + " as an early return.");
   }
+  // ── ADD TO DROPS from a PICKS car (database part 145) ──
+  // Taken in, but the night's DROPS file never listed it (LK06LFN, 2 Nov): the
+  // office adds it to a night picked, its return day or later (later = an
+  // OVERSTAY). Shown only once the app has checked there's no DROPS car for its ref.
+  function pickAddNights(r) {
+    var back = returnDay(r);
+    return back ? S.sheets.filter(function (x) { return x.kind === "drops" && x.day >= back; }).map(function (x) { return x.day; }).sort() : [];
+  }
+  function canPickAdd(r) { return r.kind === "picks" && r.intake === "Collected" && !r.removed_at && can("import") && pickAddNights(r).length > 0; }
+  function pickAddDay() {
+    var el = $("addDay"), r = panelRow, n = r ? pickAddNights(r) : [];
+    return el && /^\d{4}-\d{2}-\d{2}$/.test(el.value) && n.length && el.value >= n[0] ? el.value : "";
+  }
+  function pickAddLabel(r, day) {
+    return day ? "ADD TO " + esc(sheetLabel({ kind: "drops", day: day })) + (day > returnDay(r) ? " · OVERSTAY" : "") : "ADD TO DROPS";
+  }
+  async function pickAddCheck(r) {
+    var el = $("pickAdd"); if (!el || !canPickAdd(r)) return;
+    if (r.ref) {
+      var x = await sb.from("bookings").select("id").eq("kind", "drops").eq("ref", r.ref).is("removed_at", null).limit(1);
+      if (panelRow !== r || !$("pickAdd") || x.error || (x.data || []).length) return;
+    }
+    var n = pickAddNights(r), today = currentShiftKey();
+    var day = n.indexOf(today) >= 0 ? today : n.filter(function (d) { return d <= today; }).pop() || n[0];
+    $("pickAdd").innerHTML = fld('<label for="addDay">' + (isOps() ? "Not on DROPS" : L("NOT ON DROPS")) + '</label><input id="addDay" type="date" value="' + day + '" min="' + n[0] + '" max="' + n[n.length - 1] + '">', true) +
+      '<button type="button" id="addTo" class="btn ghost ptgo" data-pickadd>' + pickAddLabel(r, day) + "</button>";
+  }
+  async function pickAddGo(r, btn) {
+    var day = pickAddDay();
+    if (!day) return toast("Pick a night from " + dayShortLabel(pickAddNights(r)[0]) + ".", true);
+    var over = day > returnDay(r);
+    if (!confirm("Add " + (r.reg || "this car") + " to " + sheetLabel({ kind: "drops", day: day }) + (over ? " as an overstay" : "") + "?")) return;
+    btn.disabled = true;
+    var x = await sb.rpc("put_pick_on_drops", { p_picks: r.id, p_day: day });
+    btn.disabled = false;
+    if (x.error) return toast(x.error.message, true);
+    $("panel").close();
+    S.sheetId = x.data.sheet_id; S.q = ""; S.yardFilter = "";
+    await loadSheets(); await loadRows(); flashId = x.data.id; render();
+    toast((r.reg || "Car") + " added to " + sheetLabel({ kind: "drops", day: day }) + ".");
+  }
   // The office changes the return (the customer rang): DROPS cars, and PICKS cars, whose DROPS car follows (database part 78).
   function canReturn(r) { return can("import") && (r.kind === "picks" || (r.kind === "drops" && !r.early && !r.cleared_at)); }
   function openPanel(r) {
@@ -3182,7 +3223,7 @@
     }
     var markF = extra ? fld('<label>' + L("MARK AS") + NOW + '</label><div class="pseg">' + extra + "</div>", true) : "";
     var exitP = drops ? exitPanelHtml(r) : "", pay = (drops ? chargePanelHtml(r) : "") + exitP;
-    var early = drops ? earlyHtml(r) : pickEarlyHtml(r);
+    var early = drops ? earlyHtml(r) : pickEarlyHtml(r) + (canPickAdd(r) ? '<div id="pickAdd"></div>' : "");
     // PT photos from when the car came in (PICKS), also on its DROPS row: same booking ref.
     var photos = '<div id="ptPhotos"></div>', texts = carTextsHtml(r);
     var rm = can("import") ? '<button type="button" class="link rmcar" data-removecar>Remove this car (no show, cancelled)</button>' : "";
@@ -3218,6 +3259,7 @@
     carHistory(r);
     carTexts(r);
     carCalls(r);
+    pickAddCheck(r);
     if ($("docBox")) fillDoc(r);
     if ($("exitImg")) fillExit(r);
   }
@@ -3484,6 +3526,7 @@
     if (t.dataset.early !== undefined) return earlyMove(r, t, false);
     if (t.dataset.undoearly !== undefined) return earlyMove(r, t, true);
     if (t.dataset.pearly !== undefined) return earlyFromPicks(r, t);
+    if (t.dataset.pickadd !== undefined) return pickAddGo(r, t);
     if (t.dataset.backcar !== undefined) return openPanel(r);
     if (t.dataset.removewhy) return removeCar(r, t.dataset.removewhy, t);
   });
@@ -8526,6 +8569,7 @@
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
+    if (e.target.id === "addDay" && $("addTo") && panelRow) { $("addTo").innerHTML = pickAddLabel(panelRow, pickAddDay()); return; }
     var t = e.target;
     if ((t.id === "biFrom" || t.id === "biTo") && S.autoImport) {
       var ba = S.autoImport, br = biRange(ba), nf = t.id === "biFrom" ? t.value : br.from, nt = t.id === "biTo" ? t.value : br.to;
