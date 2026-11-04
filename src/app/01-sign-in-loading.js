@@ -130,7 +130,8 @@
     ]);
     // Before part 137 is installed the call fails: nobody is gated.
     S.gated = !!(res[4] && !res[4].error && res[4].data && res[4].data.gated);
-    if (S.gated) snapForget();
+    // Locked people keep a saved board too, but only while clocked in (clockedOut() wipes it).
+    if (S.gated && !S.gatedSince) S.gatedSince = Date.now();
     // The sign-in ended between "me" and the rest (2 Nov, RAIHAN: the server cancelled a sign-in
     // whose old key was used again, and every read came back 401). Not the signal: ask for the PIN.
     if (res.some(function (x) { return x && x.error && (x.status === 401 || isAuth(x.error)); })) {
@@ -328,19 +329,29 @@
   // the phone and go through when the server answers again. Cleared on sign-out.
   var SNAP_KEY = "takeoff_snap", snapTimer = null;
   function snapSave() {
-    if (!S.me || !S.company || S.platform || S.gated) return;
+    if (!S.me || !S.company || S.platform) return;
     clearTimeout(snapTimer);
     snapTimer = setTimeout(function () {
       try {
         localStorage.setItem(SNAP_KEY, JSON.stringify({ v: 1, at: S.offline ? S.offlineAt : new Date().toISOString(), me: S.me, perms: S.perms, company: S.company,
+          until: S.gated ? snapUntil() : null,
           staff: S.staff, sheets: S.sheets, handArchived: S.handArchived, sheetId: S.rowsSheet || S.sheetId, rows: S.rows, removed: S.removed }));
       } catch (e) {}
     }, 2000);
+  }
+  // A locked person's saved board stops opening when the shift can no longer be open:
+  // the database closes every shift 14 hours after clock-in (part 140).
+  var GATE_SNAP_MS = 14 * 3600000;
+  function snapUntil() {
+    var a = S.me && attendanceAccess[S.me.id], inAt = a && a.shift && a.shift.clock_in_at ? new Date(a.shift.clock_in_at).getTime() : 0;
+    return (inAt || S.gatedSince || Date.now()) + GATE_SNAP_MS;
   }
   function snapForget() { clearTimeout(snapTimer); try { localStorage.removeItem(SNAP_KEY); } catch (e) {} }
   function openFromSnap() {
     var x = null; try { x = JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch (e) {}
     if (!x || !x.me || !x.company || !x.rows) return false;
+    if (x.until && Date.now() > x.until) { snapForget(); return false; }
+    S.gated = !!x.until;
     S.me = x.me; S.perms = x.perms || {}; S.company = x.company; S.staff = x.staff || {};
     S.sheets = x.sheets || []; S.handArchived = x.handArchived || []; S.sheetId = x.sheetId; S.rowsSheet = x.sheetId;
     S.rows = x.rows; S.removed = x.removed || [];
@@ -356,7 +367,9 @@
   async function reconnect() {
     if (!S.offline) return;
     var me; try { me = await sb.rpc("me"); } catch (e) { me = { error: e }; }
-    if (me && !me.error && me.data && me.data.id) {
+    // An answer with nobody in it (clocked out while offline, or switched off): loading again
+    // shows Clocked out or signs out, and wipes the saved board.
+    if (me && !me.error) {
       try { await loadAppInner(true); if (!S.offline) toast("Back online. Board up to date."); }
       catch (e) { oopsLog(e); if (S.me) { S.offline = true; renderSync(); clearTimeout(S.reconnect); S.reconnect = setTimeout(reconnect, 20000); } }
       return;
@@ -371,7 +384,7 @@
   // copy and every open panel go; what stays is their name and a way to clock in.
   function clockedOut(st) {
     var was = !!S.me;
-    S.gateOn = st; S.gated = true; attendanceAccess = {};
+    S.gateOn = st; S.gated = true; S.gatedSince = 0; attendanceAccess = {};
     if (S.me) { S.me = null; teardown(); }
     snapForget();
     try { $("panel").close(); } catch (e) {}
