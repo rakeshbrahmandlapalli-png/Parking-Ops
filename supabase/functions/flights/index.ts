@@ -60,6 +60,14 @@ const DELAY_WITHIN = 60, DELAY_AFTER = 20;
 const MIN_DELAY = 15, MAX_DELAY = 360, MAX_EARLY = 60, MIN_FLIGHT = 20;
 const FR24_BATCH = 15, FR24_GAP_MS = 6500, FR24_MAX_CALLS = 6;
 const AERO_GAP_MS = 1200, TIMETABLE_EVERY_MIN = 90;
+// Between the full runs, a quick look every 15 min at the arrivals around now
+// (2 h back, 4 h ahead), only while a car in that window is still waiting on
+// its flight: delays and landings reach the car in 15 min, not 90 (4 Nov 2026,
+// Rakesh: the AeroDataBox plan was 6-12% used).
+const NEAR_EVERY_MIN = 15, NEAR_BACK_H = 2, NEAR_AHEAD_H = 4;
+// Each evening from 18:00 (the client's time), the next two DROPS sheets get a
+// full run, so a cancellation or a big change shows a day early (4 Nov 2026).
+const AHEAD_FROM_HOUR = 18, AHEAD_DAYS = 2;
 // The answer once the month's units are spent. Asking again only draws the
 // same answer, so a press within 6 h of it doesn't call at all.
 const QUOTA_GONE = /quota/i, QUOTA_WAIT_H = 6;
@@ -89,6 +97,12 @@ const norm = (v: unknown) => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g,
 const isIata = (k: string) => /^[A-Z0-9]{2}\d{1,4}$/.test(k);
 const isCallsign = (k: string) => /^[A-Z]{3}\d{1,4}$/.test(k);
 const looksLikeFlight = (k: string) => isIata(k) || isCallsign(k);
+// FR24 refuses a whole request when one entry isn't a real flight number, and
+// "5422" or "93901" (the airline left off) passes isIata as "54" + "22". An
+// airline code always has a letter in it, so only those go to FR24.
+const fr24Flight = (k: string) => isIata(k) && /[A-Z]/.test(k.slice(0, 2));
+// "The provided flight number '5422' is not a valid IATA flight number"
+const FR24_BAD = /(?:flight number|callsign) '([^']+)' is not a valid/i;
 function canon(v: unknown) {
   const k = norm(v), m = /^([A-Z]{3})(\d{1,4})$/.exec(k);
   if (m && AIRLINE_ALIAS[m[1]]) return AIRLINE_ALIAS[m[1]] + m[2];
@@ -124,7 +138,7 @@ function shiftDay(c: Company, now: Date) {
 }
 
 // ── AeroDataBox: the timetable ────────────────────────────────────────
-type Arrival = { keys: string[]; number: string; origin: string; codeshare: boolean; sched: Date | null; cancelled: boolean; late: Date | null; why: string; landed: Date | null };
+type Arrival = { keys: string[]; number: string; origin: string; codeshare: boolean; sched: Date | null; cancelled: boolean; diverted: boolean; late: Date | null; why: string; landed: Date | null };
 
 async function aeroFetch(key: string, airport: string, from: string, to: string) {
   const url = `https://api.aerodatabox.com/flights/airports/iata/${airport}/${from}/${to}?direction=Arrival&withLeg=true&withCancelled=true&withCodeshared=true&withLocation=false`;
@@ -148,9 +162,9 @@ async function aeroFetch(key: string, airport: string, from: string, to: string)
 // (the API refuses longer ranges). Times asked for are the airport's local time.
 // want(from, to) false skips a chunk (no car still waiting on a flight in it).
 // spent.n counts the requests made (part 100: the AeroDataBox units estimate), failed ones too.
-async function aeroDay(key: string, c: Company, day: string, want: (from: string, to: string) => boolean = () => true, spent = { n: 0 }) {
+async function aeroDay(key: string, c: Company, day: string, want: (from: string, to: string) => boolean = () => true, spent = { n: 0 }, only?: string[][]) {
   const next = addDays(day, 1);
-  const windows = [[`${day}T05:00`, `${day}T17:00`], [`${day}T17:00`, `${next}T05:00`], [`${next}T05:00`, `${next}T07:00`]];
+  const windows = only ?? [[`${day}T05:00`, `${day}T17:00`], [`${day}T17:00`, `${next}T05:00`], [`${next}T05:00`, `${next}T07:00`]];
   const out: Arrival[] = [];
   let calls = 0, skipped = 0;
   for (let i = 0; i < windows.length; i++) {
@@ -168,10 +182,12 @@ async function aeroDay(key: string, c: Company, day: string, want: (from: string
 
       const sched = parseApiTime(leg.scheduledTime?.utc);
       const cancelled = /^cancel/i.test(String(f.status ?? ""));
+      const diverted = /^divert/i.test(String(f.status ?? ""));
 
       // Landed: fact, not forecast. A plane can't land before it took off —
       // AeroDataBox once reported FR9630 arrived while still in Barcelona.
-      let landed = parseApiTime(leg.actualTime?.utc ?? leg.runwayTime?.utc);
+      // A diverted flight's landing is somewhere else, not here.
+      let landed = diverted ? null : parseApiTime(leg.actualTime?.utc ?? leg.runwayTime?.utc);
       const dep = f.departure ?? null;
       const depOff = dep ? parseApiTime(dep.actualTime?.utc ?? dep.revisedTime?.utc) : null;
       if (landed && depOff && minsBetween(depOff, landed) < MIN_FLIGHT) landed = null;
@@ -190,7 +206,7 @@ async function aeroDay(key: string, c: Company, day: string, want: (from: string
         }
       }
       out.push({ keys: [...keys], number: canon(num), origin: String(dep?.airport?.municipalityName ?? dep?.airport?.name ?? dep?.airport?.iata ?? ""),
-        codeshare: /codeshared/i.test(String(f.codeshareStatus ?? "")), sched, cancelled, late, why, landed });
+        codeshare: /codeshared/i.test(String(f.codeshareStatus ?? "")), sched, cancelled, diverted, late, why, landed });
     }
   }
   return { arrivals: out, partial: skipped > 0 };
@@ -220,8 +236,13 @@ async function quotaGone(admin: SupabaseClient, now: Date) {
     .order("at", { ascending: false }).limit(1).maybeSingle();
   return !!data && QUOTA_GONE.test(String(data.result?.error ?? "")) && minsBetween(new Date(data.at), now) < QUOTA_WAIT_H * 60;
 }
-async function lastRun(admin: SupabaseClient, c: Company, source: string) {
-  const { data } = await admin.from("flight_runs").select("at").eq("company_id", c.id).eq("source", source).order("at", { ascending: false }).limit(1).maybeSingle();
+// kind: "" any run of the source; "full" only the timetable's full runs (not
+// the 15-minute near looks or the evening look ahead); "ahead" only those.
+async function lastRun(admin: SupabaseClient, c: Company, source: string, kind: "" | "full" | "ahead" = "") {
+  let q = admin.from("flight_runs").select("at").eq("company_id", c.id).eq("source", source);
+  if (kind === "full") q = q.is("result->>kind", null);
+  if (kind === "ahead") q = q.eq("result->>kind", "ahead");
+  const { data } = await q.order("at", { ascending: false }).limit(1).maybeSingle();
   return data ? new Date(data.at) : null;
 }
 async function saveChanges(admin: SupabaseClient, changes: Map<string, Record<string, unknown>>) {
@@ -235,12 +256,15 @@ function patchOf(changes: Map<string, Record<string, unknown>>, b: Booking) {
   return p;
 }
 
-async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], trigger: string, by = "") {
+// kind "near": only the arrivals around now (NEAR_BACK_H back, NEAR_AHEAD_H
+// ahead) for tonight's sheet, one call, and none (nothing logged) when no car
+// in that window is waiting on its flight. "ahead": a full run of later sheets.
+async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], trigger: string, by = "", kind: "" | "near" | "ahead" = "") {
   const key = Deno.env.get("AERODATABOX_KEY");
   if (!key) return { skipped: "No AeroDataBox key yet" };
   const now = new Date(), tz = c.time_zone;
   if (await quotaGone(admin, now)) return { skipped: "AeroData's monthly allowance is used up. Try Fill times again later." };
-  const tally = { filled: 0, moved: 0, expected: 0, landed: 0, cancelled: 0, notfound: 0, sheets: 0, done: 0, calls: 0, error: "" };
+  const tally = { filled: 0, moved: 0, expected: 0, landed: 0, cancelled: 0, diverted: 0, notfound: 0, sheets: 0, done: 0, calls: 0, error: "" };
   const spent = { n: 0 };
   let fetchedDays = 0;
 
@@ -270,11 +294,22 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
       const at = new Date(b.sched_at).getTime();
       return local(new Date(at + 60 * MIN)) >= from && local(new Date(at - 60 * MIN)) < to;
     });
+    let only: string[][] | undefined, wantNow = want;
+    if (kind === "near") {
+      const from = local(new Date(now.getTime() - NEAR_BACK_H * 60 * MIN)), to = local(new Date(now.getTime() + NEAR_AHEAD_H * 60 * MIN));
+      only = [[from, to]];
+      // Only a car with a flight number due in the window (its flight's time, or
+      // the booked time while not matched yet).
+      wantNow = () => waiting.some((b) => {
+        const at = b.flight && (b.sched_at ?? b.return_at); if (!at) return false;
+        const t = local(new Date(at)); return t >= from && t < to;
+      });
+    }
     let arrivals: Arrival[], partial = false;
     // The API allows about one request a second: the gap between days too, not
     // just between one day's three windows (two back to back drew a 429).
     if (fetchedDays++) await sleep(AERO_GAP_MS);
-    try { ({ arrivals, partial } = await aeroDay(key, c, day, want, spent)); }
+    try { ({ arrivals, partial } = await aeroDay(key, c, day, wantNow, spent, only)); if (only) partial = true; }
     catch (err) { tally.error = (err as Error).message; if (QUOTA_GONE.test(tally.error)) break; continue; }
     finally { tally.calls = spent.n; }
 
@@ -348,8 +383,22 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
         tally.landed++;
         continue;
       }
+      // Diverted (4 Nov 2026): it is landing somewhere else for now. The car
+      // says so and the office gets a push (setup 146), so nobody waits at the
+      // desk. A landing here later, or FR24 seeing it inbound, takes over.
+      if (run.diverted) {
+        if (b.flight_status !== "diverted" && b.flight_status !== "landed") {
+          Object.assign(p, { est_at: null, est_time: "", flight_status: "diverted", flight_note: `Diverted · timetable, checked ${hhmm(now, tz)}` });
+          activity.push({ company_id: c.id, staff_name: "Flights", sheet_id: b.sheet_id, booking_id: b.id, reg: b.reg, customer: b.name, action: "DIVERTED", value: b.flight });
+          tally.diverted++;
+        }
+        if (!Object.keys(p).length) changes.delete(b.id);
+        continue;
+      }
+      // No longer diverted (on its way here again): back to its timetable time.
+      if (b.flight_status === "diverted") Object.assign(p, { flight_status: "scheduled", flight_note: "" });
       // Never argue with a live FR24 reading or a landing.
-      const free = ["", "scheduled", "expected", "delayed", "cancelled"].includes(b.flight_status);
+      const free = ["", "scheduled", "expected", "delayed", "cancelled", "diverted"].includes(b.flight_status);
       const off = run.late ? minsBetween(run.sched, run.late) : 0;
       if (free && run.late && off >= MIN_DELAY && off <= MAX_DELAY && b.est_at !== run.late.toISOString()) {
         Object.assign(p, { est_at: run.late.toISOString(), est_time: hhmm(run.late, tz), flight_status: "expected", flight_note: `Expected ${hhmm(run.late, tz)} (${run.why})` });
@@ -372,7 +421,11 @@ async function checkSchedule(admin: SupabaseClient, c: Company, days: string[], 
     await saveChanges(admin, changes);
     if (activity.length) await admin.from("activity").insert(activity);
   }
-  await logRun(admin, c, "schedule", trigger, { ...tally, day: days.join(",") }, by);
+  // A near look that found no car to ask about cost nothing: not logged.
+  if (kind === "near" && !tally.calls && !tally.error) return tally;
+  // Nor a look ahead with no later sheet imported yet: tried again next time.
+  if (kind === "ahead" && !tally.calls && !tally.sheets && !tally.done && !tally.error) return tally;
+  await logRun(admin, c, "schedule", trigger, { ...tally, day: days.join(","), ...(kind ? { kind } : {}) }, by);
   return tally;
 }
 
@@ -414,10 +467,12 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
   // limit must not read as "no aircraft in the air" and mark cars DELAY.
   const asked = new Set<string>();
   const groups: { param: "flights" | "callsigns"; keys: string[] }[] = [];
-  for (let i = 0; i < keys.length; i += FR24_BATCH) {
-    const chunk = keys.slice(i, i + FR24_BATCH);
-    // EZY612 must go as a callsign; one malformed entry rejects the whole request.
-    groups.push({ param: "flights", keys: chunk.filter(isIata) }, { param: "callsigns", keys: chunk.filter((k) => !isIata(k) && isCallsign(k)) });
+  // EZY612 must go as a callsign; one malformed entry rejects the whole request.
+  // Sorted into flights and callsigns first, then 15 a request: 20 flights and
+  // 5 callsigns are 3 requests, not 4 (each one after the first waits 6.5 s).
+  const byParam = { flights: keys.filter(fr24Flight), callsigns: keys.filter((k) => !isIata(k) && isCallsign(k)) };
+  for (const param of ["flights", "callsigns"] as const) {
+    for (let i = 0; i < byParam[param].length; i += FR24_BATCH) groups.push({ param, keys: byParam[param].slice(i, i + FR24_BATCH) });
   }
   const want = [c.airport_iata, c.airport_icao].map((x) => String(x || "").toUpperCase()).filter(Boolean);
   for (const g of groups.filter((x) => x.keys.length)) {
@@ -425,7 +480,18 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
     if (tally.calls) await sleep(FR24_GAP_MS);   // plan allows 10 requests a minute
     tally.calls++;
     try {
-      const recs = await fr24Live(token, c, g.keys, g.param);
+      let recs: Record<string, any>[];
+      try { recs = await fr24Live(token, c, g.keys, g.param); }
+      catch (err) {
+        // One number FR24 won't take: the rest of the request again without it,
+        // so one typo doesn't leave 14 other flights unchecked.
+        const bad = FR24_BAD.exec((err as Error).message)?.[1];
+        const rest = bad ? g.keys.filter((k) => k !== bad && k !== canon(bad)) : [];
+        if (!bad || rest.length === g.keys.length || !rest.length || tally.calls >= FR24_MAX_CALLS) throw err;
+        g.keys = rest;
+        await sleep(FR24_GAP_MS); tally.calls++;
+        recs = await fr24Live(token, c, g.keys, g.param);
+      }
       g.keys.forEach((k) => asked.add(k));
       for (const rec of recs) {
         const k = [canon(rec.flight), canon(rec.callsign)].find((x) => x && wanted.has(x));
@@ -491,8 +557,22 @@ async function runCompany(admin: SupabaseClient, c: Company, trigger: "timer" | 
     out.live = await checkLive(admin, c, today, trigger, by);
   }
   if (trigger === "timer" && inHours && Deno.env.get("AERODATABOX_KEY")) {
-    const lastSched = await lastRun(admin, c, "schedule");
-    if (!lastSched || minsBetween(lastSched, now) >= TIMETABLE_EVERY_MIN - SLACK_MIN) out.schedule = await checkSchedule(admin, c, [today], "timer");
+    const lastFull = await lastRun(admin, c, "schedule", "full");
+    if (!lastFull || minsBetween(lastFull, now) >= TIMETABLE_EVERY_MIN - SLACK_MIN) out.schedule = await checkSchedule(admin, c, [today], "timer");
+    else {
+      const lastAny = await lastRun(admin, c, "schedule");
+      if (!lastAny || minsBetween(lastAny, now) >= NEAR_EVERY_MIN - SLACK_MIN) out.near = await checkSchedule(admin, c, [today], "timer", "", "near");
+    }
+    // The next two sheets, once each evening from 18:00 (only those already imported).
+    if (hour >= AHEAD_FROM_HOUR) {
+      const lastAhead = await lastRun(admin, c, "schedule", "ahead");
+      const since = lastAhead ? localParts(lastAhead, c.time_zone) : null;
+      if (!since || since.day !== localParts(now, c.time_zone).day || since.hour < AHEAD_FROM_HOUR) {
+        const ahead = Array.from({ length: AHEAD_DAYS }, (_, i) => addDays(today, i + 1));
+        if (out.schedule || out.near) await sleep(AERO_GAP_MS);
+        out.ahead = await checkSchedule(admin, c, ahead, "timer", "", "ahead");
+      }
+    }
   }
   return out;
 }

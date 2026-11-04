@@ -120,5 +120,16 @@ Object.assign(db.bookings[4], { id: U(6), desk_at: null, clear_word: "COMPLAINT"
 r = await post({ type: "booking", id: U(6) });
 check("COMPLAINT push unchanged", pushed.some((p) => /^🚨 COMPLAINT: /.test(p.note.title) && /^COMPLAINT at /.test(p.note.body)), pushed);
 
+// Diverted (setup 146, 4 Nov 2026): a FLIGHT DIVERTED push like the cancelled one, once.
+db.bookings.push({ ...base, id: U(7), called_at: null, flight_status: "diverted", return_at: "2026-11-05T19:30:00Z" });
+r = await post({ type: "booking", id: U(7) });
+const dv = pushed[0]?.note;
+check("DIVERTED: everyone with flight alerts gets FLIGHT DIVERTED, with the day it's due back", pushed.length >= 1 && /^✈️ FLIGHT DIVERTED: #1 · AB12CDE \(MY\) — Smith$/.test(dv?.title) && /U22464 has been diverted.*Due back Thu 5 Nov\.$/.test(dv?.body), pushed);
+r = await post({ type: "booking", id: U(7) });
+check("DIVERTED: never twice for the same car and flight", pushed.length === 0, pushed);
+db.bookings.push({ ...base, id: U(8), called_at: null, flight_status: "cancelled", return_at: "2026-11-05T19:30:00Z" });
+r = await post({ type: "booking", id: U(8) });
+check("CANCELLED push says the day too (tomorrow's sheet is checked the evening before)", /has been cancelled by the airline\..*Due back Thu 5 Nov\.$/.test(pushed[0]?.note.body), pushed);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

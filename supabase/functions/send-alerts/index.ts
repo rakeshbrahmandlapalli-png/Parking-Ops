@@ -190,14 +190,22 @@ async function onBooking(id: string) {
   if (b.kind === "drops" && b.flight_status === "cancelled" && !b.cleared_at) {
     alerts.push({ key: `cancel:${b.id}:${b.flight}:${b.sheets?.day ?? ""}`, kind: "flights", channel: "drops", label: "✈️ FLIGHT CANCELLED", at: new Date().toISOString(), by: null });
   }
+  // Diverted (setup 146): once per car, flight and sheet.
+  if (b.kind === "drops" && b.flight_status === "diverted" && !b.cleared_at) {
+    alerts.push({ key: `divert:${b.id}:${b.flight}:${b.sheets?.day ?? ""}`, kind: "flights", channel: "drops", label: "✈️ FLIGHT DIVERTED", at: new Date().toISOString(), by: null });
+  }
 
   let sent = 0;
   for (const a of alerts) {
     if (!(await once(a.key))) continue;
     const byName = nameOf(a.by);
     const title = `${a.label}: ${car} — ${who}`;
+    // The day it's due back: the evening look ahead (4 Nov) finds tomorrow's too.
+    const dueDay = b.return_at ? new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" }).format(new Date(b.return_at)) : "";
     const body = a.kind === "flights"
-      ? `${b.flight} has been cancelled by the airline. The customer may not be coming back as booked.`
+      ? (a.key.startsWith("divert:")
+        ? `${b.flight} has been diverted and is landing somewhere else for now. Check before sending a driver.`
+        : `${b.flight} has been cancelled by the airline. The customer may not be coming back as booked.`) + (dueDay ? ` Due back ${dueDay}.` : "")
       : `${a.label.replace(/^[^A-Z]+ /, "")} at ${time(a.at)}${byName ? " by " + byName : ""} · ${a.kind === "picks" ? "drop-off " + time(b.drop_at) : flightLine}${b.note ? " · " + b.note.replace(/^!\s*/, "") : ""}`;
     // OVERSTAY is not a customer waiting: its own routine entry, never escalated (as it never gets the WAITING push).
     const task = a.kind === "drops" && !a.key.startsWith("complaint:") && !a.key.startsWith("overstay:");
