@@ -20,6 +20,9 @@ if (!process.env.APP_ROOT) {
   const appParts = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../src/app");
   const joined = fs.readdirSync(appParts).filter((f) => /^\d\d-.+\.js$/.test(f)).sort().map((f) => fs.readFileSync(path.join(appParts, f), "utf8")).join("");
   check("public/app.js is src/app's parts joined (run node src/build.mjs after editing a part)", joined === fs.readFileSync(path.join(ROOT, "app.js"), "utf8"));
+  // The offline cache's BUILD must be the fingerprint of the files it keeps, or phones never hear of a new version.
+  const swCheck = (await import("node:child_process")).spawnSync(process.execPath, [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../src/build.mjs"), "--check"], { encoding: "utf8" });
+  check("public/sw.js BUILD is the fingerprint of the cached files (run node src/build.mjs after editing one)", swCheck.status === 0, swCheck.stderr);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -636,6 +639,7 @@ async function scenario(fn, tag) {
   if (process.env.TWEAKS_ONLY && tag !== 'tweaks') return;
   if (process.env.LANES_ONLY && tag !== 'lanes') return;
   if (process.env.GATE_ONLY && tag !== 'gate') return;
+  if (process.env.INSTANT_ONLY && tag !== 'instant') return;
   if (process.env.KEYS_ONLY && tag !== 'keys') return;
   if (process.env.DESK_ONLY && tag !== 'desk') return;
   if (process.env.HELD_ONLY && tag !== 'held') return;

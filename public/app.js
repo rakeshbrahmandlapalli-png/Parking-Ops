@@ -4984,6 +4984,8 @@
     // Cards and Premium share the card-per-car layout (isCards) but each wears
     // only its own stylesheet: html.cards → cards.css, html.premium → premium.css.
     // Premium Board is Premium plus board.css (html.premium + html.pboard).
+    // Only this look's stylesheets are on the page (public/look.js): add the ones it needs.
+    if (window.TakeoffLook) window.TakeoffLook.use(b.theme);
     var board = b.theme === "board", premium = b.theme === "premium" || board, cards = b.theme === "cards", pro = b.theme === "pro" || cards || premium;
     document.documentElement.classList.toggle("pro", b.theme === "pro");
     document.documentElement.classList.toggle("cards", cards);
@@ -8820,16 +8822,52 @@
   // minutes and when it comes back to the front (a HEAD request: no data).
   // A new version is loaded as soon as nothing is in progress, and always
   // before an import.
+  // The app opens from the phone's saved copy (public/sw.js). There the version is
+  // the cache's BUILD (a fingerprint of the files), and a newer one is a new
+  // sw.js: the worker downloads the whole new set before it takes over
+  // (controllerchange), and only then is the update "ready", so the reload opens
+  // the new files. Without the offline cache (first visit, no https) the server's
+  // app.js is compared as before.
   var appTag = "", appTagAt = 0;
+  function swOn() { return !!(navigator.serviceWorker && navigator.serviceWorker.controller); }
   async function appVersion() {
     try {
       var r = await fetch("/app.js", { method: "HEAD", cache: "no-store" });
       return r.ok ? (r.headers.get("etag") || r.headers.get("last-modified") || "") : "";
     } catch (e) { return ""; }
   }
+  // The version this page is running: the offline cache's BUILD, else the server's app.js.
+  async function runningVersion() {
+    try {
+      if (swOn() && window.caches) {
+        var k = (await caches.keys()).filter(function (x) { return /^takeoff-ops-v\d+-[0-9a-f]+$/.test(x); });
+        if (k.length) return k[k.length - 1].replace(/^.*-/, "");
+      }
+    } catch (e) {}
+    return appVersion();
+  }
+  // A new worker has its whole set saved before it takes over: from then on the
+  // update is ready (whether our check or the browser's own found it). The first
+  // worker on a phone taking over is not an update.
+  // Nor is the first worker of this kind replacing the old network-first one
+  // (no BUILD in its cache): this page already came from the network.
+  var appFromBuild = false;
+  if (navigator.serviceWorker) {
+    var hadWorker = swOn();
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      var update = hadWorker && appFromBuild;
+      hadWorker = true;
+      runningVersion().then(function (t) { if (t) { appTag = t; appFromBuild = /^[0-9a-f]{10}$/.test(t); } });
+      if (!update) return;
+      S.updateReady = true; updateIfSafe();
+      var el = document.querySelector("#menuBody .appver"); if (el) el.outerHTML = appVersionHtml();
+    });
+  }
   async function checkForUpdate() {
     if (S.updateReady || Date.now() - appTagAt < 5 * 60000) return;
     appTagAt = Date.now();
+    // Ask for sw.js again; a changed one installs (downloads every file), then takes over.
+    if (swOn()) { try { var reg = await navigator.serviceWorker.getRegistration("/"); if (reg) await reg.update(); } catch (e) {} return; }
     var tag = await appVersion(); if (!tag) return;
     if (!appTag) { appTag = tag; return; }
     if (tag !== appTag) { S.updateReady = true; updateIfSafe(); }
@@ -8851,7 +8889,8 @@
     appTagAt = 0;
     checkForUpdate().then(function () { var el = document.querySelector("#menuBody .appver"); if (el) el.outerHTML = appVersionHtml(); });
   }
-  appVersion().then(function (t) { appTag = t; appTagAt = Date.now(); });
+  // Opened from the saved copy: look for a newer version a few seconds in, once the board is loading.
+  runningVersion().then(function (t) { appTag = t; appFromBuild = /^[0-9a-f]{10}$/.test(t); appTagAt = Date.now(); if (swOn()) { appTagAt = 0; setTimeout(checkForUpdate, 3000); } });
   setInterval(function () { checkForUpdate(); updateIfSafe(); }, 60000);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { appTagAt = 0; checkForUpdate(); } });
 

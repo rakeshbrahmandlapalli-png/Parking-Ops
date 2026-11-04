@@ -868,3 +868,12 @@ span.bi-undo{color:var(--ink-2);}
 .bi details.mi-files .bi-rh{justify-content:flex-end;margin-bottom:0;}
 @media(max-width:720px){.bi details.mi-files:not([open]){padding:6px 12px;}.bi details.mi-files>summary{min-height:40px;display:list-item;align-content:center;}}
 .cadd .cprob{color:#B42318;font-weight:600;}
+
+/* Pull down to refresh (every look with features). Was in premium.css, which every
+   phone loaded; now each phone loads only its own look, so it lives here. */
+#ptr{position:fixed;left:0;right:0;z-index:24;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--bg,#f2f4f7);color:var(--ink-3,#8a93a1);font:600 13px/1 var(--sans,system-ui);transition:height .2s ease;pointer-events:none;}
+#ptr.go{color:var(--brand,#0e3f7e);}
+#ptr.busy::before{content:"";width:14px;height:14px;margin-right:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ptrspin .8s linear infinite;}
+@keyframes ptrspin{to{transform:rotate(360deg);}}
+/* A look sheet still on its way (look.js): hide the page for that moment, at most 4 s. */
+html.look-wait body{visibility:hidden;}

@@ -52,6 +52,8 @@
     // Cards and Premium share the card-per-car layout (isCards) but each wears
     // only its own stylesheet: html.cards → cards.css, html.premium → premium.css.
     // Premium Board is Premium plus board.css (html.premium + html.pboard).
+    // Only this look's stylesheets are on the page (public/look.js): add the ones it needs.
+    if (window.TakeoffLook) window.TakeoffLook.use(b.theme);
     var board = b.theme === "board", premium = b.theme === "premium" || board, cards = b.theme === "cards", pro = b.theme === "pro" || cards || premium;
     document.documentElement.classList.toggle("pro", b.theme === "pro");
     document.documentElement.classList.toggle("cards", cards);

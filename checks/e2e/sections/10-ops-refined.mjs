@@ -8,7 +8,8 @@ const calls = (db, fn) => db.calls.filter((c) => c.fn === fn);
 // The files: its own stylesheet, linked, cached for offline, every rule under html.ops-refined.
 await scenario(async () => {
   const css = fs.readFileSync(path.join(ROOT, "ops-refined.css"), "utf8"), html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8"), sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
-  check("Operations Refined: index.html links ops-refined.css after ops.css", /href="\/ops\.css">\s*<link rel="stylesheet" href="\/ops-refined\.css">/.test(html));
+  const look = fs.readFileSync(path.join(ROOT, "look.js"), "utf8");
+  check("Operations Refined: look.js keeps ops-refined.css after ops.css, and the look wears stdplus.css + ops-refined.css only", /"ops", "ops-refined"\]/.test(look) && /"ops-refined": \["stdplus", "ops-refined"\]/.test(look) && /<script src="\/look\.js"><\/script>/.test(html));
   check("Operations Refined: the offline cache keeps ops-refined.css, with a new cache name", /"\/ops-refined\.css"/.test(sw) && !/takeoff-ops-v11"/.test(sw) && /const CACHE = "takeoff-ops-v\d+"/.test(sw));
   // Every selector in the file starts with html.ops-refined (so no other look can wear it).
   const bare = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@media[^{]*\{/g, "").split("}").map((r) => r.split("{")[0].trim()).filter(Boolean)
