@@ -9,7 +9,8 @@ for (const theme of ["stdplus", "ops"]) await scenario(async () => {
   const page = await phone(browser, db); await page.setViewportSize({ width: 390, height: 844 });
   await open(page); await sleep(2600);
   check("Clock gate (" + theme + "): clocked in, the board shows", await page.locator(".row[data-id]").count() > 0);
-  check("Clock gate (" + theme + "): no offline copy kept for a gated person", await page.evaluate(() => localStorage.getItem("takeoff_snap")) === null);
+  const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("takeoff_snap") || "null"));
+  check("Clock gate (" + theme + "): clocked in, an offline copy is kept, ending 14 h after the shift", !!(kept && kept.rows && kept.rows.length && kept.until > Date.now() && kept.until <= Date.now() + 14 * 3600000 + 5000), kept && kept.until);
 
   db.me = null; db.gate = { ...db.gate, closed: true }; await nudge(page); await sleep(900);
   const boot = (await page.locator("#boot").innerText()).replace(/\s+/g, " ").trim();
@@ -61,4 +62,48 @@ await scenario(async () => {
   check("Clock gate: lock switched on while open shows Clocked out after a refresh", /Clocked out Hi SUGU/.test(boot) && await page.locator("#app").isHidden(), boot);
   check("Clock gate: never says No day sheets yet", !/No day sheets yet/.test(await page.evaluate(() => document.body.innerText)));
   check("Clock gate: no errors after the lock switched on", page.__errors.length === 0, page.__errors);
+}, "gate");
+
+// Clocked in, then no signal (4 Nov, rakesh turned mobile data off and got a blank
+// "Can't reach the server"): a locked person on shift gets the last board, like everyone else.
+for (const how of ["server down"]) await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "ops", colour: "#F9A01B", short: "TakeOff", attendance: true };
+  const me = db.me; db.gate = { gated: true, closed: false, name: "RAKESH", company: "TAKEOFF", attendance: true };
+  const page = await phone(browser, db); await page.setViewportSize({ width: 390, height: 844 });
+  await open(page); await sleep(2600);
+  const rows = await page.locator(".row[data-id]").count();
+  if (how === "no signal") await page.context().setOffline(true); else db.down = true;
+  await page.reload().catch(() => {}); await sleep(3000);
+  check("Clock gate, " + how + ": a locked person on shift sees the last board", await page.isVisible("#app") && await page.locator(".row[data-id]").count() === rows && rows > 0, [rows, await page.locator("#boot").innerText().catch(() => "")]);
+  check("Clock gate, " + how + ": the top bar says OFFLINE", /OFFLINE/.test(await page.locator("#sync").innerText().catch(() => "")));
+  await page.click('.row[data-id="b1"] [data-act="sent"]'); await sleep(600);
+  check("Clock gate, " + how + ": a tap waits to be sent", /TO SEND/.test(await page.locator("#sync").innerText()));
+  if (how === "no signal") await page.context().setOffline(false); else db.down = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online"))); await sleep(4000);
+  check("Clock gate, " + how + ": back online, the tap reaches the server", db.calls.some((c) => c.fn === "tap_drop" && c.args.p_booking === "b1"));
+  check("Clock gate, " + how + ": no errors", page.__errors.length === 0, page.__errors);
+}, "gate");
+
+// Clocked out while the phone was offline: back online, the board and the saved copy go.
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "stdplus", attendance: true };
+  db.gate = { gated: true, closed: false, name: "ANIL", company: "TAKEOFF", attendance: true };
+  const page = await phone(browser, db);
+  await open(page); await sleep(2600);
+  db.down = true; await page.reload(); await sleep(2500);
+  check("Clock gate: offline, the saved board opens", await page.locator(".row[data-id]").count() > 0);
+  db.meSaved = db.me; db.me = null; db.gate = { ...db.gate, closed: true }; db.down = false;
+  await page.evaluate(() => window.dispatchEvent(new Event("online"))); await sleep(3000);
+  check("Clock gate: shift ended while offline, back online it says Clocked out", /Clocked out Hi ANIL/.test((await page.locator("#boot").innerText().catch(() => "")).replace(/\s+/g, " ")) && await page.locator(".row[data-id]").count() === 0);
+  check("Clock gate: shift ended while offline, the saved copy is wiped", await page.evaluate(() => localStorage.getItem("takeoff_snap")) === null);
+}, "gate");
+
+// A locked person's saved copy past its 14 hours never opens, even with no signal.
+await scenario(async () => {
+  const db = makeDb(); db.company.brand = { theme: "stdplus", attendance: true }; db.down = true;
+  const page = await phone(browser, db);
+  await page.addInitScript(() => localStorage.setItem("takeoff_snap", JSON.stringify({ v: 1, at: new Date().toISOString(), until: Date.now() - 1000, me: { id: "x", company_id: "c1" }, company: { id: "c1" }, rows: [{ id: "old", reg: "OLD1REG" }] })));
+  await page.goto(BASE + "/"); await sleep(3000);
+  check("Clock gate: an expired saved copy does not open", !/OLD1REG/.test(await page.evaluate(() => document.body.innerText)) && /Can't reach the server/.test(await page.locator("#boot").innerText()));
+  check("Clock gate: an expired saved copy is wiped", await page.evaluate(() => localStorage.getItem("takeoff_snap")) === null);
 }, "gate");
