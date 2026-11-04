@@ -194,7 +194,7 @@
   }
   // The flight's own state, from the flight check only.
   function opsFlightState(r, canc) {
-    if (canc) return '<span class="fx bad">Flight cancelled</span>';
+    if (canc) return '<span class="fx bad">Flight ' + (r.flight_status === "diverted" ? "diverted" : "cancelled") + "</span>";
     var late = lateMins(r);
     if (r.est_time === "DELAY" || r.flight_status === "delayed" || (r.flight_status === "expected" && late > 0)) return '<span class="fx bad">Delayed' + (late > 0 ? " +" + late + " min" : "") + "</span>";
     if (r.flight_status === "expected") return '<span class="fx warn">Running late</span>';
@@ -284,7 +284,7 @@
   function flKind(r) {
     var st = r.flight_status || "";
     if (r.flight === "NO FLIGHT" || st === "noflight") return "noflight";
-    if (st === "cancelled") return "cancelled";
+    if (st === "cancelled" || st === "diverted") return "cancelled";
     if (st === "landed") return "landed";
     if (st === "delayed" || r.est_time === "DELAY" || (st === "expected" && lateMins(r) > 0)) return "delayed";
     if (st === "scheduled" || st === "expected" || st === "airborne") return "scheduled";
@@ -325,7 +325,7 @@
         '<div class="fd-tr fd-s th"><span>Return</span><span>Vehicle · ref</span><span>Flight</span><span>Scheduled</span><span>Estimated</span><span>Status</span><span>Action</span></div>' +
         (list.length ? list.map(function (r) {
           var k = flKind(r), late = lateMins(r), st = r.flight_status || "";
-          var word = k === "noflight" ? "No flight number" : k === "delayed" ? "Delayed" + (late > 0 ? " +" + late + " min" : "") : k === "unchecked" ? "Not checked yet" : k === "cancelled" ? "Cancelled" : FLIGHT_WORD[st] || sentence(st);
+          var word = k === "noflight" ? "No flight number" : k === "delayed" ? "Delayed" + (late > 0 ? " +" + late + " min" : "") : k === "unchecked" ? "Not checked yet" : k === "cancelled" ? (st === "diverted" ? "Diverted" : "Cancelled") : FLIGHT_WORD[st] || sentence(st);
           var tone = k === "landed" ? "ok" : k === "cancelled" ? "bad" : k === "delayed" ? "warn" : "";
           var est = k === "noflight" ? (r.est_time ? 'Collect <span class="num">' + esc(r.est_time) + "</span>" : "—") : r.est_time === "DELAY" ? "Delayed" : r.est_time ? (k === "landed" ? "Landed " : "") + '<span class="num">' + esc(r.est_time) + "</span>" : "—";
           return '<div class="fd-tr fd-s fs-' + esc(k) + '" data-id="' + r.id + '"><span class="num" data-open>' + esc(hhmm(r.return_at) || "—") + '</span><span class="fd-car" data-open>' + flCar(r) + "</span>" +

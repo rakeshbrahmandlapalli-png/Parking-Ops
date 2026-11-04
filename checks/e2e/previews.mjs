@@ -25,6 +25,25 @@ export async function shots(dir) {
     }
     return;
   }
+  // SHOTS_ONLY=diverted: a diverted flight (4 Nov 2026) beside a cancelled one, in every look, and Flights on the Operations desktop.
+  if (process.env.SHOTS_ONLY === "diverted") {
+    for (const theme of ["ops", "ops-refined", "stdplus", "premium", "board", "cards", "pro", ""]) for (const [width, height, name] of [[390, 900, "phone"], [1440, 900, "desktop"]]) {
+      if (!["ops", "ops-refined"].includes(theme) && name === "desktop") continue;
+      const db = deskDb(theme || undefined); if (!theme) db.company.brand = { ...db.company.brand, theme: "" };
+      const by = (id) => db.bookings.find((b) => b.id === id);
+      Object.assign(by("w1"), { flight_status: "diverted", est_at: null, est_time: "", flight_note: "Diverted · timetable, checked 18:05" });
+      Object.assign(by("w2"), { flight_status: "cancelled", est_at: null, est_time: "", flight_note: "Cancelled · timetable, checked 18:05" });
+      const page = await phone(browser, db, { width }); await page.setViewportSize({ width, height });
+      await open(page); await sleep(600);
+      await page.screenshot({ path: path.join(dir, "diverted-" + (theme || "standard") + "-" + name + ".png") });
+      if (theme === "ops" && name === "desktop") {
+        await page.evaluate(() => { const b = [...document.querySelectorAll("button, a")].find((x) => /^Flights/i.test(x.textContent.trim())); if (b) b.click(); }); await sleep(700);
+        await page.screenshot({ path: path.join(dir, "diverted-ops-desktop-flights.png") });
+      }
+      await page.context().close();
+    }
+    return;
+  }
   // SHOTS_ONLY=calls: incoming calls (part 117): the pop-up on the board, the car's calls and texts, Menu → Calls, Settings → Calls.
   if (process.env.SHOTS_ONLY === "calls") {
     const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
