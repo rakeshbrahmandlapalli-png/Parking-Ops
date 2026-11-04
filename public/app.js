@@ -1576,6 +1576,7 @@
   function flightLine(r) {
     if (r.flight_status === "landed") return '<div class="fst land">Landed</div>';
     if (r.flight_status === "cancelled") return '<div class="fst stop">Flight cancelled</div>';
+    if (r.flight_status === "diverted") return '<div class="fst stop">Flight diverted</div>';
     if (r.est_time === "DELAY") return '<div class="fst stop">Delayed</div>';
     if (r.flight_status === "expected" && r.est_time) return '<div class="fst due">Expected ' + esc(r.est_time) + "</div>";
     return "";
@@ -1584,6 +1585,7 @@
   function flightWord(r) {
     if (r.flight_status === "landed") return ' <i class="fst land">Landed</i>';
     if (r.flight_status === "cancelled") return ' <i class="fst stop">Cancelled</i>';
+    if (r.flight_status === "diverted") return ' <i class="fst stop">Diverted</i>';
     if (r.est_time === "DELAY") return ' <i class="fst stop">Delayed</i>';
     return "";
   }
@@ -1617,7 +1619,8 @@
   }
   function dropRow(r) {
     var cmpl = r.clear_word === "COMPLAINT", bang = /^!/.test(r.note), overWord = r.called_word === "Overstay";
-    var canc = r.flight_status === "cancelled", over = r.overstay || overWord;
+    // A diverted flight (4 Nov) shows like a cancelled one: no ETA, its own word.
+    var canc = r.flight_status === "cancelled" || r.flight_status === "diverted", over = r.overstay || overWord;
     var cls = "";
     if (cmpl || (bang && !r.cleared_at)) cls = " cmpl";
     else if (r.cleared_at) cls = " done";
@@ -1644,7 +1647,7 @@
       (r.flight_status === "landed" ? ' <span class="tag ld">LANDED</span>' : "") + "</span></div>" +
       // Not in the day's timetable: the flight may still be on, so the office checks by hand.
       rowTags(r, [flightToCheck(r) ? '<span class="tag ck">' + (/^Not in the timetable/.test(r.flight_note) ? "CHECK MANUALLY"
-        : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.") + "</span>" : "", canc ? '<span class="tag cx">CANCELLED</span>' : "",
+        : /over 6 h from the booked time/.test(r.flight_note) && r.return_at ? "CHECK FLIGHT · BOOKED " + esc(hhmm(r.return_at)) : "CHECK FLIGHT NO.") + "</span>" : "", canc ? '<span class="tag cx">' + (r.flight_status === "diverted" ? "DIVERTED" : "CANCELLED") + "</span>" : "",
         over ? '<span class="tag ov">OVERSTAY</span>' : "", cmpl ? '<span class="tag cm">COMPLAINT</span>' : "", chargeTag(r).replace(/^ · /, ""), exitTag(r)]) +
       earlyLine(r) + noteLine(r) + "</div>" +
       // "Show buttons on drops" off (Standard with features): what's done instead of buttons.
@@ -1659,7 +1662,7 @@
   function refinedDropRow(r, cls, overWord, cmpl, canc, over) {
     var booked = r.early ? r.sched_time : (r.sched_time || hhmm(r.return_at) || "");
     var eta = canc ? "" : r.est_time, who = rfWho(r);
-    var word = r.flight_status === "landed" ? '<span class="fw land">Landed</span>' : canc ? '<span class="fw stop">Cancelled</span>'
+    var word = r.flight_status === "landed" ? '<span class="fw land">Landed</span>' : canc ? '<span class="fw stop">' + (r.flight_status === "diverted" ? "Diverted" : "Cancelled") + "</span>"
       : eta === "DELAY" ? '<span class="fw stop">Delayed</span>' : "";
     var flt = r.flight ? '<span class="flp">' + esc(r.flight) + "</span>" : can("flights") ? '<button type="button" class="addflight" data-addflight>+ Flight</button>' : '<span class="flp none">No flight</span>';
     return '<div class="row rfr' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
@@ -3828,7 +3831,7 @@
   }
   // The flight's own state, from the flight check only.
   function opsFlightState(r, canc) {
-    if (canc) return '<span class="fx bad">Flight cancelled</span>';
+    if (canc) return '<span class="fx bad">Flight ' + (r.flight_status === "diverted" ? "diverted" : "cancelled") + "</span>";
     var late = lateMins(r);
     if (r.est_time === "DELAY" || r.flight_status === "delayed" || (r.flight_status === "expected" && late > 0)) return '<span class="fx bad">Delayed' + (late > 0 ? " +" + late + " min" : "") + "</span>";
     if (r.flight_status === "expected") return '<span class="fx warn">Running late</span>';
@@ -3918,7 +3921,7 @@
   function flKind(r) {
     var st = r.flight_status || "";
     if (r.flight === "NO FLIGHT" || st === "noflight") return "noflight";
-    if (st === "cancelled") return "cancelled";
+    if (st === "cancelled" || st === "diverted") return "cancelled";
     if (st === "landed") return "landed";
     if (st === "delayed" || r.est_time === "DELAY" || (st === "expected" && lateMins(r) > 0)) return "delayed";
     if (st === "scheduled" || st === "expected" || st === "airborne") return "scheduled";
@@ -3959,7 +3962,7 @@
         '<div class="fd-tr fd-s th"><span>Return</span><span>Vehicle · ref</span><span>Flight</span><span>Scheduled</span><span>Estimated</span><span>Status</span><span>Action</span></div>' +
         (list.length ? list.map(function (r) {
           var k = flKind(r), late = lateMins(r), st = r.flight_status || "";
-          var word = k === "noflight" ? "No flight number" : k === "delayed" ? "Delayed" + (late > 0 ? " +" + late + " min" : "") : k === "unchecked" ? "Not checked yet" : k === "cancelled" ? "Cancelled" : FLIGHT_WORD[st] || sentence(st);
+          var word = k === "noflight" ? "No flight number" : k === "delayed" ? "Delayed" + (late > 0 ? " +" + late + " min" : "") : k === "unchecked" ? "Not checked yet" : k === "cancelled" ? (st === "diverted" ? "Diverted" : "Cancelled") : FLIGHT_WORD[st] || sentence(st);
           var tone = k === "landed" ? "ok" : k === "cancelled" ? "bad" : k === "delayed" ? "warn" : "";
           var est = k === "noflight" ? (r.est_time ? 'Collect <span class="num">' + esc(r.est_time) + "</span>" : "—") : r.est_time === "DELAY" ? "Delayed" : r.est_time ? (k === "landed" ? "Landed " : "") + '<span class="num">' + esc(r.est_time) + "</span>" : "—";
           return '<div class="fd-tr fd-s fs-' + esc(k) + '" data-id="' + r.id + '"><span class="num" data-open>' + esc(hhmm(r.return_at) || "—") + '</span><span class="fd-car" data-open>' + flCar(r) + "</span>" +
@@ -4287,7 +4290,7 @@
   }
 
   // ── flights ───────────────────────────────
-  var FLIGHT_WORD = { noflight: "No flight number · collection time", "": "Not checked yet", scheduled: "Scheduled", expected: "Running late", airborne: "In the air", delayed: "DELAY", landed: "Landed", cancelled: "CANCELLED" };
+  var FLIGHT_WORD = { noflight: "No flight number · collection time", "": "Not checked yet", scheduled: "Scheduled", expected: "Running late", airborne: "In the air", delayed: "DELAY", landed: "Landed", cancelled: "CANCELLED", diverted: "DIVERTED" };
   // A tapped number on a phone's Flights page shows only those flights (S.flTile; "" = all).
   function flTileOk(r) { var t = S.flTile || "", st = r.flight_status; return !t || st === t || (t === "delayed" && st === "expected"); }
   function flTileAttr(k) { var on = (S.flTile || "") === k; return ' data-fltile="' + k + '" role="button" tabindex="0" aria-pressed="' + on + '"'; }
@@ -4313,7 +4316,7 @@
       (canCheckFlights() ? '<div class="row-actions">' + checksLeftHtml() + '<button type="button" class="btn small" data-filltimes>Fill times · AeroData</button><button type="button" class="btn small" data-checkflights>Check flights now</button></div>' : "") +
       "</div>" + missingHtml() + manualHtml(manual) + (missingFlights().length || manual.length ? '<div class="sec">WITH FLIGHT NUMBERS</div>' : "");
     return h + (shown.length ? shown.map(function (r) {
-      return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
+      return '<div class="row frow' + (r.flight_status === "cancelled" || r.flight_status === "diverted" || r.flight_status === "delayed" ? " late" : r.flight_status === "landed" ? " done" : "") + (r.flight_status ? " fs-" + esc(r.flight_status) : "") + '" data-id="' + r.id + '"><div class="left" data-open><div class="l1"><span class="reg">' + esc(r.flight) + '</span><span class="dn">' + esc(r.reg) + '</span><span class="pin">' + esc(nice(r.name)) + "</span></div>" +
         '<div class="l2 num"><span class="l2a">' + esc(FLIGHT_WORD[r.flight_status] || r.flight_status) + (r.flight_note ? " · " + esc(r.flight_note) : "") + '</span><span class="l2b">' + (isPremium() ? "" : " · ") + esc(r.sched_time || hhmm(r.return_at)) +
         (r.est_time ? ' &rarr; <span class="eta' + (r.est_time === "DELAY" ? " dly" : "") + '">' + esc(r.est_time) + "</span>" : "") + "</span></div></div></div>";
     }).join("") : '<div class="msg">' + (rows.length ? "No flights like that now." : "No flight numbers on this sheet.") + "</div>");
@@ -4330,8 +4333,8 @@
     var list = shown.map(function (r) {
       var st = r.flight_status || "", sched = r.sched_time || hhmm(r.return_at), est = r.est_time || "";
       var late = mins(est) !== null && mins(sched) !== null ? (mins(est) - mins(sched) + 1440 + 720) % 1440 - 720 : 0;
-      var word = st === "landed" ? "Landed" : st === "cancelled" ? "Cancelled" : (st === "delayed" || st === "expected") && late > 0 ? "Delayed +" + late + " min" : st === "delayed" ? "Delayed" : FLIGHT_WORD[st] || st;
-      var tone = st === "landed" ? "ok" : st === "cancelled" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
+      var word = st === "landed" ? "Landed" : st === "cancelled" ? "Cancelled" : st === "diverted" ? "Diverted" : (st === "delayed" || st === "expected") && late > 0 ? "Delayed +" + late + " min" : st === "delayed" ? "Delayed" : FLIGHT_WORD[st] || st;
+      var tone = st === "landed" ? "ok" : st === "cancelled" || st === "diverted" ? "bad" : st === "delayed" || st === "expected" ? "warn" : "";
       return '<div class="ops-fl fs-' + esc(st || "none") + '" data-id="' + r.id + '"><div class="ops-flin" data-open>' +
         '<b class="num">' + esc(r.flight) + '</b><span class="ops-flcar"><span class="num">' + esc(r.reg) + "</span><small>" + esc(nice(r.name)) + "</small></span>" +
         // Operations Refined: a flight per line on a phone, in the board's words (Sch, Est).
@@ -4390,6 +4393,7 @@
       if (s.skipped) bits.push(s.skipped);
       bits.push((s.filled || 0) + " filled", (s.moved || 0) + " changed");
       if (s.cancelled) bits.push(s.cancelled + " cancelled");
+      if (s.diverted) bits.push(s.diverted + " diverted");
       if (s.expected) bits.push(s.expected + " running late");
       if (s.notfound) bits.push(s.notfound + " not found (check flight no.)");
       if (s.error) bits.push("Problem: " + s.error);
