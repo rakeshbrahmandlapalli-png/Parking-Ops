@@ -475,10 +475,6 @@ html.premium .row.swipe-go.swipe-clear::before{background:#5B6573;color:#fff;}
 
 /* ── pull down to refresh ── */
 html.premium body.on-board{overscroll-behavior-y:contain;}
-#ptr{position:fixed;left:0;right:0;z-index:24;height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--bg,#f2f4f7);color:var(--ink-3,#8a93a1);font:600 13px/1 var(--sans,system-ui);transition:height .2s ease;pointer-events:none;}
-#ptr.go{color:var(--brand,#0e3f7e);}
-#ptr.busy::before{content:"";width:14px;height:14px;margin-right:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ptrspin .8s linear infinite;}
-@keyframes ptrspin{to{transform:rotate(360deg);}}
 
 /* ── swipe only (Menu → Display, per person): what's done instead of buttons ── */
 html.premium .acts.steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;cursor:pointer;}

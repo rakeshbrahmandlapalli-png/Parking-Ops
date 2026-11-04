@@ -1,19 +1,37 @@
-// TakeOff: keeps the app's own files on the phone so it opens with no signal.
-// Bookings are never cached here; they come from Supabase every time.
-const CACHE = "takeoff-ops-v18";
-const FILES = ["/", "/index.html", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/ops-refined.css", "/lanes.css", "/notifications.css", "/calls.css", "/attendance.css", "/topup.css", "/staff-panel.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
-self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
-self.addEventListener("activate", e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())));
+// TakeOff: keeps the app's own files on the phone so it opens at once, with or
+// without signal. Bookings are never cached here; they come from Supabase every time.
+//
+// The app opens from the saved copy straight away (it used to wait for the
+// network first: up to 4 s per file on a weak signal). New versions arrive as a
+// whole: BUILD below is a fingerprint of every file in FILES, written by
+// node src/build.mjs, so any change to them makes this a new worker, which
+// downloads the full new set before it takes over. The page then reloads when
+// nothing is in progress (src/app/18-swipe-update.js). A set is never mixed.
+const CACHE = "takeoff-ops-v19";
+const BUILD = "671291056b";
+const FILES = ["/", "/index.html", "/look.js", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/ops-refined.css", "/lanes.css", "/notifications.css", "/calls.css", "/attendance.css", "/topup.css", "/staff-panel.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
+const NAME = CACHE + "-" + BUILD, SHELL = new Set(FILES);
+// Fresh from the server, never the browser's own copy, so the set really is the new one.
+const fill = (name) => caches.open(name).then(c => c.addAll(FILES.map(f => new Request(f, { cache: "reload" }))));
+self.addEventListener("install", e => e.waitUntil(fill(NAME).then(() => self.skipWaiting())));
+self.addEventListener("activate", e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== NAME).map(x => caches.delete(x)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   // Tutorial videos stream straight from the network (too big to keep, and
   // phones ask for them in pieces).
   if (url.pathname.startsWith("/tutorials/") || url.pathname.startsWith("/phone/")) return;
-  // Newest copy from the network, but on a weak signal the saved copy after
-  // 4 seconds, so the app never sits on a blank screen waiting.
+  // The app itself: the saved copy at once; the network only if it isn't saved.
+  const app = e.request.mode === "navigate" ? (url.pathname === "/" || url.pathname === "/index.html" ? "/index.html" : null)
+    : SHELL.has(url.pathname) && !url.search ? url.pathname : null;
+  if (app) {
+    e.respondWith(caches.open(NAME).then(c => c.match(app)).then(hit => hit || fetch(e.request)));
+    return;
+  }
+  // Anything else: newest copy from the network, but on a weak signal the saved
+  // copy after 4 seconds, so the app never sits on a blank screen waiting.
   const net = fetch(e.request).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    if (res.ok) { const copy = res.clone(); caches.open(NAME).then(c => c.put(e.request, copy)); }
     return res;
   });
   const saved = () => caches.match(e.request).then(hit => hit || (e.request.mode === "navigate" ? caches.match("/index.html") : undefined));
