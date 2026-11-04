@@ -89,6 +89,12 @@ const norm = (v: unknown) => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g,
 const isIata = (k: string) => /^[A-Z0-9]{2}\d{1,4}$/.test(k);
 const isCallsign = (k: string) => /^[A-Z]{3}\d{1,4}$/.test(k);
 const looksLikeFlight = (k: string) => isIata(k) || isCallsign(k);
+// FR24 refuses a whole request when one entry isn't a real flight number, and
+// "5422" or "93901" (the airline left off) passes isIata as "54" + "22". An
+// airline code always has a letter in it, so only those go to FR24.
+const fr24Flight = (k: string) => isIata(k) && /[A-Z]/.test(k.slice(0, 2));
+// "The provided flight number '5422' is not a valid IATA flight number"
+const FR24_BAD = /(?:flight number|callsign) '([^']+)' is not a valid/i;
 function canon(v: unknown) {
   const k = norm(v), m = /^([A-Z]{3})(\d{1,4})$/.exec(k);
   if (m && AIRLINE_ALIAS[m[1]]) return AIRLINE_ALIAS[m[1]] + m[2];
@@ -414,10 +420,12 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
   // limit must not read as "no aircraft in the air" and mark cars DELAY.
   const asked = new Set<string>();
   const groups: { param: "flights" | "callsigns"; keys: string[] }[] = [];
-  for (let i = 0; i < keys.length; i += FR24_BATCH) {
-    const chunk = keys.slice(i, i + FR24_BATCH);
-    // EZY612 must go as a callsign; one malformed entry rejects the whole request.
-    groups.push({ param: "flights", keys: chunk.filter(isIata) }, { param: "callsigns", keys: chunk.filter((k) => !isIata(k) && isCallsign(k)) });
+  // EZY612 must go as a callsign; one malformed entry rejects the whole request.
+  // Sorted into flights and callsigns first, then 15 a request: 20 flights and
+  // 5 callsigns are 3 requests, not 4 (each one after the first waits 6.5 s).
+  const byParam = { flights: keys.filter(fr24Flight), callsigns: keys.filter((k) => !isIata(k) && isCallsign(k)) };
+  for (const param of ["flights", "callsigns"] as const) {
+    for (let i = 0; i < byParam[param].length; i += FR24_BATCH) groups.push({ param, keys: byParam[param].slice(i, i + FR24_BATCH) });
   }
   const want = [c.airport_iata, c.airport_icao].map((x) => String(x || "").toUpperCase()).filter(Boolean);
   for (const g of groups.filter((x) => x.keys.length)) {
@@ -425,7 +433,18 @@ async function checkLive(admin: SupabaseClient, c: Company, day: string, trigger
     if (tally.calls) await sleep(FR24_GAP_MS);   // plan allows 10 requests a minute
     tally.calls++;
     try {
-      const recs = await fr24Live(token, c, g.keys, g.param);
+      let recs: Record<string, any>[];
+      try { recs = await fr24Live(token, c, g.keys, g.param); }
+      catch (err) {
+        // One number FR24 won't take: the rest of the request again without it,
+        // so one typo doesn't leave 14 other flights unchecked.
+        const bad = FR24_BAD.exec((err as Error).message)?.[1];
+        const rest = bad ? g.keys.filter((k) => k !== bad && k !== canon(bad)) : [];
+        if (!bad || rest.length === g.keys.length || !rest.length || tally.calls >= FR24_MAX_CALLS) throw err;
+        g.keys = rest;
+        await sleep(FR24_GAP_MS); tally.calls++;
+        recs = await fr24Live(token, c, g.keys, g.param);
+      }
       g.keys.forEach((k) => asked.add(k));
       for (const rec of recs) {
         const k = [canon(rec.flight), canon(rec.callsign)].find((x) => x && wanted.has(x));

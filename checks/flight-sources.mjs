@@ -85,8 +85,12 @@ globalThis.fetch = async (url, opts) => {
   if (/aerodatabox/.test(host)) return aeroAnswer === "quota"
     ? new Response(JSON.stringify({ message: "You have exceeded the MONTHLY quota for API Units on your current plan, PRO." }), { status: 429 })
     : new Response(JSON.stringify({ arrivals: [] }), { status: 200 });
+  fr24Urls.push(new URL(url).searchParams);
+  const asked = new URL(url).searchParams.get("flights") || "";
+  if (fr24Refuse && asked.split(",").includes(fr24Refuse)) return new Response(JSON.stringify({ message: "Validation failed", details: `The provided flight number '${fr24Refuse}' is not a valid IATA flight number` }), { status: 400 });
   return new Response(JSON.stringify({ data: [] }), { status: 200 });
 };
+let fr24Urls = [], fr24Refuse = "";
 let handler;
 globalThis.Deno = { env: { get: (k) => ({ SUPABASE_URL: "http://x", SUPABASE_SERVICE_ROLE_KEY: "k", SUPABASE_ANON_KEY: "a", FR24_TOKEN: "t", AERODATABOX_KEY: "a" })[k] }, serve: (h) => { handler = h; } };
 await import(pathToFileURL(path.join(tmp, "index.ts")).href);
@@ -212,6 +216,31 @@ const want = ["TAKEOFF", ...Array.from({ length: 11 }, (_, k) => "C" + (k + 2))]
 check("slot timer: only this minute's clients (not the platform or a suspended one)", JSON.stringify(r.json.results.map((x) => x.company)) === JSON.stringify(want), { got: r.json.results.map((x) => x.company), want });
 r = await post({ action: "timer" });
 check("old timer call (no slot): still every active client", r.json.results.length === 12, r.json.results.map((x) => x.company));
+
+// 3 Nov: "5422" (airline left off) went to FR24 with 14 real flights and FR24
+// refused the whole request ("not a valid IATA flight number"), 12 runs a week.
+const car = (id, flight) => ({ ...db.bookings[0], id, ref: "R" + id, flight });
+fresh(); db.bookings.push(car("b2", "5422"), car("b3", "93901"));
+fr24Urls = [];
+r = await post({ action: "check" });
+const sent = fr24Urls.map((u) => (u.get("flights") || "") + "|" + (u.get("callsigns") || "")).join(" ");
+check("a number with no airline (5422, 93901) never goes to FR24; the real flight still does", r.fr24 === 1 && /U22464/.test(sent) && !/5422|93901/.test(sent) && !r.json.live.error, { sent, live: r.json.live });
+check("…and the number-only cars are left as they were (not DELAY)", db.bookings.filter((b) => b.id !== "b1").every((b) => b.flight_status === ""), db.bookings);
+
+// A number FR24 still won't take: the rest of that request is asked again without it.
+fresh(); db.bookings.push(car("b2", "ZZ9999")); fr24Refuse = "ZZ9999"; fr24Urls = [];
+r = await post({ action: "check" });
+check("FR24 refuses one number: asked again without it, the others are checked", r.fr24 === 2 && fr24Urls[1].get("flights") === "U22464" && !r.json.live.error && db.bookings[0].flight_checked_at, { live: r.json.live, urls: fr24Urls.map(String) });
+check("…the refused one is left unchecked (no DELAY from a failed ask)", db.bookings[1].flight_status === "" && !db.bookings[1].flight_checked_at, db.bookings[1]);
+fr24Refuse = "";
+
+// Flights and callsigns sorted first, then 15 a request: 20 + 5 is 3 requests, not 4.
+fresh();
+for (let i = 0; i < 19; i++) db.bookings.push(car("f" + i, "U2" + (3000 + i)));
+for (let i = 0; i < 5; i++) db.bookings.push(car("c" + i, "QQQ" + (700 + i)));
+fr24Urls = [];
+r = await post({ action: "check" });
+check("20 flights and 5 callsigns: 3 FR24 requests (15 + 5 flights, 5 callsigns)", r.fr24 === 3 && fr24Urls.map((u) => (u.get("flights") || u.get("callsigns")).split(",").length).join(",") === "15,5,5", fr24Urls.map(String));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`${passed} passed, ${failed} failed`);
