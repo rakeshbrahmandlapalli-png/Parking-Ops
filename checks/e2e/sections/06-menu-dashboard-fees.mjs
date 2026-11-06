@@ -487,7 +487,7 @@ for (const [theme, role] of [["", "office"], ["stdplus", "terminal"]]) await sce
   const up = db.uploads.find((u) => /\/docs\//.test(u));
   check("Desk booking (" + look + "): the docket photo is uploaded and kept with the car", doc && up && new RegExp("^" + db.company.id + "/docs/" + doc.args.p_booking + "/\\d+\\.jpg$").test(doc.args.p_path) && up === doc.args.p_path, { doc: doc && doc.args, up });
   await page.click("#tabAll"); await sleep(300);
-  check("Desk booking (" + look + "): the car is on the board, NEW BOOKING", /BU15DDE/.test(await page.textContent("#main")) && /NEW BOOKING/.test(await page.textContent("#main")));
+  check("Desk booking (" + look + "): the car is on the board, ADDED <time>", /BU15DDE/.test(await page.textContent("#main")) && /ADDED \d\d:\d\d/.test(await page.textContent("#main")) && !/NEW BOOKING/.test(await page.textContent("#main")));
   const nb = db.bookings.find((b) => b.reg === "BU15DDE");
   await page.click('.row[data-id="' + nb.id + '"] .reg'); await page.waitForSelector("#panel[open]"); await sleep(600);
   const src = await page.locator("#docImg img").getAttribute("src").catch(() => "");

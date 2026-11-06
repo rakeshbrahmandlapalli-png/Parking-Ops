@@ -254,7 +254,7 @@
       : r.intake === "No Show" ? '<b class="st-x">No show</b>' : r.intake === "RTC" ? '<b class="st-o">RTC</b>' : "<b>" + esc(r.intake) + "</b>";
     var extra = [r.intake === "Collected" ? (r.pt_at ? '<span class="fx ok">PT done <span class="num">' + esc(hhmm(r.pt_at)) + "</span>" + by(byName(r, "pt_by")) + "</span>" : '<span class="fx warn">PT photos to take</span>') : "",
       S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "",
-      r.pick_called ? '<span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span>" : "",
+      r.pick_called ? (r.pick_called === "New Booking" ? pickMark(r) : '<span class="tag">' + esc(r.pick_called) + "</span>") : "",
       r.doc_path ? '<span class="fx">Docket photo</span>' : ""].filter(Boolean);
     var back = r.return_at ? '<b class="num">' + esc(dayShort(r.return_at)) + '</b><div class="sub num">' + esc(hhmm(r.return_at)) + " " + catTag(r) + "</div>" : '<span class="mut">No return date</span>';
     return '<div class="row drow prow' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +

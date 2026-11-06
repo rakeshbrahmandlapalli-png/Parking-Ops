@@ -182,7 +182,7 @@ await scenario(async () => {
   check("backup reminder: only the owner sees it", await page2.locator(".nudge").count() === 0);
 });
 
-// 17. a PICKS car added by a re-import shows NEW BOOKING
+// 17. a PICKS car added by a re-import shows when it was added (ADDED 16:05), not NEW BOOKING
 await scenario(async () => {
   const db = makeDb();
   Object.assign(db.bookings.find((x) => x.id === "p2"), { pick_called: "New Booking", pick_called_at: iso(TONIGHT, "16:05") });
@@ -190,6 +190,6 @@ await scenario(async () => {
   await open(page);
   await page.selectOption("#sheetPick", "p0"); await sleep(700);
   const tag = page.locator('.row[data-id="p2"] .tag.nb');
-  check("re-imported PICKS car: NEW BOOKING tag on the row", await tag.count() === 1 && /NEW BOOKING/.test(await tag.innerText()));
+  check("re-imported PICKS car: ADDED <time> tag on the row, no NEW BOOKING", await tag.count() === 1 && /^ADDED \d\d:\d\d$/.test(await tag.innerText()) && !/NEW BOOKING/.test(await page.textContent("#main")), await tag.innerText());
   check("other PICKS cars have no NEW BOOKING tag", await page.locator('.row[data-id="p1"] .tag.nb').count() === 0);
 });
