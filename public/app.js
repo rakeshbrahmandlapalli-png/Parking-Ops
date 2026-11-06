@@ -1903,7 +1903,7 @@
       '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
       (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + catTag(r) + '<span class="pin">' + esc(nice(r.name)) + "</span></div>" +
       // Just the make on the row; the full car and booking ref are in the car's panel.
-      '<div class="l2 num" data-open><span class="l2a">' + (makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "") + '<span class="dp">' + (makeOnly(r.make) ? " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + "</span>" + pickFlight(r) + (S.ptUnsaved[r.id] && r.pt_at ? ' · <span class="tag due">PT NOT SAVED</span>' : "") + (r.pick_called && !pickAdded(r) ? " · " + pickMark(r) : "") + "</span></div>" +
+      '<div class="l2 num" data-open><span class="l2a">' + (makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "") + '<span class="dp">' + (makeOnly(r.make) ? " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + "</span>" + pickFlight(r) + (S.ptUnsaved[r.id] && r.pt_at ? ' · <span class="tag due">PT NOT SAVED</span>' : "") + (r.pick_called && r.pick_called !== "New Booking" ? " · " + pickMark(r) : "") + "</span></div>" +
       addedLine(r) + noteLine(r) + "</div>") +
       pickActs(r) + "</div>";
   }
@@ -1916,13 +1916,22 @@
 
   // A PICKS car's mark on the row. A car marked NEW BOOKING (added by a later
   // import, or at the desk) shows when it was added, ADDED 03:12, not the words
-  // NEW BOOKING (user, 6 Nov). The car panel's NEW BOOKING button is unchanged.
+  // NEW BOOKING, and only when added late (pickAdded) (user, 6 Nov). The car panel's NEW BOOKING button is unchanged.
   function pickMark(r, upper) {
     if (!r.pick_called) return "";
-    if (r.pick_called === "New Booking") return '<span class="tag nb">ADDED' + (r.pick_called_at ? ' <span class="num">' + esc(hhmm(r.pick_called_at)) + "</span>" : "") + "</span>";
+    if (r.pick_called === "New Booking") return pickAdded(r) ? '<span class="tag nb">ADDED <span class="num">' + esc(hhmm(r.pick_called_at)) + "</span></span>" : "";
     return '<span class="tag">' + esc(upper ? r.pick_called.toUpperCase() : r.pick_called) + "</span> " + esc(hhmm(r.pick_called_at));
   }
-  function pickAdded(r) { return r.kind === "picks" && r.pick_called === "New Booking"; }
+  // Only a car added late shows it: from 17:00 the day before the PICKS day
+  // (user, 6 Nov: a car on the 7th's sheet shows ADDED only if it came in
+  // after 17:00 on the 6th). Earlier additions show nothing on the row.
+  function pickAdded(r) {
+    if (r.kind !== "picks" || r.pick_called !== "New Booking" || !r.pick_called_at) return false;
+    var sh = S.sheets.filter(function (x) { return x.id === r.sheet_id; })[0] || sheet();
+    if (!sh || !sh.day) return false;
+    var at = londonParts(new Date(r.pick_called_at));
+    return at.key + " " + at.time >= addDaysKey(String(sh.day).slice(0, 10), -1) + " 17:00";
+  }
   // On a phone row the line runs out of room, so ADDED gets a line of its own.
   function addedLine(r) { return pickAdded(r) ? '<div class="l2 l2t" data-open>' + pickMark(r) + "</div>" : ""; }
   // The return flight the customer gave at drop-off (typed in the car), after the drop time.
@@ -1933,7 +1942,7 @@
   function pickLinesBoard(r) {
     var mk = makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "";
     var extra = (S.ptUnsaved[r.id] && r.pt_at ? ' <span class="tag due">PT NOT SAVED</span>' : "") +
-      (r.pick_called && !pickAdded(r) ? " · " + pickMark(r) : "");
+      (r.pick_called && r.pick_called !== "New Booking" ? " · " + pickMark(r) : "");
     return '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
       (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + catTag(r) + '<span class="pin">' + esc(nice(r.name)) + "</span></div>" +
       '<div class="l2 cl2 num" data-open><span class="l2a">' + (mk ? mk + " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + pickFlight(r) + extra + "</span></div>" + addedLine(r) + noteLine(r) + "</div>";
