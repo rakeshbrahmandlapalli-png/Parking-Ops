@@ -205,7 +205,7 @@
   function refinedPickRow(r, cls) {
     var who = rfWho(r);
     var tags = (S.ptUnsaved[r.id] && r.pt_at ? '<span class="tag due">PT NOT SAVED</span>' : "") +
-      (r.pick_called ? '<span class="rfpc"><span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called.toUpperCase())) + "</span> " + esc(hhmm(r.pick_called_at)) + "</span>" : "");
+      (r.pick_called ? '<span class="rfpc">' + pickMark(r, true) + "</span>" : "");
     return '<div class="row rfr rfp' + cls + (S.pending[r.id] ? " busy" : "") + '" data-id="' + r.id + '">' +
       '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
       (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + "</div>" +
@@ -415,8 +415,8 @@
       '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
       (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + catTag(r) + '<span class="pin">' + esc(nice(r.name)) + "</span></div>" +
       // Just the make on the row; the full car and booking ref are in the car's panel.
-      '<div class="l2 num" data-open><span class="l2a">' + (makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "") + '<span class="dp">' + (makeOnly(r.make) ? " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + "</span>" + pickFlight(r) + (S.ptUnsaved[r.id] && r.pt_at ? ' · <span class="tag due">PT NOT SAVED</span>' : "") + (r.pick_called ? ' · <span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span> " + esc(hhmm(r.pick_called_at)) : "") + "</span></div>" +
-      noteLine(r) + "</div>") +
+      '<div class="l2 num" data-open><span class="l2a">' + (makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "") + '<span class="dp">' + (makeOnly(r.make) ? " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + "</span>" + pickFlight(r) + (S.ptUnsaved[r.id] && r.pt_at ? ' · <span class="tag due">PT NOT SAVED</span>' : "") + (r.pick_called && !pickAdded(r) ? " · " + pickMark(r) : "") + "</span></div>" +
+      addedLine(r) + noteLine(r) + "</div>") +
       pickActs(r) + "</div>";
   }
   // COLL, NO SHOW (or the car's location), RTC and PT: the same buttons on every layout.
@@ -426,6 +426,17 @@
       actBtn(r, "data-pt", "p", "PT", !!r.pt_at, r.pt_at, can("intake"), byName(r, "pt_by")) + "</div>";
   }
 
+  // A PICKS car's mark on the row. A car marked NEW BOOKING (added by a later
+  // import, or at the desk) shows when it was added, ADDED 03:12, not the words
+  // NEW BOOKING (user, 6 Nov). The car panel's NEW BOOKING button is unchanged.
+  function pickMark(r, upper) {
+    if (!r.pick_called) return "";
+    if (r.pick_called === "New Booking") return '<span class="tag nb">ADDED' + (r.pick_called_at ? ' <span class="num">' + esc(hhmm(r.pick_called_at)) + "</span>" : "") + "</span>";
+    return '<span class="tag">' + esc(upper ? r.pick_called.toUpperCase() : r.pick_called) + "</span> " + esc(hhmm(r.pick_called_at));
+  }
+  function pickAdded(r) { return r.kind === "picks" && r.pick_called === "New Booking"; }
+  // On a phone row the line runs out of room, so ADDED gets a line of its own.
+  function addedLine(r) { return pickAdded(r) ? '<div class="l2 l2t" data-open>' + pickMark(r) + "</div>" : ""; }
   // The return flight the customer gave at drop-off (typed in the car), after the drop time.
   function pickFlight(r) { return r.flight ? ' · <span class="pfl">' + esc(r.flight) + "</span>" : ""; }
   function canPickFlight() { return can("intake") || can("flights"); }
@@ -434,10 +445,10 @@
   function pickLinesBoard(r) {
     var mk = makeOnly(r.make) ? '<span class="mk">' + esc(niceMake(makeOnly(r.make))) + "</span>" : "";
     var extra = (S.ptUnsaved[r.id] && r.pt_at ? ' <span class="tag due">PT NOT SAVED</span>' : "") +
-      (r.pick_called ? ' · <span class="tag' + (r.pick_called === "New Booking" ? ' nb">NEW BOOKING' : '">' + esc(r.pick_called)) + "</span> " + esc(hhmm(r.pick_called_at)) : "");
+      (r.pick_called && !pickAdded(r) ? " · " + pickMark(r) : "");
     return '<div class="left"><div class="l1"><button type="button" class="reg" data-open>' + esc(r.reg || "NO REG") + "</button>" +
       (r.num ? '<span class="dn num">#' + r.num + "</span>" : "") + catTag(r) + '<span class="pin">' + esc(nice(r.name)) + "</span></div>" +
-      '<div class="l2 cl2 num" data-open><span class="l2a">' + (mk ? mk + " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + pickFlight(r) + extra + "</span></div>" + noteLine(r) + "</div>";
+      '<div class="l2 cl2 num" data-open><span class="l2a">' + (mk ? mk + " · " : "") + "drop " + esc(hhmm(r.drop_at) || "—") + pickFlight(r) + extra + "</span></div>" + addedLine(r) + noteLine(r) + "</div>";
   }
 
   function sheetDayOf(r) { var sh = S.sheets.filter(function (x) { return x.id === r.sheet_id; })[0]; return sh ? sh.day : ""; }

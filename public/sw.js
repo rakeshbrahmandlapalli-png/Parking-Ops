@@ -8,7 +8,7 @@
 // downloads the full new set before it takes over. The page then reloads when
 // nothing is in progress (src/app/18-swipe-update.js). A set is never mixed.
 const CACHE = "takeoff-ops-v19";
-const BUILD = "671291056b";
+const BUILD = "d56f07296c";
 const FILES = ["/", "/index.html", "/look.js", "/app.css", "/pro.css", "/cards.css", "/premium.css", "/board.css", "/stdplus.css", "/ops.css", "/ops-refined.css", "/lanes.css", "/notifications.css", "/calls.css", "/attendance.css", "/topup.css", "/staff-panel.css", "/fonts/barlow-400.woff2", "/fonts/barlow-600.woff2", "/fonts/barlow-700.woff2", "/fonts/barlow-semi-condensed-700.woff2", "/app.js", "/reader.js", "/vendor/supabase-2.117.2.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 const NAME = CACHE + "-" + BUILD, SHELL = new Set(FILES);
 // Fresh from the server, never the browser's own copy, so the set really is the new one.
