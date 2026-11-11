@@ -267,7 +267,7 @@
       if (!ref && !name && !reg) return;
       var make = [v("make"), v("colour")].filter(function (s) { return s && s !== "."; }).join(" ").trim();
       var flight = v("flight").toUpperCase().replace(/\s+/g, "");
-      if (/^(TBC|NOTPROVIDED|N\/A|-)?$/i.test(flight)) flight = "";
+      if (/^(TBC|TBA|NOTPROVIDED|N\/A|-)?$/i.test(flight)) flight = "";
       var note = [v("location"), v("note")].filter(Boolean).join(" · ").replace(/^\.$|^·\s*/, "").trim();
       out.push({
         ref: ref, name: name, phone: v("phone"), make: make, reg: reg,

@@ -55,5 +55,36 @@ ok("wrapped names joined back", want.every((w, i) => rows[i] && rows[i].name ===
 ok("no reference twice", new Set(rows.map((r) => r.ref)).size === 300);
 ok("drop-off times read", rows.every((r) => r.meet && r.meet.time));
 ok("read in under 1 s", ms < 1000, ms);
+
+// The 14 Oct 2026 DROPS layout (positions copied from the real PDF, people made
+// up, rows closed up as on a full page): a VIP reference over three lines with its reg on a line of its own, a
+// wrapped make, an FHR reference split in two, and a four-line booking at the
+// foot of the page whose flight reads "Not provided". TBA is no flight either.
+const D = [
+  { y: 561, items: [{ x: 304.1, w: 150, s: "Joblist 14/10/2026 - 14/10/2026 — DROPS" }] },
+  { y: 530, items: [["ID", 28.5], ["Customer", 99.9], ["Mobile No", 195.1], ["Departure Date", 266.5], ["Return Date", 338], ["Vehicle Reg", 409.4], ["Make & Model", 464.9], ["Colour", 544.3], ["Flight", 591.9], ["Flight Landing Time", 639.5], ["Location", 695], ["Notes", 726.7]].map(([s, x]) => ({ x, w: 30, s })) },
+  { y: 515, items: [{ x: 266.5, w: 40, s: "12/10/2026" }, { x: 338, w: 40, s: "14/10/2026" }] },
+  { y: 509, items: [{ x: 28.5, w: 50, s: "SPF-AB12CD" }, { x: 99.9, w: 50, s: "Customer One" }, { x: 195.1, w: 50, s: "07700900001" }, { x: 409.4, w: 40, s: "AA11AAA" }, { x: 464.9, w: 40, s: "Ford Focus" }, { x: 544.3, w: 30, s: "Grey" }, { x: 591.9, w: 20, s: "TBA" }] },
+  { y: 505, items: [{ x: 266.5, w: 30, s: "19:00" }, { x: 338, w: 30, s: "07:45" }] },
+  { y: 490, items: [{ x: 31.5, w: 6, s: "★" }, { x: 39.9, w: 14, s: "VIP" }] },
+  { y: 489, items: [{ x: 56.7, w: 20, s: "APB-" }, { x: 266.5, w: 40, s: "07/10/2026" }, { x: 338, w: 40, s: "14/10/2026" }, { x: 464.9, w: 40, s: "Range Rover" }] },
+  { y: 485, items: [{ x: 99.9, w: 30, s: "Two" }, { x: 195.1, w: 50, s: "07700900002" }, { x: 409.4, w: 40, s: "BB22 BBB" }, { x: 544.3, w: 30, s: "Black" }, { x: 591.9, w: 30, s: "W6 4551" }] },
+  { y: 480, items: [{ x: 28.5, w: 20, s: "2202" }, { x: 266.5, w: 30, s: "07:30" }, { x: 338, w: 30, s: "09:45" }, { x: 464.9, w: 30, s: "Sport" }] },
+  { y: 465, items: [{ x: 28.5, w: 20, s: "FHR-" }, { x: 266.5, w: 40, s: "09/10/2026" }, { x: 338, w: 40, s: "14/10/2026" }] },
+  { y: 461, items: [{ x: 99.9, w: 50, s: "Mr C Three" }, { x: 195.1, w: 50, s: "+447700900003" }, { x: 409.4, w: 40, s: "CC33CCC" }, { x: 591.9, w: 20, s: "TBC" }] },
+  { y: 456, items: [{ x: 28.5, w: 50, s: "1434000001" }, { x: 266.5, w: 30, s: "13:00" }, { x: 338, w: 30, s: "11:00" }] },
+  { y: 441, items: [{ x: 266.5, w: 40, s: "10/10/2026" }, { x: 338, w: 40, s: "14/10/2026" }] },
+  { y: 435, items: [{ x: 28.5, w: 50, s: "CAP-18-600004" }, { x: 99.9, w: 50, s: "Customer Four" }, { x: 195.1, w: 50, s: "07700900004" }, { x: 409.4, w: 40, s: "DD44DDD" }, { x: 464.9, w: 40, s: "BMW 640D" }, { x: 544.3, w: 30, s: "GREY" }, { x: 591.9, w: 30, s: "FR5456" }] },
+  { y: 430, items: [{ x: 266.5, w: 30, s: "12:00" }, { x: 338, w: 30, s: "17:30" }] },
+  { y: 415, items: [{ x: 266.5, w: 40, s: "07/10/2026" }, { x: 338, w: 40, s: "14/10/2026" }, { x: 591.9, w: 20, s: "Not" }] },
+  { y: 411, items: [{ x: 31.5, w: 6, s: "★" }, { x: 39.9, w: 14, s: "VIP" }] },
+  { y: 410, items: [{ x: 56.7, w: 30, s: "APB-992" }, { x: 99.9, w: 50, s: "Mr Five" }, { x: 195.1, w: 50, s: "07700900005" }, { x: 409.4, w: 40, s: "EE55 EEE" }, { x: 464.9, w: 40, s: "BMW X3" }, { x: 544.3, w: 30, s: "Black/blue" }] },
+  { y: 405, items: [{ x: 266.5, w: 30, s: "05:00" }, { x: 338, w: 30, s: "18:30" }, { x: 591.9, w: 30, s: "provided" }] },
+];
+const d = R.parseJoblistLines(D, "");
+ok("14 Oct layout: all 5 bookings, read as DROPS", d.rows.length === 5 && d.kind === "drops", d.rows.map((r) => r.ref));
+ok("14 Oct layout: split references joined", d.rows.map((r) => r.ref).join() === "SPF-AB12CD,VIP APB-2202,FHR-1434000001,CAP-18-600004,VIP APB-992", d.rows.map((r) => r.ref));
+ok("14 Oct layout: regs and return times", d.rows.map((r) => r.reg + " " + r.ret.time).join() === "AA11AAA 07:45,BB22 BBB 09:45,CC33CCC 11:00,DD44DDD 17:30,EE55 EEE 18:30", d.rows.map((r) => r.reg + " " + (r.ret && r.ret.time)));
+ok("14 Oct layout: TBA, TBC and Not provided are no flight", d.rows.map((r) => r.flightIn).join() === ",W64551,,FR5456,", d.rows.map((r) => r.flightIn));
 console.log(failed ? failed + " failed" : "all passed");
 process.exit(failed ? 1 : 0);
