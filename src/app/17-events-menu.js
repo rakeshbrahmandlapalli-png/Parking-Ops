@@ -345,6 +345,7 @@
   document.addEventListener("change", async function (e) {
     if (e.target.id === "keyYard") { S.keyYard = e.target.value; render(); return; }
     if (e.target.id === "earlyDay" && $("earlyTo")) { $("earlyTo").innerHTML = earlyLabel(earlyDay()); return; }
+    if (e.target.id === "addDay" && $("addTo") && panelRow) { $("addTo").innerHTML = pickAddLabel(panelRow, pickAddDay()); return; }
     var t = e.target;
     if ((t.id === "biFrom" || t.id === "biTo") && S.autoImport) {
       var ba = S.autoImport, br = biRange(ba), nf = t.id === "biFrom" ? t.value : br.from, nt = t.id === "biTo" ? t.value : br.to;
