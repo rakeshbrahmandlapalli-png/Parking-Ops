@@ -23,7 +23,8 @@
 --     and that night's import adds the other cars and matches this one by ref/reg.
 -- A later night with a DROPS car already in is still part 127's set_return (moved
 -- there, or OVERSTAYS until that night's sheet is in). The PICKS car itself is
--- changed as before. Safe to run twice. Rollback: run part 78's set_pick_return
+-- changed as before. Save with the return unchanged now does the DROPS part too (the
+-- app sends set_pick_return only when the date or time box was touched). Safe to run twice. Rollback: run part 78's set_pick_return
 -- again (setup/rollback/147-pick-return-to-drops-rollback.sql).
 
 create or replace function set_pick_return(p_booking uuid, p_return_local text)
@@ -52,10 +53,13 @@ begin
   if new_ret < now() - interval '60 days' or new_ret > now() + interval '400 days' then raise exception 'Check the date.'; end if;
   if b.drop_at is not null and new_ret <= b.drop_at then raise exception 'The return must be after the drop-off.'; end if;
   old_ret := b.return_at;
-  if old_ret is not distinct from new_ret then return b; end if;
-  update bookings set return_at = new_ret, updated_at = now() where id = b.id returning * into b;
-  perform log_activity(b, 'RETURN CHANGED', 'was ' || coalesce(to_char(old_ret at time zone c.time_zone, 'DD Mon HH24:MI'), '(none)') ||
-    ', now ' || to_char(new_ret at time zone c.time_zone, 'DD Mon HH24:MI') || ' (changed by hand)');
+  -- Saved unchanged: the PICKS car stays as it is, but DROPS is still put right below
+  -- (a car whose return was changed before this part, like LS54FAA).
+  if old_ret is distinct from new_ret then
+    update bookings set return_at = new_ret, updated_at = now() where id = b.id returning * into b;
+    perform log_activity(b, 'RETURN CHANGED', 'was ' || coalesce(to_char(old_ret at time zone c.time_zone, 'DD Mon HH24:MI'), '(none)') ||
+      ', now ' || to_char(new_ret at time zone c.time_zone, 'DD Mon HH24:MI') || ' (changed by hand)');
+  end if;
   -- Its DROPS car, when it's already in: the same change (part 78).
   for d in select x.id from bookings x
     where x.company_id = b.company_id and x.kind = 'drops' and x.removed_at is null and x.cleared_at is null and not x.early
