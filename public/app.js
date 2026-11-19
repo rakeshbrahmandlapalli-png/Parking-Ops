@@ -6554,11 +6554,38 @@
     if (r.error) return toast(r.error.message, true);
     savedSec(btn); S.bsite = r.data; toast(clear ? "Booking website login removed" : "Saved: booking website login"); render();
   }
+  // In parts (database part 149): the whole company in one request outgrew the
+  // server's 8 s limit, so every press failed and the board's reminder stayed.
+  // Phones before part 149 is applied fall back to the one-request download.
+  async function downloadInParts(progress) {
+    var head = await sb.rpc("download_my_company_part", { p_part: "head" });
+    if (head.error) return head;
+    var d = head.data, got = 0, parts = ["sheets", "bookings", "activity"];
+    for (var i = 0; i < parts.length; i++) {
+      var all = [], after = null;
+      for (;;) {
+        var r = await sb.rpc("download_my_company_part", { p_part: parts[i], p_after: after, p_limit: 3000 });
+        if (r.error) return r;
+        var rows = r.data || [];
+        if (!rows.length) break;
+        all = all.concat(rows); got += rows.length; progress(got);
+        after = String(rows[rows.length - 1].id);
+        if (rows.length < 3000) break;
+      }
+      d[parts[i]] = all;
+    }
+    var done = await sb.rpc("download_my_company_part", { p_part: "done" });
+    if (done.error) return done;
+    return { data: d };
+  }
   async function downloadBackup(btn) {
-    btn.disabled = true;
-    var r = await sb.rpc("download_my_company");
-    btn.disabled = false;
-    if (r.error) return toast(r.error.message, true);
+    if (btn.disabled) return;
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Downloading…";
+    var r = await downloadInParts(function (n) { btn.textContent = "Downloading… " + n.toLocaleString("en-GB"); });
+    if (r.error && (r.error.code === "PGRST202" || /download_my_company_part/.test(r.error.message || ""))) r = await sb.rpc("download_my_company");
+    btn.disabled = false; btn.textContent = label;
+    if (r.error) return toast(/statement timeout/i.test(r.error.message || "") ? "The download took too long and stopped. Try again." : r.error.message, true);
     var blob = new Blob([JSON.stringify(r.data)], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
