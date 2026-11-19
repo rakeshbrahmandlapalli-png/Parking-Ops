@@ -32,10 +32,10 @@
   function clkHere(fresh) {
     return new Promise(function (ok) {
       if (!fresh && CLK.pos && Date.now() - CLK.pos.at < 60000) return ok(CLK.pos);
-      if (!navigator.geolocation) return ok(null);
+      if (!navigator.geolocation) { CLK.why = 0; return ok(null); }
       navigator.geolocation.getCurrentPosition(function (p) {
-        CLK.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; ok(CLK.pos);
-      }, function () { ok(null); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+        CLK.why = null; CLK.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; ok(CLK.pos);
+      }, function (e) { CLK.why = e && e.code; ok(null); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
     });
   }
   async function clkSites() {
@@ -56,7 +56,9 @@
     return best;
   }
   function clkSay(near) {
-    if (!near) return clkZone("Turn on location to clock in.", "warn");
+    // Blocked (code 1) never asks again on an iPhone: say where to allow it.
+    if (!near) return clkZone(CLK.why === 1 ? "Location is blocked for this app. Allow it in your phone's Settings (Location Services), then try again." :
+      CLK.why ? "Couldn't find your location. Try again." : "Turn on location to clock in.", "warn");
     if (near.inside) return clkZone("At " + near.w.name, "ok");
     clkZone((near.m < 1000 ? near.m + " m" : (near.m / 1000).toFixed(1) + " km") + " from " + near.w.name + ". Move closer to clock in.", "warn");
   }

@@ -64,6 +64,19 @@ await scenario(async () => {
   check("Clock out: without a location it still clocks out, unverified", c && (c.args.p_lat == null), c);
 }, "gate");
 
+// Location blocked on the phone (WASIM, 2 Nov): say where to allow it, never send a clock-in, Check again looks again.
+await scenario(async () => {
+  const { db, page } = await setup(false, HERE);
+  await page.context().clearPermissions();
+  await page.goto(BASE + "/"); await page.waitForSelector(".gatebox .clk-slide"); await sleep(1200);
+  check("Clock in: blocked location says where to allow it", /Location is blocked.*Settings/.test(await page.locator(".clk-zone").innerText()), await page.locator(".clk-zone").innerText());
+  await slide(page); await sleep(1200);
+  check("Clock in: blocked location sends no clock-in", !db.calls.some((c) => c.fn === "aero_clock_in"));
+  await page.context().grantPermissions(["geolocation"], { origin: BASE }); await page.context().setGeolocation(HERE);
+  await page.click("#gateAgain"); await sleep(1500);
+  check("Clock in: Check again finds the site once location is allowed", /At Millfield Lane/.test(await page.locator(".clk-zone").innerText()), await page.locator(".clk-zone").innerText());
+}, "gate");
+
 // Someone without Attendance sees none of it.
 await scenario(async () => {
   const db = makeDb(); const page = await phone(browser, db); await open(page); await sleep(1200);
