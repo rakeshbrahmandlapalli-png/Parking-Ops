@@ -355,6 +355,14 @@ function rpc(db, fn, a) {
     }
     case "set_note": { const b = row(a.p_booking); b.note = a.p_note; return b; }
     case "download_my_company": return { format: "takeoff-ops-company-export", bookings: db.bookings };
+    case "download_my_company_part": {
+      if (db.noDownloadParts) { const e = new Error("Could not find the function public.download_my_company_part"); e.code = "PGRST202"; throw e; }
+      if (a.p_part === "head") return { format: "takeoff-ops-company-export", version: 1, company: { slug: "takeoff" }, staff: [], timetable: [], alert_prefs: [] };
+      if (a.p_part === "done") { db.lastDownload = now(); return null; }
+      const list = a.p_part === "bookings" ? db.bookings : a.p_part === "sheets" ? (db.sheets || []) : [];
+      const sorted = [...list].sort((x, y) => String(x.id) < String(y.id) ? -1 : 1);
+      return sorted.filter((x) => a.p_after == null || String(x.id) > a.p_after).slice(0, a.p_limit || 3000);
+    }
     case 'reviewed_import_preview': {
       if(db.manualPreviewError)throw new Error(db.manualPreviewError);
       const items=a.p_batches.flatMap(b=>b.rows.map((r,i)=>({key:b.kind+'|'+b.day+'|'+(i+1),kind:b.kind,day:b.day,ref:r.ref,reg:r.reg,name:r.name,status:'new',row:r,changes:[],source:r.source}))).map(i=>db.manualStatus?.[i.ref]?{...i,...db.manualStatus[i.ref]}:i);
@@ -472,7 +480,7 @@ async function backend(ctx, db) {
       db.calls.push({ fn, args });
       if (db.dashGate && fn === "owner_dashboard") await db.dashGate; // held open so a test can see the Loading… state
       if (db.keyGate && fn.startsWith('key_check_')) { const error = await db.keyGate(fn,args); if (error) return reply(400,{message:error}); }
-      try { return reply(200, rpc(db, fn, args)); } catch(e) { return reply(400,{message:e.message}); }
+      try { return reply(200, rpc(db, fn, args)); } catch(e) { return reply(e.code === "PGRST202" ? 404 : 400, e.code ? {message:e.message, code:e.code} : {message:e.message}); }
     }
     if (p.startsWith("/storage/v1/object/sign/pt-photos/")) return reply(200, { signedURL: "/object/sign/pt-photos/" + p.slice(34) + "?token=t" });
     if (p.startsWith("/storage/v1/object/pt-photos/")) { db.uploads.push(p.slice(29)); (db.uploadMarks = db.uploadMarks || []).push(((req.postDataBuffer() || Buffer.alloc(0)).toString("latin1").match(/name="cacheControl"\r\n\r\n(\d+)/) || [])[1] || ""); return reply(200, { Key: "pt-photos/" + p.slice(29) }); }
