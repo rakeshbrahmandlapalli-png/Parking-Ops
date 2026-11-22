@@ -175,7 +175,12 @@ await scenario(async () => {
   await open(page); await sleep(500);
   check("backup reminder: shows when the last download was 9 days ago", /last downloaded 9 days ago/.test(await text(page, ".nudge")));
   await page.click(".nudge [data-backup]"); await sleep(500);
-  check("backup reminder: Download now fetches the data and the reminder goes", db.calls.some((c) => c.fn === "download_my_company") && await page.locator(".nudge").count() === 0);
+  check("backup reminder: Download now fetches the data in parts and the reminder goes", db.calls.some((c) => c.fn === "download_my_company_part" && c.args.p_part === "bookings") && db.calls.some((c) => c.fn === "download_my_company_part" && c.args.p_part === "done") && !db.calls.some((c) => c.fn === "download_my_company") && await page.locator(".nudge").count() === 0);
+  const dbOld = makeDb(); dbOld.lastDownload = new Date(Date.now() - 9 * 864e5).toISOString(); dbOld.noDownloadParts = true;
+  const pageOld = await phone(browser, dbOld);
+  await open(pageOld); await sleep(500);
+  await pageOld.click(".nudge [data-backup]"); await sleep(500);
+  check("backup reminder: before part 149 the one-request download still works and the reminder goes", dbOld.calls.some((c) => c.fn === "download_my_company") && await pageOld.locator(".nudge").count() === 0);
   const db2 = makeDb(); db2.me.role = "office"; db2.lastDownload = null;
   const page2 = await phone(browser, db2);
   await open(page2); await sleep(500);
