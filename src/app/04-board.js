@@ -58,10 +58,22 @@
   // needed two hours later, so a live or expected time beats the timetable.
   function orderAt(r) {
     if (r.kind === "picks") return r.drop_at || "9";
-    // An early return is needed from when they rang, not their booked day.
-    if (r.early) return r.est_at || r.called_at || r.early_at || "9";
+    // An early return is needed by its new flight: the live time, else the
+    // timetable time found for its new night (a timetable time on the booked
+    // night is the old flight and is skipped), else when they rang, else when
+    // it was moved. It used to skip the timetable time and sort by when it
+    // was moved (AK18SOA, 23 Nov: moved at 16:11, flight 21:05).
+    if (r.early) return r.est_at || (r.sched_at && earlySchedOk(r) ? r.sched_at : "") || r.called_at || r.early_at || "9";
     return r.est_at || r.sched_at || r.return_at || r.called_at || "9";
   }
+
+  // The day a time belongs to on DROPS: up to the day-end (06:00) is the day before.
+  function nightOf(iso) {
+    var l = londonParts(new Date(iso)), end = ((S.company && S.company.drops_day_end) || "06:00").slice(0, 5);
+    return l.time <= end ? addDaysKey(l.key, -1) : l.key;
+  }
+  // An early return's timetable time counts only when it is on an earlier night than the booking's return.
+  function earlySchedOk(r) { return !r.return_at || nightOf(r.sched_at) < nightOf(r.return_at); }
 
   // ── PICKS categories: where to park the car ──
   // A return up to the day-end (06:00) belongs to the day before, so a 22nd
